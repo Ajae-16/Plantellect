@@ -1,6 +1,7 @@
 # Gradle files
 .gradle/
 build/
+app/build/
 
 # Local configuration file (sdk path, etc)
 local.properties
@@ -31,3 +32,25 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# --- VS Code ---
+.vscode/
+*.code-workspace
+
+# --- Node.js / Web server (if applicable) ---
+node_modules/
+dist/
+.env
+
+# --- Python / Django / Flask (if applicable) ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+env/
+venv/
+
+# --- OS-specific ---
+.DS_Store
+Thumbs.db
