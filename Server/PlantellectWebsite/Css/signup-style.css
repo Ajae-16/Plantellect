@@ -1,0 +1,332 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Roboto', Times, serif;
+}
+
+body, html {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+/* Hero Section with Background Image */
+.hero-container {
+    position: relative;
+    height: 100vh;
+    width: 100vw;
+    background-image: url('../Resource/Cucumber_leaf.jpg');
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 20px;
+}
+
+/* Dark background overlay */
+.hero-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.4);
+    z-index: 1;
+}
+
+/* Header / Navbar wrapper */
+header {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding-top: 15px;
+}
+
+.logo-area {
+    position: absolute;
+    left: -10px;
+    top: -10px;
+}
+
+.logo-area img {
+    height: 150px;
+    width: auto;
+}
+
+.nav-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 1350px;
+    margin-left: 170px;
+    margin-right: 30px;
+    border-top: 2px solid white;
+    border-bottom: 2px solid white;
+    padding: 12px 40px;
+}
+
+nav {
+    display: flex;
+    gap: 100px;
+    padding-left: 170px;
+}
+
+nav a, .auth-links a {
+    color: white;
+    text-decoration: none;
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    transition: color 0.3s;
+}
+
+.auth-links {
+    display: flex;
+    gap: 50px;
+}
+
+nav a.active, .auth-links a.active, nav a:hover, .auth-links a:hover {
+    color: #00bcd4;
+}
+
+/* Sign Up Modal Box */
+.signup-modal {
+    position: absolute;
+    top: 55%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    background-color: #303d2b; 
+    opacity: 0.92;
+    width: 600px;         
+    padding: 45px 60px;  
+    border-radius: 20px;  
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.signup-modal h2 {
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 24px;
+    letter-spacing: 2px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.signup-modal .subtitle {
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    margin-bottom: 35px;
+    font-weight: bold;
+}
+
+/* Form Layout */
+form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 70px;            
+}
+
+.input-group {
+    position: relative;   
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.input-group input {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid white;
+    padding: 8px 4px;
+    color: white;
+    font-size: 16px;
+    outline: none;
+    font-family: 'Roboto', sans-serif;
+    width: 100%;
+}
+
+/* Standard Input Labels (Name & Username) */
+.input-group label {
+    position: absolute;
+    left: 4px;
+    bottom: 8px;
+    color: #b0b0b0;
+    font-family: 'Roboto', sans-serif;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    font-weight: bold;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+/* Hide standard labels when typing or focused */
+.input-group input:focus + label,
+.input-group input:not(:placeholder-shown) + label {
+    opacity: 0;
+    visibility: hidden;
+}
+
+/* Password Wrapper Styles */
+.password-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.password-wrapper input {
+    width: 100%;
+    padding-right: 35px;
+}
+
+/* Password Label Styles */
+.password-wrapper label {
+    position: absolute;
+    left: 4px;
+    bottom: 8px;
+    color: #b0b0b0;
+    font-family: 'Roboto', sans-serif;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    font-weight: bold;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+/* Hide password label when typing or focused */
+.password-wrapper input:focus + label,
+.password-wrapper input:not(:placeholder-shown) + label {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.eye-icon {
+    position: absolute;
+    right: 5px;
+    bottom: 8px;
+    color: white;
+    cursor: pointer;
+    font-size: 18px;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+    z-index: 3;
+}
+
+.eye-icon:hover {
+    opacity: 1;
+}
+
+/* Sign Up Button */
+.signup-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: 2px solid white;
+    border-radius: 30px;
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: background 0.3s, color 0.3s;
+}
+
+.signup-btn:hover {
+    background: white;
+    color: #303d2b;
+}
+
+/* Bottom Guest Link Prompt */
+.guest-prompt {
+    margin-top: 25px;
+    text-align: center;
+}
+
+.guest-prompt a {
+    color: #0cacdf; 
+    font-family: 'Roboto', sans-serif;
+    font-size: 13px;
+    font-style: italic; 
+    text-decoration: underline;
+    letter-spacing: 1px;
+    transition: opacity 0.2s ease;
+}
+
+.guest-prompt a:hover {
+    opacity: 0.8;
+}
+
+/* =========================================
+   GUEST POPUP MODAL STYLING
+   ========================================= */
+.guest-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.guest-popup-box {
+    background-color: #303d2b;
+    border: 2px solid white;
+    width: 420px;
+    padding: 35px 30px;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    opacity: 0.95;
+}
+
+.guest-popup-box p {
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    letter-spacing: 1px;
+    margin-bottom: 25px;
+    font-weight: bold;
+}
+
+.guest-continue-btn {
+    width: 100%;
+    padding: 10px;
+    background: transparent;
+    border: 2px solid white;
+    border-radius: 30px;
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: background 0.3s, color 0.3s;
+}
+
+.guest-continue-btn:hover {
+    background: white;
+    color: #303d2b;
+}

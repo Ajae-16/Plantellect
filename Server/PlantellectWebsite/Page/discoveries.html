@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Discoveries</title>
+    <link rel="stylesheet" href="../Css/library-guess-style.css">
+</head>
+<body>
+
+    <div class="library-container">
+        <header>
+            <div class="logo-area">
+                <img src="../Resource/logo.png" alt="Plantellect Logo">
+            </div>
+            <div class="nav-container">
+                <nav>
+                    <a href="../index.html">HOME</a>
+                    <a href="#" class="active" onclick="openLibrary(event)">PLANT LIBRARY</a>
+                    <a href="about.html">ABOUT</a>
+                </nav>
+                <div class="auth-links">
+                    <a href="">as GUESS</a>
+                    <a href="signup.html">SIGN UP</a>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-workspace">
+            <aside class="sidebar">
+                <a href="discoveries.html" class="sidebar-item active">
+                    <span class="icon">🔍</span> DISCOVERIES
+                </a>
+                <a href="#" class="sidebar-item" onclick="handleRestrictedClick(event, 'plants')">
+                    <span class="icon">🌱</span> PLANTS
+                </a>
+                <a href="#" class="sidebar-item" onclick="handleRestrictedClick(event, 'record')">
+                    <span class="icon">🎥</span> RECORD PLANTS
+                </a>
+                <a href="#" class="sidebar-item" onclick="handleRestrictedClick(event, 'users')">
+                    <span class="icon">👥</span> USERS
+                </a>
+                <a href="#" class="sidebar-item profile-link" onclick="handleRestrictedClick(event, 'profile')">
+                    <span class="icon">👤</span> PROFILE
+                </a>
+            </aside>
+
+            <main class="slider-wrapper">
+                <div class="slider-track">
+                    <div class="plant-card">
+                        <div class="image-box"><img src="../Resource/alugbati.jpg" alt="Alugbati Plant"></div>
+                        <h3>ALUGBATI</h3>
+                        <p>Alugbati is a succulent, fast-growing vine that is common throughout the Philippines. It is easily recognized by its fleshy, heart-shaped, smooth leaves.</p>
+                    </div>
+                    <div class="plant-card">
+                        <div class="image-box"><img src="../Resource/aratiles.jpg" alt="Aratiles Plant"></div>
+                        <h3>ARATILES</h3>
+                        <p>Aratiles is a fast-growing, evergreen tree featuring spreading branches, sticky leaves, and small white flowers.</p>
+                    </div>
+                    <div class="plant-card">
+                        <div class="image-box"><img src="../Resource/malunggay.jpg" alt="Malunggay Plant"></div>
+                        <h3>MALUNGGAY</h3>
+                        <p>Malunggay is widely cultivated for its nutritious leaf vegetables, flower pods, and seeds, and is frequently used as a vegetable in soups.</p>
+                    </div>
+                    <div class="plant-card">
+                        <div class="image-box"><img src="../Resource/sampaguita.jpg" alt="Sampaguita Plant"></div>
+                        <h3>SAMPAGUITA</h3>
+                        <p>Sampaguita is a species of jasmine native to tropical Asia, prized for its strongly scented small white flowers that bloom all year round.</p>
+                    </div>
+                    <div class="plant-card">
+                        <div class="image-box"><img src="../Resource/gumamela.jpg" alt="Gumamela Plant"></div>
+                        <h3>GUMAMELA</h3>
+                        <p>Gumamela is a tropical shrub with large, prominent flowers that come in vibrant shades of red, pink, yellow, and orange.</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="../Script/script.js"></script>
+
+</body>
+</html>

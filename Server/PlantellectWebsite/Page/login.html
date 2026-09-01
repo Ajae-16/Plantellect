@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Log In</title>
+    <link rel="stylesheet" href="../Css/login-style.css">
+</head>
+<body>
+
+    <div class="hero-container">
+        <header>
+            <div class="logo-area">
+                <img src="../Resource/logo.png" alt="Plantellect Logo">
+            </div>
+            <div class="nav-container">
+                <nav>
+                     <a href="../index.html">HOME</a>
+                    <a href="library-error.html">PLANT LIBRARY</a>
+                    <a href="about.html">ABOUT</a>
+                </nav>
+                <div class="auth-links">
+                    <a href="#" class="active">LOG IN</a>
+                    <a href="signup.html">SIGN UP</a>
+                </div>
+            </div>
+        </header>
+        
+        <div class="login-modal">
+            <h2>LOG IN</h2>
+            
+            <form id="loginForm">
+                <!-- Username Input Group -->
+                <div class="input-group">
+                    <input type="text" id="username" placeholder=" " required>
+                    <label for="username">USERNAME</label>
+                </div>
+
+                <!-- Password Input Group -->
+                <div class="input-group password-group">
+                    <div class="password-wrapper">
+                        <input type="password" id="password" placeholder=" " required>
+                        <label for="password">PASSWORD</label>
+                        <span class="eye-icon" id="togglePassword" onclick="togglePasswordVisibility()">👁</span>
+                    </div>
+                </div>
+
+                <button type="submit" class="login-btn">Log in</button>
+            </form>
+
+            <div class="signup-prompt">
+                <a href="signup.html">DON'T HAVE AN ACCOUNT YET?</a>
+            </div>
+        </div>
+    </div>
+    <div class="success-popup-overlay" id="successModal">
+        <div class="success-popup-box">
+            <p>You are now logged in as a member!</p>
+            <button class="success-redirect-btn" onclick="redirectToHome()">OK</button>
+        </div>
+    </div>
+
+    <div class="success-popup-overlay" id="errorModal">
+        <div class="success-popup-box error-popup-box">
+            <p>Invalid username or password! Kindly use a valid credential</p>
+            <button class="success-redirect-btn error-btn" onclick="closeErrorModal()">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        function togglePasswordVisibility() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.getElementById('togglePassword');
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.style.opacity = '1'; 
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.style.opacity = '0.6'; 
+            }
+        }
+
+        // Handle login form submission with credential validation
+        document.getElementById('loginForm').addEventListener('submit', function(event) {
+            event.preventDefault(); 
+
+            const enteredUser = document.getElementById('username').value.trim();
+            const enteredPass = document.getElementById('password').value;
+
+            if (enteredUser === 'admin' && enteredPass === 'password') {
+                sessionStorage.setItem('userRole', 'member'); // Saves member status
+                
+                
+                const successModal = document.getElementById('successModal');
+                if (successModal) {
+                    successModal.style.display = 'flex';
+                }
+            } else {
+                // Trigger the error modal popup instead of alert()
+                const errorModal = document.getElementById('errorModal');
+                if (errorModal) {
+                    errorModal.style.display = 'flex';
+                }
+            }
+        });
+
+        // Function triggered when user clicks "OK" on the success popup
+        function redirectToHome() {
+            window.location.href = '../index.html'; // Redirects to home page
+        }
+
+        // Function triggered when user clicks "OK" on the error popup
+        function closeErrorModal() {
+            const errorModal = document.getElementById('errorModal');
+            if (errorModal) {
+                errorModal.style.display = 'none';
+            }
+        }
+    </script>
+
+</body>
+</html>

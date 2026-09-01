@@ -1,0 +1,183 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Roboto', Times, serif;
+}
+
+body, html {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+/* Hero Section with Background Image */
+.hero-container {
+    position: relative;
+    height: 100vh;
+    width: 100vw;
+    background-image: url('../Resource/Cucumber_leaf.jpg');
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 20px;
+}
+
+/* Dark background overlay */
+.hero-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.4);
+    z-index: 1;
+}
+
+/* Header / Navbar wrapper */
+header {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding-top: 15px;
+}
+
+.logo-area {
+    position: absolute;
+    left: -10px;
+    top: -10px;
+}
+
+.logo-area img {
+    height: 150px;
+    width: auto;
+}
+
+.nav-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 1350px;
+    margin-left: 170px;
+    margin-right: 30px;
+    border-top: 2px solid white;
+    border-bottom: 2px solid white;
+    padding: 12px 40px;
+}
+
+nav {
+    display: flex;
+    gap: 100px;
+    padding-left: 170px;
+}
+
+nav a, .auth-links a {
+    color: white;
+    text-decoration: none;
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    transition: color 0.3s;
+}
+
+.auth-links {
+    display: flex;
+    gap: 50px;
+}
+
+nav a.active, .auth-links a.active, nav a:hover, .auth-links a:hover {
+    color: #00bcd4;
+}
+
+/* About Modal Box (Matched to Login/Sign Up sizing structure) */
+.about-modal {
+    position: absolute;
+    top: 55%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    background-color: #303d2b; /* Main container background color */
+    opacity: 0.92;
+    width: 1400px;         /* Wider container to accommodate two columns side-by-side */
+    padding: 60px 90px;   
+    border-radius: 20px;  
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+/* Typography & Layout adjustments (Adjust font sizes here easily) */
+.about-header {
+    margin-bottom: 25px;
+}
+
+.about-modal h2 {
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 30px;       /* <--- Adjust title size here */
+    letter-spacing: 5px;
+    font-weight: bold;
+    margin-bottom: 20px;
+}
+
+.about-header p {
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 20px;       /* <--- Adjust main intro text size here */
+    line-height: 1.5;
+    max-width: 700px;
+}
+
+/* Two-column layout for What We Do & Our Mission */
+.about-grid {
+    display: flex;
+    justify-content: space-between;
+    gap: 40px;
+    margin-bottom: 25px;
+    text-align: left;
+}
+
+.about-column {
+    flex: 1;
+}
+
+.about-modal h3 {
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 30px;       /* <--- Adjust section header size here */
+    letter-spacing: 5px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.about-column p, .about-footer-section p {
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 20px;       /* <--- Adjust paragraph text size here */
+    line-height: 1.5;
+    text-align: center;
+}
+
+/* Footer Section for Community and Contributions */
+.about-footer-section {
+    width: 100%;
+    text-align: center;
+}
+
+.about-footer-section h3 {
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 30px;       /* <--- Adjust section header size here */
+    letter-spacing: 5px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}

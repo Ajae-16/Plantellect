@@ -39,6 +39,7 @@ google-services.json
 # --- VS Code ---
 .vscode/
 *.code-workspace
+.kilo/
 
 # --- Node.js / Web server (if applicable) ---
 node_modules/
