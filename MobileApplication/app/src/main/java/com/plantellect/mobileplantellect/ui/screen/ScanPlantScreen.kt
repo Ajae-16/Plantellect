@@ -90,19 +90,16 @@ fun ScanPlantScreen() {
                     previewView
                 },
                 modifier = Modifier
-                    .size(300.dp)
+                    .size(600.dp)
                     .clip(RoundedCornerShape (20.dp))
                     .border(2.dp, MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
                     .align(Alignment.Center)
 
             )
         } else {
-            Button(onClick = {launcher.launch(Manifest.permission.CAMERA)}) {
+            Button(onClick = {launcher.launch(Manifest.permission.CAMERA)}, Modifier.align(Alignment.Center)) {
                 Text("Grant Camera Permission")
             }
         }
     }
-
-    Text(text = "Scan Plant Screen", style = MaterialTheme.typography.bodyLarge)
-
 }

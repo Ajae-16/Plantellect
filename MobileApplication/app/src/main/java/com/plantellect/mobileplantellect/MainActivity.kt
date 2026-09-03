@@ -8,7 +8,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -34,7 +36,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.plantellect.mobileplantellect.ui.screen.DiscoveryScreen
+import com.plantellect.mobileplantellect.ui.screen.HomeScreen
 import com.plantellect.mobileplantellect.ui.screen.PlantInventoryScreen
 import com.plantellect.mobileplantellect.ui.screen.ProfileScreen
 import com.plantellect.mobileplantellect.ui.screen.RecordPlantScreen
@@ -68,7 +70,10 @@ class MainActivity : ComponentActivity() {
                 ModalNavigationDrawer(
                     drawerState = drawerState,
                     drawerContent = {
-                        ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.primaryContainer)
+                        ModalDrawerSheet(drawerContainerColor =
+                            MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.fillMaxWidth(0.5f).widthIn(max = 360.dp)
+                            )
                         {
                             Text(
                                 "Plantellect",
@@ -78,21 +83,21 @@ class MainActivity : ComponentActivity() {
                             )
                             HorizontalDivider()
 
-                            // Menu Item: Discovery
+                            // Menu Item: Home (changed from Discovery)
                             NavigationDrawerItem(
-                                label = { Text("Discovery",
+                                label = { Text("Home",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.onSurface) },
-                                selected = navController.currentDestination?.route == "discovery",
+                                selected = false,
                                 onClick = {
                                     scope.launch { drawerState.close() }
-                                    navController.navigate("discovery")
+                                    navController.navigate("home")
                                 }
                             )
 
                             // Menu Item: Plant Inventory
                             NavigationDrawerItem(
-                                label = { Text("My Plants",
+                                label = { Text("Plants",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.onSurface) },
                                 selected = false,
@@ -156,10 +161,10 @@ class MainActivity : ComponentActivity() {
                         // The Content Swapper (NavHost)
                         NavHost(
                             navController = navController,
-                            startDestination = "inventory",
+                            startDestination = "home",
                             modifier = Modifier.padding(innerPadding)
                         ) {
-                            composable("discovery") { DiscoveryScreen() }
+                            composable("home") { HomeScreen() }
                             composable("inventory") { PlantInventoryScreen() }
                             composable("scan") { ScanPlantScreen() }
                             composable("record") { RecordPlantScreen() }
