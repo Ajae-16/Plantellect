@@ -1,0 +1,36 @@
+name: plantellect_database
+
+version: '3.8'
+
+services:
+  # Structured Data (Users, Taxonomy, Roles)
+  mysql_db:
+    image: mysql:8.0
+    container_name: mysql_plantellectdb
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: plantellectdb
+      MYSQL_USER: superadmin
+      MYSQL_PASSWORD: plantpassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  # Unstructured / AI Data (CNN outputs, logs, documents)
+  mongo_db:
+    image: mongo:latest
+    container_name: mongo_plantellectdb
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: superadmin
+      MONGO_INITDB_ROOT_PASSWORD: plantpassword
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mysql_data:
+  mongo_data:

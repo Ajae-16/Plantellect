@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Admin Dashboard</title>
+    <link rel="stylesheet" href="/css/admin-style.css">
+</head>
+<body>
+
+    <header class="admin-header">
+        <div class="admin-logo">
+            <img src="/resource/logo.png" alt="Plantellect Logo">
+            <span>Admin Dashboard</span>
+        </div>
+        <div class="admin-user" id="adminUser">Loading...</div>
+    </header>
+
+    <div class="admin-layout">
+        <aside class="admin-sidebar">
+            <nav>
+                <a href="/admin/dashboard" class="active">Dashboard</a>
+                <a href="#" data-perm="create_user">Users</a>
+                <a href="#" data-perm="manage_content">Content</a>
+                <a href="#" data-perm="manage_plant">Plants</a>
+                <a href="#" data-perm="view_logs">Logs</a>
+                <a href="#" id="adminLogoutLink">Log out</a>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <h1>Welcome to the Admin Dashboard</h1>
+            <p class="admin-subtitle">Plantellect administrative control panel</p>
+
+            <div class="admin-cards">
+                <div class="admin-card">
+                    <h2>Your Role</h2>
+                    <p id="adminRole">Loading...</p>
+                </div>
+                <div class="admin-card">
+                    <h2>Your Permissions</h2>
+                    <p id="adminPermissions">Loading...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/javascript/home.js"></script>
+    <script>
+        (async function () {
+            const response = await fetch('/api/auth/me', { credentials: 'include' });
+            if (!response.ok) {
+                window.location.href = '/login.html';
+                return;
+            }
+            const data = await response.json();
+
+            document.getElementById('adminUser').textContent = 'Logged in as ' + data.username;
+            document.getElementById('adminRole').textContent = (data.roles || []).join(', ') || 'N/A';
+            document.getElementById('adminPermissions').textContent =
+                (data.permissions || []).join(', ') || 'N/A';
+
+            const perms = data.permissions || [];
+            document.querySelectorAll('.admin-sidebar a[data-perm]').forEach(function (a) {
+                if (!perms.includes(a.getAttribute('data-perm'))) {
+                    a.style.display = 'none';
+                }
+            });
+
+            document.getElementById('adminLogoutLink').addEventListener('click', function (e) {
+                e.preventDefault();
+                logoutUser();
+            });
+        })();
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Log In</title>
+    <link rel="stylesheet" href="css/login-style.css">
+</head>
+<body>
+
+    <div class="hero-container">
+        <header>
+            <div class="logo-area">
+                <img src="resource/logo.png" alt="Plantellect Logo">
+            </div>
+            <div class="nav-container">
+                <nav>
+                    <a href="home.html">HOME</a>
+                    <a href="#" onclick="openLibrary(event)">PLANT LIBRARY</a>
+                    <a href="about.html">ABOUT</a>
+                </nav>
+                <div class="auth-links">
+                    <a href="#" class="active">LOG IN</a>
+                    <a href="signup.html">SIGN UP</a>
+                </div>
+            </div>
+        </header>
+
+        <div class="login-modal">
+            <h2>LOG IN</h2>
+
+            <form id="loginForm">
+                <div class="input-group">
+                    <input type="text" id="loginIdentifier" placeholder=" " required>
+                    <label for="loginIdentifier">USERNAME OR EMAIL</label>
+                </div>
+
+                <div class="input-group password-group">
+                    <div class="password-wrapper">
+                        <input type="password" id="password" placeholder=" " required>
+                        <label for="password">PASSWORD</label>
+                        <span class="eye-icon" id="togglePassword" onclick="togglePasswordVisibility()">&#128065;</span>
+                    </div>
+                </div>
+
+                <button type="submit" class="login-btn">Log in</button>
+            </form>
+
+            <div class="signup-prompt">
+                <a href="signup.html">DON'T HAVE AN ACCOUNT YET?</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="success-popup-overlay" id="successModal">
+        <div class="success-popup-box">
+            <p>You are now logged in!</p>
+            <button class="success-redirect-btn" onclick="redirectToHome()">OK</button>
+        </div>
+    </div>
+
+    <div class="success-popup-overlay" id="errorModal">
+        <div class="success-popup-box error-popup-box">
+            <p id="loginErrorMessage">Invalid username or password!</p>
+            <button class="success-redirect-btn error-btn" onclick="closeErrorModal()">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        function togglePasswordVisibility() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.getElementById('togglePassword');
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.style.opacity = '1';
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.style.opacity = '0.6';
+            }
+        }
+
+        function redirectToHome() {
+            window.location.href = 'home.html';
+        }
+
+        function closeErrorModal() {
+            const errorModal = document.getElementById('errorModal');
+            if (errorModal) {
+                errorModal.style.display = 'none';
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async function (event) {
+            event.preventDefault();
+
+            const identifier = document.getElementById('loginIdentifier').value.trim();
+            const password = document.getElementById('password').value;
+
+            const payload = identifier.includes('@')
+                ? { email: identifier, password: password }
+                : { username: identifier, password: password };
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    sessionStorage.setItem('username', data.username);
+                    document.getElementById('successModal').style.display = 'flex';
+                } else {
+                    document.getElementById('loginErrorMessage').textContent =
+                        data.error || 'Invalid username or password! Kindly use a valid credential';
+                    document.getElementById('errorModal').style.display = 'flex';
+                }
+            } catch (err) {
+                document.getElementById('loginErrorMessage').textContent =
+                    'Unable to connect to the server. Please try again.';
+                document.getElementById('errorModal').style.display = 'flex';
+            }
+        });
+    </script>
+
+</body>
+</html>

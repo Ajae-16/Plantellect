@@ -36,10 +36,19 @@ google-services.json
 # Android Profiling
 *.hprof
 
-# --- VS Code ---
+# --- VS Code / Kilo ---
 .vscode/
 *.code-workspace
-.kilo/
+# Ignore .kilo directory contents (machine-specific state) but
+# track project config scripts and settings so they propagate to worktrees.
+.kilo/*
+#!.kilo/.gitignore
+#!.kilo/kilo.json*
+#!.kilo/setup-script*
+#!.kilo/run-script*
+#!.kilo/instruction.md
+#!.kilo/structure.md
+AGENTS.md
 
 # --- Node.js / Web server (if applicable) ---
 node_modules/

@@ -1,0 +1,4 @@
+# environment variables
+.env
+config/seed.cjs
+.kilo

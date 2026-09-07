@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect</title>
+    
+    <!-- Fonts & External CSS -->
+    <link href="https://fonts.googleapis.com/css2?family=Lancelot&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- GrapesJS CSS (Using CDN or relative path 'node_modules/grapesjs/dist/css/grapes.min.css') -->
+    <link rel="stylesheet" href="https://unpkg.com/grapesjs/dist/css/grapes.min.css">
+    
+    <style>
+        /* Essential: GrapesJS container must have an explicit height */
+        #gjs {
+            height: 100vh;
+            border: 3px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- GrapesJS Editor Container -->
+    <div id="gjs"></div>
+
+
+    <!-- GrapesJS JS (Loaded before initialization) -->
+    <script src="https://unpkg.com/grapesjs"></script>
+    
+    <script type="text/javascript">
+        const editor = grapesjs.init({
+            container: '#gjs',
+            fromElement: false,
+            height: '100%',
+            width: 'auto',
+            storageManager: false, // Disable local storage during setup
+            components: '<div class="txt-red">Hello world!</div>',
+            style: '.txt-red{color: red;}',
+        });
+    </script>
+
+    <script src="script/script.js"></script>
+</body>
+</html>
