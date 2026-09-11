@@ -35,11 +35,13 @@ function updateNavForAuthState(user) {
         if (logoutLink) {
             logoutLink.addEventListener('click', function (e) {
                 e.preventDefault();
-                logoutUser();
+                if (typeof logoutUser === 'function') {
+                    logoutUser();
+                }
             });
         }
     } else {
-        authLinks.innerHTML = `<a href="login.html">LOG IN</a><a href="signup.html">SIGN UP</a>`;
+        authLinks.innerHTML = `<a href="auth.html#login">LOG IN</a><a href="auth.html#register">SIGN UP</a>`;
     }
 }
 
@@ -51,16 +53,7 @@ function escapeHtml(str) {
 
 async function openLibrary(event) {
     if (event) event.preventDefault();
-    const user = await checkAuth();
-    if (user) {
-        window.location.href = 'discoveries.html';
-        return;
-    }
-    if (sessionStorage.getItem('guestMode') === 'true') {
-        window.location.href = 'library-guess.html';
-        return;
-    }
-    window.location.href = 'library-error.html';
+    window.location.href = 'library.html';
 }
 
 async function handleRestrictedClick(event, featureName) {
@@ -77,46 +70,7 @@ async function handleRestrictedClick(event, featureName) {
     }
 }
 
-async function logoutUser() {
-    try {
-        await fetch('/api/auth/logout', {
-            method: 'POST',
-            credentials: 'include'
-        });
-    } catch (err) {
-        // ignore network errors during logout
-    }
-    clearAuthState();
-    window.location.href = 'home.html';
-}
-
 document.addEventListener('DOMContentLoaded', function () {
-    const popupHTML = `
-        <div id="restrictedModal" class="restricted-popup-overlay" style="display: none;">
-            <div class="restricted-popup-box">
-                <span class="close-btn" id="closeRestrictedModal">&times;</span>
-                <p>Log in to unlock all features</p>
-                <button id="loginRedirectBtn" class="login-redirect-btn">Log in</button>
-            </div>
-        </div>
-    `;
-    document.body.insertAdjacentHTML('beforeend', popupHTML);
-
-    const modal = document.getElementById('restrictedModal');
-    const closeBtn = document.getElementById('closeRestrictedModal');
-    const loginBtn = document.getElementById('loginRedirectBtn');
-
-    if (closeBtn && modal) {
-        closeBtn.addEventListener('click', function () {
-            modal.style.display = 'none';
-        });
-    }
-    if (loginBtn) {
-        loginBtn.addEventListener('click', function () {
-            window.location.href = 'login.html';
-        });
-    }
-
     checkAuth().then(function (user) {
         updateNavForAuthState(user);
     });

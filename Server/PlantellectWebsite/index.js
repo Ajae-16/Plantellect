@@ -7,12 +7,11 @@ const MongoStore = require('connect-mongo');
 
 const connectMongoDB = require('./config/mongo');
 const { runSeed } = require('./config/seed.cjs');
+const settings = require('./config/settings');
 
 const app = express();
 
-const sessionTimeout = 24;
-
-if (!process.env.SESSION_SECRET) {
+if (!settings.session.secret) {
     throw new Error('SESSION_SECRET missing from environment variables');
 }
 
@@ -20,19 +19,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(session({
-    secret: process.env.SESSION_SECRET,
+    secret: settings.session.secret,
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
-        mongoUrl: process.env.MONGO_URI || 'mongodb://superadmin:plantpassword@localhost:27017/plantellectmongodb?authSource=admin',
-        ttl: sessionTimeout * 60 * 60,
+        mongoUrl: settings.database.mongoUri,
+        ttl: settings.session.cookieTimeout / 1000,
         autoRemove: 'native',
     }),
     cookie: {
         httpOnly: true,
         sameSite: 'lax',
-        secure: false,
-        maxAge: sessionTimeout * 60 * 60 * 1000
+        secure: settings.session.cookieSecure
     }
 }));
 
@@ -55,9 +53,9 @@ app.use((err, req, res, next) => {
 
 async function startServer() {
     await connectMongoDB();
-    await runSeed();
+    // await runSeed();
 
-    const PORT = process.env.PORT || 3000;
+    const PORT = settings.server.port;
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`Server running on port ${PORT}`);
     });

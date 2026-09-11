@@ -15,13 +15,13 @@
             </div>
             <div class="nav-container">
                 <nav>
-                     <a href="../home.html">HOME</a>
-                    <a href="library-error.html">PLANT LIBRARY</a>
+                    <a href="../home.html">HOME</a>
+                    <a href="library.html">PLANT LIBRARY</a>
                     <a href="about.html">ABOUT</a>
                 </nav>
                 <div class="auth-links">
                     <a href="#" class="active">LOG IN</a>
-                    <a href="signup.html">SIGN UP</a>
+                    <a href="auth.html#register">SIGN UP</a>
                 </div>
             </div>
         </header>
@@ -30,13 +30,11 @@
             <h2>LOG IN</h2>
             
             <form id="loginForm">
-                <!-- Username Input Group -->
                 <div class="input-group">
                     <input type="text" id="username" placeholder=" " required>
                     <label for="username">USERNAME</label>
                 </div>
 
-                <!-- Password Input Group -->
                 <div class="input-group password-group">
                     <div class="password-wrapper">
                         <input type="password" id="password" placeholder=" " required>
@@ -49,7 +47,7 @@
             </form>
 
             <div class="signup-prompt">
-                <a href="signup.html">DON'T HAVE AN ACCOUNT YET?</a>
+                <a href="auth.html#register">DON'T HAVE AN ACCOUNT YET?</a>
             </div>
         </div>
     </div>
@@ -80,7 +78,6 @@
             }
         }
 
-        // Handle login form submission with credential validation
         document.getElementById('loginForm').addEventListener('submit', function(event) {
             event.preventDefault(); 
 
@@ -88,15 +85,13 @@
             const enteredPass = document.getElementById('password').value;
 
             if (enteredUser === 'admin' && enteredPass === 'password') {
-                sessionStorage.setItem('userRole', 'member'); // Saves member status
-                
+                sessionStorage.setItem('userRole', 'member');
                 
                 const successModal = document.getElementById('successModal');
                 if (successModal) {
                     successModal.style.display = 'flex';
                 }
             } else {
-                // Trigger the error modal popup instead of alert()
                 const errorModal = document.getElementById('errorModal');
                 if (errorModal) {
                     errorModal.style.display = 'flex';
@@ -104,12 +99,10 @@
             }
         });
 
-        // Function triggered when user clicks "OK" on the success popup
         function redirectToHome() {
-            window.location.href = '../index.html'; // Redirects to home page
+            window.location.href = '../home.html';
         }
 
-        // Function triggered when user clicks "OK" on the error popup
         function closeErrorModal() {
             const errorModal = document.getElementById('errorModal');
             if (errorModal) {

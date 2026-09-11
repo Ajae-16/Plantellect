@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Log In</title>
+    <link href="https://fonts.googleapis.com/css2?family=Lancelot&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/public/auth.css">
+</head>
+<body>
+
+    <div class="hero-container">
+        <div class="auth-container" id="authContainer">
+            <div class="forms-wrapper">
+                <div class="form-container login-container">
+                    <h2>LOG IN</h2>
+                    <form id="loginForm" class="auth-form">
+
+                        <div class="container-input-group">
+                            <div class="input-group">
+                                <input type="text" id="loginIdentifier" placeholder=" " required>
+                                <label for="loginIdentifier">USERNAME OR EMAIL</label>
+                            </div>
+
+                            <div class="input-group password-group">
+                                <div class="password-wrapper">
+                                    <input type="password" id="loginPassword" placeholder=" " required>
+                                    <label for="loginPassword">PASSWORD</label>
+                                    <span class="eye-icon" id="toggleLoginPassword" onclick="togglePasswordVisibility('loginPassword', 'toggleLoginPassword')">&#128065;</span>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="input-group remember-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="rememberMe" name="rememberMe" value="true">
+                                <span class="checkmark">Remember me</span>
+                            </label>
+                        </div>
+                        
+                        <button type="submit" class="login-btn">Log in</button>
+
+                        <p class="form-footer">Don't have an account? 
+                            <a href="#" class="link" onclick="switchToRegister(event)">Sign Up</a>
+                        </p>
+
+                        
+                        <div class="guest-prompt">
+                            <a href="#" id="guestLink">AS GUEST</a>
+                        </div>
+
+                    </form>
+                <div class="auth-container-footer"></div>
+                </div>
+
+
+
+                <div class="form-container"><!-- Dummy container for transition --></div>
+
+                <div class="form-container register-container">
+                    <h2>SIGN UP</h2>
+                    
+                    <form id="registerForm" class="auth-form">
+                        <div class="container-input-group">
+                            <div class="container-row">
+                                <div class="container-input">
+                                    <div class="input-group">
+                                        <input type="text" id="registerFirstName" placeholder=" " required>
+                                        <label for="registerFirstName">First Name</label>
+                                    </div>
+                                </div>
+
+                                <div class="container-input">
+                                    <div class="input-group">
+                                        <input type="text" id="registerLastName" placeholder=" " required>
+                                        <label for="registerLastName">Last Name</label>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                        <div class="container-input-group">
+                            <div class="container-row">
+                                <div class="container-input">
+                                    <div class="input-group">
+                                        <input type="email" id="registerEmail" placeholder=" " required>
+                                        <label for="registerEmail">EMAIL</label>
+                                    </div>
+                                </div>
+
+                                <div class="container-input">
+                                    <div class="input-group">
+                                        <input type="text" id="registerUsername" placeholder=" " required>
+                                        <label for="registerUsername">USERNAME</label>
+
+                                    </div>
+
+                                    <div class="auth-requirements" id="usernameRequirements">
+                                        <ul>
+                                            <li id="req-username-length">At least 6 characters</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="container-row">
+                                <div class="container-input">
+                                    <div class="input-group password-group">
+                                        <div class="password-wrapper">
+                                            <input type="password" id="registerPassword" placeholder=" " required>
+                                            <label for="registerPassword">PASSWORD</label>
+                                            <span class="eye-icon" id="toggleRegisterPassword" onclick="togglePasswordVisibility('registerPassword', 'toggleRegisterPassword')">&#128065;</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="auth-requirements" id="passwordRequirements">
+                                        <ul>
+                                            <li id="req-length">At least 6 characters</li>
+                                            <li id="req-lowercase">One lowercase letter</li>
+                                            <li id="req-uppercase">One uppercase letter</li>
+                                            <li id="req-number">One number</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                
+                                <div class="container-input">
+                                    <div class="input-group password-group">
+                                        <div class="password-wrapper">
+                                            <input type="password" id="registerConfirmPassword" placeholder=" " required>
+                                            <label for="registerConfirmPassword">CONFIRM PASSWORD</label>
+                                            <span class="eye-icon" id="toggleRegisterConfirmPassword" onclick="togglePasswordVisibility('registerConfirmPassword', 'toggleRegisterConfirmPassword')">&#128065;</span>
+                                        </div>
+                                    </div>
+                                    <div class="auth-requirements" id="confirmPasswordRequirements">
+                                            <ul>
+                                                <li id="req-match">Password match</li>
+                                            </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="container-input">
+                                <p> Select Your Role: </p>
+                                <div class="container-row">
+                                    <button type="button" class="role-btn" id="roleUserBtn" onclick="selectRole('user')">USER</button>
+                                    <button type="button" class="role-btn" id="roleExpertBtn" onclick="selectRole('expert')">EXPERT</button>
+                                </div>
+                            </div>
+
+                            <div class="container-input certificate-attachment">
+                                <div class="input-group">
+                                    <label for="registerCertificate" class="custom-file-upload">Upload Certificate</label>
+                                    <input type="file" id="registerCertificate" accept=".pdf,.jpg,.jpeg,.png" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="signup-btn">SIGN UP</button>
+                        <p class="form-footer">Already have an account? 
+                            <a href="#" class="link" onclick="switchToLogin(event)">Sign In</a>
+                        </p>
+
+
+                    </form>
+                    <div class="auth-container-footer"></div>
+                </div>
+
+            </div>
+
+            <div class="overlay-container">
+                <div class="overlay">
+                    <div class="overlay-panel overlay-left">
+                        <h2>Hello</h2>
+                        <p>Create an account to start your plant identification journey</p>
+                        <button class="btn-ghost" onclick="switchToRegister(event)">Sign Up</button>
+                    </div>
+                    <div class="overlay-panel overlay-right">
+                        <h2>Welcome Back!</h2>
+                        <p>Sign in to continue exploring plants</p>
+                        <button class="btn-ghost" onclick="switchToLogin(event)">Sign In</button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="guestModal" class="guest-popup-overlay" style="display: none;">
+        <div class="guest-popup-box">
+            <p>You're logged in as a Guest. Some features will require you to log in.</p>
+            <button id="guestContinueBtn" class="guest-continue-btn">Continue</button>
+        </div>
+    </div>
+
+    <div class="success-popup-overlay" id="successModal">
+        <div class="success-popup-box">
+            <p id="successMessage">Account created successfully!</p>
+            <button class="success-redirect-btn" onclick="redirectToHome()">OK</button>
+        </div>
+    </div>
+
+    <div class="success-popup-overlay" id="errorModal">
+        <div class="success-popup-box error-popup-box">
+            <p id="errorMessage">Invalid username or password!</p>
+            <button class="success-redirect-btn error-btn" onclick="closeErrorModal()">Try Again</button>
+        </div>
+    </div>
+
+    <script src="javascript/logout.js"></script>
+    <script src="javascript/sidebar.js"></script>
+    <script src="javascript/auth-script.js"></script>
+
+</body>
+</html>

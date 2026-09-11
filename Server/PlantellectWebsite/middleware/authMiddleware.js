@@ -1,4 +1,4 @@
-const { getPermissionsVersion, loadAccountPermissions } = require('../config/mysql.cjs');
+const { getPermissionsVersion, loadAccountPermissions } = require('../config/mysql.js');
 
 async function refreshSession(req) {
     if (!req.session || !req.session.accountId) {
@@ -19,7 +19,7 @@ async function refreshSession(req) {
 
 async function requireAuth(req, res, next) {
     if (!req.session || !req.session.accountId) {
-        return res.redirect('/login.html');
+        return res.redirect('/auth.html');
     }
     await refreshSession(req);
     next();
@@ -28,7 +28,7 @@ async function requireAuth(req, res, next) {
 function requireRole(...allowedRoles) {
     return async (req, res, next) => {
         if (!req.session || !req.session.accountId) {
-            return res.redirect('/login.html');
+            return res.redirect('/auth.html');
         }
         await refreshSession(req);
         if (!req.session.roles || !allowedRoles.some((r) => req.session.roles.includes(r))) {
@@ -41,7 +41,7 @@ function requireRole(...allowedRoles) {
 function requirePermission(...requiredPermissions) {
     return async (req, res, next) => {
         if (!req.session || !req.session.accountId) {
-            return res.redirect('/login.html');
+            return res.redirect('/auth.html');
         }
         await refreshSession(req);
         if (

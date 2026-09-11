@@ -4,49 +4,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Plantellect - Sign Up</title>
-    <!-- Link to your external signup stylesheet -->
     <link rel="stylesheet" href="../css/signup-style.css">
 </head>
 <body>
 
     <div class="hero-container">
-        <!-- Top Navigation Bar -->
         <header>
             <div class="logo-area">
                 <img src="../resource/logo.png" alt="Plantellect Logo">
             </div>
             <div class="nav-container">
                 <nav>
-                     <a href="../home.html">HOME</a>
-                    <a href="library-error.html">PLANT LIBRARY</a>
+                    <a href="../home.html">HOME</a>
+                    <a href="library.html">PLANT LIBRARY</a>
                     <a href="about.html">ABOUT</a>
                 </nav>
                 <div class="auth-links">
-                    <a href="login.html">LOG IN</a>
+                    <a href="auth.html#login">LOG IN</a>
                     <a href="#" class="active">SIGN UP</a>
                 </div>
             </div>
         </header>
 
-        <!-- Sign Up Modal Container -->
         <div class="signup-modal">
             <h2>SIGN UP</h2>
             <p class="subtitle">SIGN UP TO CONTINUE</p>
             
             <form>
-                <!-- Name Input Group -->
                 <div class="input-group">
                     <input type="text" id="name" placeholder=" " required>
                     <label for="name">NAME</label>
                 </div>
 
-                <!-- Username Input Group -->
                 <div class="input-group">
                     <input type="text" id="username" placeholder=" " required>
                     <label for="username">USERNAME</label>
                 </div>
 
-                <!-- Password Input Group -->
                 <div class="input-group password-group">
                     <div class="password-wrapper">
                         <input type="password" id="password" placeholder=" " required>
@@ -64,7 +58,6 @@
         </div>
     </div>
 
-    <!-- Guest Notice Popup Modal -->
     <div id="guestModal" class="guest-popup-overlay" style="display: none;">
         <div class="guest-popup-box">
             <p>You're logged in as a Guest. Some features will require you to log in.</p>
@@ -72,7 +65,6 @@
         </div>
     </div>
 
-    <!-- JavaScript for password visibility and guest popup actions -->
     <script>
         function togglePasswordVisibility() {
             const passwordInput = document.getElementById('password');
@@ -93,8 +85,8 @@
         }
 
         document.getElementById('guestContinueBtn').addEventListener('click', function() {
-            sessionStorage.setItem('userRole', 'guest'); // Saves guest status before redirecting
-            window.location.href = '../index.html';
+            sessionStorage.setItem('userRole', 'guest');
+            window.location.href = '../home.html';
         });
     </script>
 

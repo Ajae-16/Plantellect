@@ -6,11 +6,11 @@ function openLibrary(event) {
     const prefix = isRoot ? 'page/' : '';
 
     if (role === 'member') {
-        window.location.href = prefix + 'library-login.html';  // Fully logged in
+        window.location.href = prefix + 'library.html';
     } else if (role === 'guest') {
-        window.location.href = prefix + 'library-guess.html';  // Logged in as guest
+        window.location.href = prefix + 'library.html';
     } else {
-        window.location.href = prefix + 'library-error.html';  // Visitor / Not signed in
+        window.location.href = prefix + 'library.html';
     }
 }
 
@@ -18,7 +18,7 @@ function openLibrary(event) {
 function logoutUser() {
     sessionStorage.removeItem('userRole');
     const isRoot = window.location.pathname.endsWith('index.html') || window.location.pathname.endsWith('/');
-    window.location.href = isRoot ? 'index.html' : '../index.html';
+    window.location.href = isRoot ? 'home.html' : '../home.html';
 }
 
 // Automatically inject the restricted popup HTML and handle guest limitations
@@ -51,7 +51,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (loginBtn) {
         loginBtn.addEventListener('click', function() {
             const isRoot = window.location.pathname.endsWith('index.html') || window.location.pathname.endsWith('/');
-            window.location.href = isRoot ? 'login.html' : '../login.html';
+            window.location.href = isRoot ? 'auth.html#login' : '../auth.html#login';
         });
     }
 });

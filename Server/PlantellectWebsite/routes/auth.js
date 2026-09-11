@@ -1,8 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
-const { mysqlPool } = require('../config/mysql.cjs');
-const { getPermissionsVersion, loadAccountPermissions } = require('../config/mysql.cjs');
+const { mysqlPool } = require('../config/mysql.js');
+const { getPermissionsVersion, loadAccountPermissions } = require('../config/mysql.js');
 const { logAuthEvent } = require('../models/Authlog');
+const settings = require('../config/settings');
 
 const router = express.Router();
 
@@ -127,6 +128,9 @@ router.post('/login', async (req, res) => {
         req.session.roles = perms.roles;
         req.session.permissions = perms.permissions;
         req.session.permissionsVersion = version;
+
+        const rememberMe = ['true', 'on', '1', true].includes(req.body.rememberMe);
+        req.session.cookie.maxAge = rememberMe ? settings.session.rememberMeTimeout : undefined;
 
         await logAuthEvent({
             accountId: account.accountId,

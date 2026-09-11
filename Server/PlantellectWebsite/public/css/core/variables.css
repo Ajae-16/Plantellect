@@ -1,0 +1,54 @@
+:root {
+  --color-cyan: #00bcd4;
+  --color-modal-bg: #303d2b;
+  --color-forest-green: #2e6417;
+  --color-beige: #f5f5dc;
+  --color-library-green: #c6e78f;
+  --color-overlay: rgba(0, 0, 0, 0.4);
+  --color-overlay-darker: rgba(0, 0, 0, 0.6);
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-error: #a94442;
+  --color-error-hover: #d9534f;
+  --color-success: #00bf63;
+  --color-text-muted: #b0b0b0;
+  --color-border-light: #c0c0c0;
+  --color-border-white: #ffffff;
+  --color-bg-light: #fbf9f1;
+
+  --font-primary: 'Roboto', sans-serif;
+  --font-seasons: 'The Seasons', serif;
+  --font-lancelot: 'Lancelot', serif;
+
+  --spacing-logo-offset: 170px;
+  --spacing-nav-gap: 100px;
+  --spacing-auth-gap: 50px;
+  --spacing-modal-width: 600px;
+  --spacing-modal-padding: 100px 60px;
+  --spacing-hero-content-left: 300px;
+  --spacing-hero-content-width: 1100px;
+  --spacing-nav-container-max: 1350px;
+  --spacing-nav-container-margin-right: 30px;
+
+  --logo-height: 150px;
+  --logo-height-small: 130px;
+
+  --transition-fast: 0.2s;
+  --transition-normal: 0.3s;
+
+  --z-index-header: 3;
+  --z-index-modal: 2;
+  --z-index-overlay: 1;
+  --z-index-popup: 1000;
+
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 9px;
+  --border-radius-xl: 20px;
+  --border-radius-pill: 30px;
+
+  --box-shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --box-shadow-popup: 0 5px 15px rgba(0, 0, 0, 0.2);
+  --box-shadow-card: 0 4px 10px rgba(0, 0, 0, 0.08);
+  --box-shadow-slider: 0 6px 15px rgba(0, 0, 0, 0.05);
+}
