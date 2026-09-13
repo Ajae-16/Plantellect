@@ -9,22 +9,31 @@
 <body>
 
     <header class="admin-header">
-        <div class="admin-logo">
-            <img src="/resource/logo.png" alt="Plantellect Logo">
-            <span>Admin Dashboard</span>
+        <div class="admin-header-top">
+            <div class="admin-logo">
+                <img src="/resource/logo.png" alt="Plantellect Logo">
+                <span>Admin Dashboard</span>
+            </div>
+            <button class="admin-hamburger" aria-label="Open sidebar" aria-expanded="false" aria-controls="adminSidebar">&#9776;</button>
         </div>
         <div class="admin-user" id="adminUser">Loading...</div>
     </header>
 
+    <div class="admin-sidebar-scrim"></div>
+
     <div class="admin-layout">
-        <aside class="admin-sidebar">
+        <aside class="admin-sidebar" id="adminSidebar">
+            <div class="admin-sidebar-header">
+                <h3>Menu</h3>
+                <button class="admin-sidebar-close" aria-label="Close sidebar">&times;</button>
+            </div>
             <nav>
                 <a href="/admin/dashboard" class="active">Dashboard</a>
                 <a href="#" data-perm="create_user">Users</a>
                 <a href="#" data-perm="manage_content">Content</a>
                 <a href="#" data-perm="manage_plant">Plants</a>
                 <a href="#" data-perm="view_logs">Logs</a>
-                <a href="#" id="adminLogoutLink">Log out</a>
+                <a href="#" id="adminLogoutLink">Sign out</a>
             </nav>
         </aside>
 
@@ -42,11 +51,75 @@
                     <p id="adminPermissions">Loading...</p>
                 </div>
             </div>
+
+            <section class="admin-section">
+                <h2>Pending Role Requests</h2>
+                <div id="pendingRequestsList" class="pending-requests-list">
+                    <p>Loading...</p>
+                </div>
+            </section>
         </main>
     </div>
 
     <script src="/javascript/home.js"></script>
     <script>
+        (function () {
+            const sidebar = document.getElementById('adminSidebar');
+            const hamburger = document.querySelector('.admin-hamburger');
+            const scrim = document.querySelector('.admin-sidebar-scrim');
+            const closeBtn = document.querySelector('.admin-sidebar-close');
+
+            if (sidebar && hamburger && scrim && closeBtn) {
+                function openDrawer() {
+                    sidebar.classList.add('open');
+                    scrim.classList.add('visible');
+                    document.body.style.overflow = 'hidden';
+                    hamburger.setAttribute('aria-expanded', 'true');
+                    hamburger.setAttribute('aria-label', 'Close sidebar');
+                    document.addEventListener('keydown', handleKeydown);
+                }
+
+                function closeDrawer() {
+                    sidebar.classList.remove('open');
+                    scrim.classList.remove('visible');
+                    document.body.style.overflow = '';
+                    hamburger.setAttribute('aria-expanded', 'false');
+                    hamburger.setAttribute('aria-label', 'Open sidebar');
+                    document.removeEventListener('keydown', handleKeydown);
+                }
+
+                function toggleDrawer() {
+                    if (sidebar.classList.contains('open')) {
+                        closeDrawer();
+                    } else {
+                        openDrawer();
+                    }
+                }
+
+                function handleKeydown(e) {
+                    if (e.key === 'Escape') {
+                        closeDrawer();
+                    }
+                }
+
+                function handleScrimClick() {
+                    closeDrawer();
+                }
+
+                function handleSidebarLinkClick(e) {
+                    const link = e.target.closest('a');
+                    if (link && link.id !== 'adminLogoutLink') {
+                        closeDrawer();
+                    }
+                }
+
+                hamburger.addEventListener('click', toggleDrawer);
+                closeBtn.addEventListener('click', closeDrawer);
+                scrim.addEventListener('click', handleScrimClick);
+                sidebar.addEventListener('click', handleSidebarLinkClick);
+            }
+        })();
+
         (async function () {
             const response = await fetch('/api/auth/me', { credentials: 'include' });
             if (!response.ok) {
@@ -71,7 +144,112 @@
                 e.preventDefault();
                 logoutUser();
             });
+
+            loadPendingRequests();
         })();
+
+        async function loadPendingRequests() {
+            try {
+                const response = await fetch('/admin/role-requests', { credentials: 'include' });
+                if (!response.ok) {
+                    throw new Error('Failed to load pending requests');
+                }
+                const data = await response.json();
+                renderPendingRequests(data.requests || []);
+            } catch (err) {
+                console.error('Load pending requests error:', err);
+                document.getElementById('pendingRequestsList').innerHTML = '<p>Error loading requests</p>';
+            }
+        }
+
+        function renderPendingRequests(requests) {
+            const container = document.getElementById('pendingRequestsList');
+            if (!requests || requests.length === 0) {
+                container.innerHTML = '<p>No pending requests</p>';
+                return;
+            }
+
+            container.innerHTML = requests.map(req => `
+                <div class="pending-request-card">
+                    <div class="request-info">
+                        <h3>${escapeHtml(req.username)} (${escapeHtml(req.email)})</h3>
+                        <p>Requested role: <strong>${escapeHtml(req.requested_role)}</strong></p>
+                        <p class="request-date">Requested: ${new Date(req.created_at).toLocaleString()}</p>
+                    </div>
+                    <div class="request-actions">
+                        <button class="btn-approve" data-request-id="${req.requestId}" data-account-id="${req.accountId}">Approve</button>
+                        <button class="btn-deny" data-request-id="${req.requestId}" data-account-id="${req.accountId}">Deny</button>
+                    </div>
+                </div>
+            `).join('');
+
+            container.querySelectorAll('.btn-approve').forEach(btn => {
+                btn.addEventListener('click', handleApprove);
+            });
+            container.querySelectorAll('.btn-deny').forEach(btn => {
+                btn.addEventListener('click', handleDeny);
+            });
+        }
+
+        async function handleApprove(event) {
+            const requestId = event.target.dataset.requestId;
+            const accountId = event.target.dataset.accountId;
+            
+            if (!confirm(`Approve botanist role for user ${accountId}?`)) return;
+
+            try {
+                const response = await fetch(`/admin/role-requests/${requestId}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ note: 'Approved via admin dashboard' })
+                });
+
+                if (response.ok) {
+                    alert('Role request approved');
+                    loadPendingRequests();
+                } else {
+                    const data = await response.json();
+                    alert('Error: ' + (data.error || 'Failed to approve'));
+                }
+            } catch (err) {
+                console.error('Approve error:', err);
+                alert('Error: ' + err.message);
+            }
+        }
+
+        async function handleDeny(event) {
+            const requestId = event.target.dataset.requestId;
+            const accountId = event.target.dataset.accountId;
+            
+            const deleteCert = confirm(`Deny botanist role for user ${accountId}?\n\nAlso delete their certificate file? (OK = Yes, Cancel = No)`);
+
+            try {
+                const response = await fetch(`/admin/role-requests/${requestId}/deny`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ note: 'Denied via admin dashboard', deleteCertificate: deleteCert })
+                });
+
+                if (response.ok) {
+                    alert('Role request denied');
+                    loadPendingRequests();
+                } else {
+                    const data = await response.json();
+                    alert('Error: ' + (data.error || 'Failed to deny'));
+                }
+            } catch (err) {
+                console.error('Deny error:', err);
+                alert('Error: ' + err.message);
+            }
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = String(str == null ? '' : str);
+            return div.innerHTML;
+        }
     </script>
 
 </body>

@@ -15,7 +15,7 @@ body, html {
 
 .hero-container {
     position: relative;
-    height: 100vh;
+    min-height: 100dvh;
     width: 100vw;
     background-image: url('../../resource/Cucumber_leaf.jpg');
     background-size: cover;
@@ -23,7 +23,7 @@ body, html {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 20px;
+    padding: 16px;
 }
 
 .hero-container::before {
@@ -43,17 +43,18 @@ header {
     display: flex;
     align-items: center;
     width: 100%;
-    padding-top: 15px;
+    padding-top: 12px;
 }
 
 .logo-area {
     position: absolute;
-    left: -10px;
-    top: -10px;
+    left: 0;
+    top: 0;
+    flex-shrink: 0;
 }
 
 .logo-area img {
-    height: var(--logo-height);
+    height: var(--logo-height-fluid);
     width: auto;
 }
 
@@ -63,26 +64,39 @@ header {
     justify-content: space-between;
     width: 100%;
     max-width: var(--spacing-nav-container-max);
-    margin-left: var(--spacing-logo-offset);
+    margin-left: 0;
     margin-right: var(--spacing-nav-container-margin-right);
     border-top: 2px solid var(--color-white);
     border-bottom: 2px solid var(--color-white);
-    padding: 12px 40px;
+    padding: 10px 20px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    contain: content;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.nav-container::-webkit-scrollbar {
+    display: none;
 }
 
 nav {
     display: flex;
     gap: var(--spacing-nav-gap);
-    padding-left: var(--spacing-logo-offset);
+    padding-left: 0;
+    flex-shrink: 0;
+    min-width: max-content;
 }
 
 nav a {
     color: var(--color-white);
     text-decoration: none;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: bold;
     letter-spacing: 1px;
     transition: color var(--transition-normal);
+    white-space: nowrap;
 }
 
 nav a.active {
@@ -96,14 +110,16 @@ nav a:hover {
 .auth-links {
     display: flex;
     gap: var(--spacing-auth-gap);
+    flex-shrink: 0;
 }
 
 .auth-links a {
     color: var(--color-white);
     text-decoration: none;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: bold;
     letter-spacing: 1px;
+    white-space: nowrap;
 }
 
 .auth-links a:hover {
@@ -111,34 +127,145 @@ nav a:hover {
 }
 
 .hero-content {
-    position: absolute;
-    left: var(--spacing-hero-content-left);
-    top: 50%;
-    transform: translateY(-50%);
+    position: relative;
+    left: auto;
+    top: auto;
+    transform: none;
     z-index: 2;
     text-align: left;
     color: var(--color-white);
-    width: var(--spacing-hero-content-width);
+    width: 100%;
+    max-width: var(--container-max-xl);
+    margin: 0 auto;
+    padding: 24px 16px;
 }
 
 .hero-content h1 {
     font-family: var(--font-seasons);
-    font-size: 80px;
+    font-size: var(--fs-hero-h1-sm);
     font-weight: normal;
-    letter-spacing: 10px;
+    letter-spacing: 4px;
     line-height: 1.1;
     text-transform: uppercase;
-    margin-bottom: 25px;
+    margin-bottom: 16px;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
     text-align: left;
 }
 
 .hero-content p {
     font-family: var(--font-lancelot);
-    font-size: 35px;
+    font-size: var(--fs-hero-p-sm);
     font-style: normal;
-    letter-spacing: 10px;
+    letter-spacing: 4px;
     line-height: 1.3;
     text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
     text-align: left;
+}
+
+@media (min-width: 480px) {
+    .hero-content h1 {
+        font-size: var(--fs-hero-h1-sm);
+    }
+    .hero-content p {
+        font-size: var(--fs-hero-p-sm);
+    }
+}
+
+@media (min-width: 768px) {
+    .hero-container {
+        padding: 20px;
+    }
+
+    .logo-area img {
+        height: var(--logo-height-small-fluid);
+    }
+
+    .nav-container {
+        padding: 12px 40px;
+    }
+
+    nav a {
+        font-size: 15px;
+    }
+
+    .auth-links a {
+        font-size: 15px;
+    }
+
+    .hero-content {
+        padding: 32px 24px;
+    }
+
+    .hero-content h1 {
+        font-size: var(--fs-hero-h1-md);
+        letter-spacing: 8px;
+    }
+
+    .hero-content p {
+        font-size: var(--fs-hero-p-md);
+        letter-spacing: 8px;
+    }
+}
+
+@media (min-width: 1024px) {
+    .hero-container {
+        min-height: 100vh;
+        padding: 20px 40px;
+    }
+
+    .logo-area {
+        left: -10px;
+        top: -10px;
+    }
+
+    .logo-area img {
+        height: var(--logo-height);
+    }
+
+    .nav-container {
+        margin-left: var(--spacing-logo-offset);
+        padding: 12px 40px;
+        overflow: visible;
+    }
+
+    nav {
+        padding-left: var(--spacing-logo-offset);
+        gap: var(--spacing-nav-gap);
+    }
+
+    nav a {
+        font-size: 16px;
+    }
+
+    .auth-links a {
+        font-size: 16px;
+    }
+
+    .hero-content {
+        position: absolute;
+        left: var(--spacing-hero-content-left);
+        top: 50%;
+        transform: translateY(-50%);
+        width: var(--spacing-hero-content-width);
+        max-width: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .hero-content h1 {
+        font-size: var(--fs-hero-h1-lg);
+        letter-spacing: 10px;
+        margin-bottom: 25px;
+    }
+
+    .hero-content p {
+        font-size: var(--fs-hero-p-lg);
+        letter-spacing: 10px;
+    }
+}
+
+@media (min-width: 1280px) {
+    .hero-container {
+        padding: 20px 60px;
+    }
 }

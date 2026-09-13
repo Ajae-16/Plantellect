@@ -8,9 +8,9 @@ function confirmLogout() {
         const modalHTML = `
             <div id="logoutConfirmModal" class="guest-popup-overlay" style="display: flex;">
                 <div class="guest-popup-box">
-                    <p>Are you sure you want to log out?</p>
+                    <p>Are you sure you want to sign out?</p>
                     <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-                        <button id="confirmLogoutBtn" class="guest-continue-btn" style="background-color: #2e6417; border-color: #2e6417;">Yes, Log Out</button>
+                        <button id="confirmLogoutBtn" class="guest-continue-btn" style="background-color: #2e6417; border-color: #2e6417;">Yes, Sign Out</button>
                         <button id="cancelLogoutBtn" class="guest-continue-btn">Cancel</button>
                     </div>
                 </div>

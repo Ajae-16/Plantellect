@@ -5,15 +5,16 @@
 .auth-container {
     position: relative;
     width: 100%;
-    max-width: 900px;
-    min-height: 600px;
+    max-width: 100%;
+    min-height: auto;
     background: var(--color-modal-bg);
-    border-radius: var(--border-radius-xl);
-    box-shadow: var(--box-shadow-modal);
+    border-radius: 0;
+    box-shadow: none;
     overflow: hidden;
-    margin: auto;
+    margin: 24px auto;
     z-index: 2;
     display: flex;
+    flex-direction: column;
 }
 
 .forms-wrapper {
@@ -23,7 +24,6 @@
     transition: transform 0.6s ease-in-out;
     will-change: transform;
 }
-
 
 .auth-container.active .forms-wrapper {
     transform: translateX(-50%);
@@ -43,28 +43,26 @@
     align-items: center;
 }
 
-.form-container h2{
+.form-container h2 {
     color: var(--color-white);
     font-family: var(--font-primary);
-    font-size: 24px;
+    font-size: 20px;
     letter-spacing: 2px;
     font-weight: bold;
     text-align: center;
-    margin-top: 5%;
-    margin-bottom: auto;
+    margin-top: 24px;
+    margin-bottom: 16px;
 }
 
 .container-row {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: auto auto;
-    gap: 3px;
+    grid-template-columns: 1fr;
+    gap: 5px;
     width: 100%;
 }
 
 .container-input-group {
     width: 100%;
-    height: 100%;
 }
 
 .container-input {
@@ -72,7 +70,6 @@
     flex-direction: column;
     gap: 3px;
     width: 100%;
-    height: 100%;
 }
 
 .login-container {
@@ -87,19 +84,19 @@
     background: transparent;
     display: flex;
     flex-direction: column;
-    padding: 40px 50px;
+    padding: 24px 20px;
     justify-content: flex-start;
     width: 100%;
-    max-width: 450px;
-    gap: 2px;
+    max-width: 100%;
+    gap: 16px;
 }
 
 .auth-form h2 {
     color: var(--color-white);
     font-family: var(--font-primary);
-    font-size: 24px;
+    font-size: 20px;
     letter-spacing: 2px;
-    margin-bottom: auto;
+    margin-bottom: 8px;
     font-weight: bold;
     text-align: center;
 }
@@ -109,22 +106,22 @@
     font-family: var(--font-primary);
     font-size: 11px;
     letter-spacing: 1.5px;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
     font-weight: bold;
     text-align: center;
 }
 
 .input-group {
     position: relative;
-    margin-bottom: 1px;
+    margin-bottom: 2px;
 }
 
 .input-group input {
     width: 100%;
-    padding: 12px 12px 12px 22px;
+    padding: 14px 14px 14px 44px;
     border: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: 10px;
-    font-size: 14px;
+    font-size: 16px;
     outline: none;
     background: rgba(255, 255, 255, 0.1);
     transition: all 0.3s ease;
@@ -142,9 +139,27 @@
     box-shadow: 0 0 0 3px rgba(0, 188, 212, 0.1);
 }
 
+.input-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    color: rgba(255, 255, 255, 0.6);
+    pointer-events: none;
+    z-index: 2;
+    transition: color 0.2s ease;
+}
+
+.input-group input:focus ~ .input-icon,
+.input-group input:not(:placeholder-shown) ~ .input-icon {
+    color: var(--color-cyan);
+}
+
 .input-group label {
     position: absolute;
-    left: 42px;
+    left: 44px;
     top: 50%;
     transform: translateY(-50%);
     color: rgba(255, 255, 255, 0.6);
@@ -196,7 +211,7 @@
 }
 
 .remember-group {
-    margin-top: 5px;
+    margin-top: 8px;
 }
 
 .checkbox-label {
@@ -218,8 +233,8 @@
 
 .login-btn,
 .signup-btn {
-    margin-top: 15px;
-    padding: 12px;
+    margin-top: 8px;
+    padding: 14px;
     background: var(--color-cyan);
     border: none;
     border-radius: 10px;
@@ -231,6 +246,7 @@
     transition: all 0.3s ease;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    width: 100%;
 }
 
 .login-btn:hover,
@@ -246,7 +262,7 @@
 }
 
 .form-footer {
-    margin-top: auto;
+    margin-top: 16px;
     text-align: center;
     font-size: 12px;
     color: rgba(255, 255, 255, 0.8);
@@ -292,6 +308,7 @@
     overflow: hidden;
     transition: transform 0.6s ease-in-out;
     z-index: 10;
+    display: none;
 }
 
 .auth-container.active .overlay-container {
@@ -334,20 +351,20 @@
 .overlay-panel h2 {
     color: var(--color-white);
     font-family: var(--font-primary);
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 700;
-    margin-bottom: 15px;
+    margin-bottom: 12px;
     text-align: center;
 }
 
 .overlay-panel p {
     color: rgba(255, 255, 255, 0.9);
     font-family: var(--font-primary);
-    font-size: 13px;
+    font-size: 12px;
     line-height: 1.6;
-    margin-bottom: 25px;
+    margin-bottom: 20px;
     text-align: center;
-    max-width: 300px;
+    max-width: 280px;
 }
 
 .btn-ghost {
@@ -358,7 +375,7 @@
     font-family: var(--font-primary);
     font-size: 12px;
     font-weight: 600;
-    padding: 10px 30px;
+    padding: 10px 28px;
     cursor: pointer;
     transition: all 0.3s ease;
     text-transform: uppercase;
@@ -375,21 +392,21 @@
     padding: 8px;
     background: rgba(255, 255, 255, 0.1);
     border-radius: 8px;
-    font-size: 11px;
+    font-size: 10px;
     color: var(--color-white);
     font-family: var(--font-primary);
 }
 
 .auth-requirements ul {
-    margin: 5px 0;
-    padding-left: 18px;
+    margin: 4px 0;
+    padding-left: 16px;
     list-style: none;
 }
 
 .auth-requirements li {
-    margin: 3px 0;
+    margin: 2px 0;
     position: relative;
-    padding-left: 18px;
+    padding-left: 16px;
 }
 
 .auth-requirements li::before {
@@ -404,46 +421,247 @@
     color: var(--color-success);
 }
 
-@media (max-width: 768px) {
-    .auth-container {
-        max-width: 100%;
-        min-height: 100vh;
-        border-radius: 0;
-    }
+.role-btn {
+    appearance: none;
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--border-radius-pill);
+    color: var(--color-white);
+    font-family: var(--font-primary);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex: 1;
+    min-width: 0;
+}
 
-    .auth-form {
-        padding: 30px 25px;
+.role-btn:hover {
+    border-color: var(--color-cyan);
+    background: rgba(0, 188, 212, 0.1);
+}
+
+.role-btn.active {
+    background: var(--color-cyan);
+    border-color: var(--color-cyan);
+    color: var(--color-white);
+}
+
+.certificate-attachment {
+    width: 100%;
+}
+
+.certificate-attachment .input-group {
+    position: relative;
+}
+
+.custom-file-upload {
+    display: inline-block;
+    width: 100%;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px dashed rgba(255, 255, 255, 0.3);
+    border-radius: 10px;
+    color: var(--color-white);
+    font-family: var(--font-primary);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    letter-spacing: 0.5px;
+}
+
+.custom-file-upload:hover {
+    border-color: var(--color-cyan);
+    background: rgba(0, 188, 212, 0.1);
+}
+
+.certificate-attachment input[type="file"] {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.form-container-dummy{
+    width: 0%;
+    height: 0%;
+}
+
+@media (min-width: 480px) {
+    .auth-container {
+        max-width: 900px;
+        min-height: 600px;
+        border-radius: var(--border-radius-xl);
+        box-shadow: var(--box-shadow-modal);
+        margin: auto;
+        flex-direction: row;
     }
 
     .forms-wrapper {
-        transform: translateX(0);
+        height: 100%;
+        width: 200%;
     }
 
-    .auth-container.active .forms-wrapper {
-        transform: translateX(-50%);
+    .form-container {
+        height: 100%;
+    }
+
+    .auth-form {
+        padding: 40px 50px;
+        max-width: 450px;
+        gap: 8px;
+    }
+
+    .auth-form h2 {
+        font-size: 24px;
+        margin-bottom: 16px;
+    }
+
+    .auth-form .subtitle {
+        font-size: 11px;
+        margin-bottom: 8px;
+    }
+
+    .input-group input {
+        padding: 12px 12px 12px 44px;
+        font-size: 14px;
+    }
+
+    .input-group .input-icon {
+        left: 12px;
+        width: 18px;
+        height: 18px;
+    }
+
+    .input-group label {
+        left: 44px;
+        font-size: 13px;
+    }
+
+    .input-group input:focus + label,
+    .input-group input:not(:placeholder-shown) + label {
+        top: 8px;
+        font-size: 10px;
+    }
+
+    .password-wrapper input {
+        padding-right: 50px;
+    }
+
+    .remember-group {
+        margin-top: 15px;
+    }
+
+    .checkbox-label {
+        font-size: 12px;
+    }
+
+    .login-btn,
+    .signup-btn {
+        margin-top: 15px;
+        padding: 12px;
+        font-size: 14px;
+    }
+
+    .form-footer {
+        margin-top: auto;
+        font-size: 12px;
+    }
+
+    .container-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 3px;
+    }
+
+    .container-input-group:first-child .container-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .container-input-group:nth-child(2) .container-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .container-input-group:nth-child(3) .container-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .role-btn {
+        padding: 12px 24px;
+        font-size: 14px;
     }
 
     .overlay-container {
-        display: none;
+        display: block;
     }
 
-    .login-container {
-        opacity: 1;
-        z-index: 2;
+    .form-container-dummy{
+        flex: 0 0 50%;
+        flex-direction: column;
+        width: 50%;
+        height: 100%;
+        display: flex;
+    }
+}
+
+@media (min-width: 768px) {
+    .auth-form {
+        padding: 40px 60px;
     }
 
-    .register-container {
-        opacity: 0;
-        z-index: 1;
+    .input-group input {
+        padding: 14px 14px 14px 44px;
     }
 
-    .auth-container.active .login-container {
-        opacity: 0;
-        z-index: 1;
+    .login-btn,
+    .signup-btn {
+        padding: 14px;
     }
 
-    .auth-container.active .register-container {
-        opacity: 1;
-        z-index: 2;
+    .overlay-panel {
+        padding: 60px;
+    }
+
+    .overlay-panel h2 {
+        font-size: 24px;
+    }
+
+    .overlay-panel p {
+        font-size: 13px;
+    }
+
+    .form-container-dummy{
+        flex: 0 0 50%;
+        flex-direction: column;
+        width: 50%;
+        height: 100%;
+        display: flex;
+    }
+}
+
+@media (min-width: 1024px) {
+    .hero-container {
+        min-height: 100vh;
+        height: 100vh;
+    }
+
+    .auth-container {
+        min-height: 600px;
+    }
+
+    .form-container-dummy{
+        flex: 0 0 50%;
+        flex-direction: column;
+        width: 50%;
+        height: 100%;
+        display: flex;
     }
 }

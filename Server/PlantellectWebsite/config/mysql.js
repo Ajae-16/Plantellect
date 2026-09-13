@@ -1,5 +1,8 @@
 require('dotenv').config();
 const mysql = require('mysql2/promise');
+const path = require('path');
+const crypto = require('crypto');
+const fs = require('fs');
 
 const mysqlPool = mysql.createPool({
     host: process.env.DB_HOST || 'localhost',
@@ -56,4 +59,83 @@ async function loadAccountPermissions(accountId) {
     return { roles, permissions, email: user.email, username: user.username };
 }
 
-module.exports = { mysqlPool, getPermissionsVersion, loadAccountPermissions };
+async function insertCertificate(pool, accountId, fileMeta, settings) {
+    const accountDir = path.join(settings.certificates.storageDir, String(accountId));
+    if (!fs.existsSync(accountDir)) {
+        fs.mkdirSync(accountDir, { recursive: true });
+    }
+    const ext = path.extname(fileMeta.originalname).toLowerCase();
+    const uniqueName = `${crypto.randomUUID()}${ext}`;
+    const relativePath = path.join(String(accountId), uniqueName);
+    const fullPath = path.join(settings.certificates.storageDir, relativePath);
+    
+    fs.renameSync(fileMeta.path, fullPath);
+    
+    const [result] = await pool.query(
+        `INSERT INTO certificates (accountId, original_filename, stored_filename, stored_path, mime_type, size)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [accountId, fileMeta.originalname, uniqueName, relativePath, fileMeta.mimetype, fileMeta.size]
+    );
+    return { certificateId: result.insertId, stored_path: relativePath };
+}
+
+async function insertRoleRequest(pool, accountId, requestedRole) {
+    const [result] = await pool.query(
+        'INSERT INTO role_requests (accountId, requested_role, status) VALUES (?, ?, ?)',
+        [accountId, requestedRole, 'pending']
+    );
+    return { requestId: result.insertId };
+}
+
+async function listPendingRoleRequests(pool) {
+    const [rows] = await pool.query(
+        `SELECT rr.requestId, rr.accountId, rr.requested_role, rr.status, rr.created_at,
+                a.email, a.username
+         FROM role_requests rr
+         JOIN accounts a ON rr.accountId = a.accountId
+         WHERE rr.status = 'pending'
+         ORDER BY rr.created_at ASC`
+    );
+    return rows;
+}
+
+async function listCertificatesByAccount(pool, accountId) {
+    const [rows] = await pool.query(
+        'SELECT * FROM certificates WHERE accountId = ? ORDER BY uploaded_at DESC',
+        [accountId]
+    );
+    return rows;
+}
+
+async function deleteCertificate(pool, certificateId, storageDir) {
+    const [rows] = await pool.query(
+        'SELECT stored_path FROM certificates WHERE certificateId = ?',
+        [certificateId]
+    );
+    if (rows.length > 0) {
+        const fullPath = path.join(storageDir, rows[0].stored_path);
+        if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+        }
+    }
+    await pool.query('DELETE FROM certificates WHERE certificateId = ?', [certificateId]);
+}
+
+async function reviewRoleRequest(pool, requestId, reviewerId, status, note) {
+    await pool.query(
+        'UPDATE role_requests SET status = ?, reviewed_by = ?, reviewed_at = NOW(), note = ? WHERE requestId = ?',
+        [status, reviewerId, note || null, requestId]
+    );
+}
+
+module.exports = { 
+    mysqlPool, 
+    getPermissionsVersion, 
+    loadAccountPermissions,
+    insertCertificate,
+    insertRoleRequest,
+    listPendingRoleRequests,
+    listCertificatesByAccount,
+    deleteCertificate,
+    reviewRoleRequest
+};

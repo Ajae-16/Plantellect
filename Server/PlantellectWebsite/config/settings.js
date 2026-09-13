@@ -1,4 +1,5 @@
 require('dotenv').config(); // Load the root .env file once
+const path = require('path');
 
 // configurable settings
 // sessionTimeout = MongoDB TTL duration (session cleanup after inactivity)
@@ -24,5 +25,13 @@ module.exports = {
     system: {
         // Exposing this in config lets you easily check the active timezone across entire project
         timezone: process.env.TZ || 'Asia/Manila'
+    },
+    certificates: {
+        storageDir: process.env.CERTIFICATES_DIR || path.join(__dirname, '..', 'certificates'),
+        maxSizeBytes: 20 * 1024 * 1024,
+        allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'],
+        allowedExtensions: ['.pdf', '.jpg', '.jpeg', '.png'],
+        maxFilenameLength: 255,
+        filenameStrategy: 'uuid'
     }
 };

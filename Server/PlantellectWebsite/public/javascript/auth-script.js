@@ -1,3 +1,5 @@
+let selectedRole = 'user';
+
 function switchToRegister(event) {
     if (event) event.preventDefault();
     const container = document.getElementById('authContainer');
@@ -10,8 +12,28 @@ function switchToLogin(event) {
     if (event) event.preventDefault();
     const container = document.getElementById('authContainer');
     container.classList.remove('active');
-    document.title = 'Plantellect - Log In';
+    document.title = 'Plantellect - Sign In';
     history.replaceState(null, '', 'auth.html#login');
+}
+
+function selectRole(role) {
+    selectedRole = role;
+    document.querySelectorAll('.role-btn').forEach(btn => btn.classList.remove('active'));
+    const btnId = role === 'botanist' ? 'roleExpertBtn' : 'roleUserBtn';
+    const btn = document.getElementById(btnId);
+    if (btn) btn.classList.add('active');
+
+    const certBlock = document.querySelector('.certificate-attachment');
+    const certInput = document.getElementById('registerCertificate');
+    if (certBlock && certInput) {
+        if (role === 'botanist') {
+            certBlock.style.display = 'block';
+            certInput.required = true;
+        } else {
+            certBlock.style.display = 'none';
+            certInput.required = false;
+        }
+    }
 }
 
 function togglePasswordVisibility(inputId, iconId) {
@@ -102,7 +124,7 @@ async function handleLogin(event) {
             if (typeof clearSidebarCache === 'function') {
                 clearSidebarCache();
             }
-            showSuccess('You are now logged in!');
+            showSuccess('You are now signed in!');
             setTimeout(redirectToHome, 1500);
         } else {
             showError(data.error || 'Invalid username or password! Kindly use a valid credential');
@@ -118,18 +140,42 @@ async function handleRegister(event) {
     const email = document.getElementById('registerEmail').value.trim();
     const username = document.getElementById('registerUsername').value.trim();
     const password = document.getElementById('registerPassword').value;
+    const firstName = document.getElementById('registerFirstName').value.trim();
+    const lastName = document.getElementById('registerLastName').value.trim();
+    const certFile = document.getElementById('registerCertificate').files[0];
 
     if (!validatePassword(password)) {
         showError('Password does not meet requirements');
         return;
     }
 
+    const confirmPassword = document.getElementById('registerConfirmPassword').value;
+    if (password !== confirmPassword) {
+        showError('Passwords do not match');
+        return;
+    }
+
+    if (selectedRole === 'botanist' && !certFile) {
+        showError('Certificate is required for Botanist registration');
+        return;
+    }
+
     try {
+        const formData = new FormData();
+        formData.append('email', email);
+        formData.append('username', username);
+        formData.append('password', password);
+        formData.append('firstName', firstName);
+        formData.append('lastName', lastName);
+        formData.append('role', selectedRole);
+        if (certFile) {
+            formData.append('certificate', certFile);
+        }
+
         const response = await fetch('/api/auth/register', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ email, username, password })
+            body: formData
         });
 
         const data = await response.json();
@@ -139,11 +185,15 @@ async function handleRegister(event) {
             if (typeof clearSidebarCache === 'function') {
                 clearSidebarCache();
             }
-            showSuccess('Account created successfully!');
-            setTimeout(() => {
-                closeErrorModal();
-                switchToLogin();
-            }, 1500);
+            if (data.pending === true) {
+                showSuccess('Your request is pending admin approval');
+            } else {
+                showSuccess('Account created successfully!');
+                setTimeout(() => {
+                    closeErrorModal();
+                    switchToLogin();
+                }, 1500);
+            }
         } else {
             showError(data.error || 'Sign up failed. Please try again.');
         }
@@ -187,6 +237,19 @@ function initAuthPage() {
             validatePassword(this.value);
         });
     }
+
+    const confirmPassword = document.getElementById('registerConfirmPassword');
+    if (confirmPassword) {
+        confirmPassword.addEventListener('input', function() {
+            const password = document.getElementById('registerPassword').value;
+            const matchItem = document.getElementById('req-match');
+            if (matchItem) {
+                matchItem.classList.toggle('valid', this.value === password && password.length > 0);
+            }
+        });
+    }
+
+    selectRole('user');
 
     if (typeof ensureSidebar === 'function') {
         ensureSidebar();

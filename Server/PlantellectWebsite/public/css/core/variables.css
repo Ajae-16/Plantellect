@@ -40,6 +40,8 @@
   --z-index-modal: 2;
   --z-index-overlay: 1;
   --z-index-popup: 1000;
+  --z-index-drawer: 2000;
+  --z-index-scrim: 1999;
 
   --border-radius-sm: 4px;
   --border-radius-md: 8px;
@@ -51,4 +53,31 @@
   --box-shadow-popup: 0 5px 15px rgba(0, 0, 0, 0.2);
   --box-shadow-card: 0 4px 10px rgba(0, 0, 0, 0.08);
   --box-shadow-slider: 0 6px 15px rgba(0, 0, 0, 0.05);
+
+  --bp-sm: 480px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1280px;
+
+  --container-max-sm: 440px;
+  --container-max-md: 720px;
+  --container-max-lg: 960px;
+  --container-max-xl: 1200px;
+
+  --fs-hero-h1-sm: clamp(2.5rem, 12vw, 5rem);
+  --fs-hero-h1-md: clamp(3.5rem, 10vw, 6rem);
+  --fs-hero-h1-lg: clamp(4.5rem, 8vw, 80px);
+  --fs-hero-p-sm: clamp(1.25rem, 5vw, 2rem);
+  --fs-hero-p-md: clamp(1.5rem, 4vw, 2.5rem);
+  --fs-hero-p-lg: clamp(2rem, 3vw, 35px);
+
+  --fs-about-h2-sm: clamp(1.5rem, 6vw, 2rem);
+  --fs-about-h2-md: clamp(2rem, 5vw, 30px);
+  --fs-about-h3-sm: clamp(1.25rem, 5vw, 1.5rem);
+  --fs-about-h3-md: clamp(1.5rem, 4vw, 30px);
+  --fs-about-p-sm: clamp(1rem, 4vw, 1.25rem);
+  --fs-about-p-md: clamp(1.125rem, 3vw, 20px);
+
+  --logo-height-fluid: clamp(80px, 20vw, 150px);
+  --logo-height-small-fluid: clamp(70px, 18vw, 130px);
 }

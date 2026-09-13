@@ -15,6 +15,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "@mapbox/node-pre-gyp": "^2.0.3",
     "bcrypt": "^5.1.1",
     "connect-mongo": "^5.1.0",
     "dotenv": "^16.4.5",
@@ -22,6 +23,13 @@
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "mongoose": "^8.5.0",
+    "multer": "^2.3.0",
     "mysql2": "^3.11.0"
+  },
+  "overrides": {
+    "tar": "^7.5.22"
+  },
+  "allowScripts": {
+    "bcrypt@5.1.1": true
   }
 }

@@ -1,21 +1,66 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
+const multer = require('multer');
+const path = require('path');
+const crypto = require('crypto');
+const fs = require('fs');
 const { mysqlPool } = require('../config/mysql.js');
-const { getPermissionsVersion, loadAccountPermissions } = require('../config/mysql.js');
+const { getPermissionsVersion, loadAccountPermissions, insertCertificate, insertRoleRequest } = require('../config/mysql.js');
 const { logAuthEvent } = require('../models/Authlog');
 const settings = require('../config/settings');
 
 const router = express.Router();
 
-router.post('/register', async (req, res) => {
-    const { email, username, password, firstName, lastName } = req.body;
+const certificateStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, settings.certificates.storageDir);
+    },
+    filename: function (req, file, cb) {
+        const ext = path.extname(file.originalname).toLowerCase();
+        const uniqueName = `${crypto.randomUUID()}${ext}`;
+        cb(null, uniqueName);
+    }
+});
+
+const uploadCertificate = multer({
+    storage: certificateStorage,
+    limits: {
+        fileSize: settings.certificates.maxSizeBytes
+    },
+    fileFilter: function (req, file, cb) {
+        const allowedMimeTypes = settings.certificates.allowedMimeTypes;
+        const allowedExtensions = settings.certificates.allowedExtensions;
+        const ext = path.extname(file.originalname).toLowerCase();
+        
+        if (allowedMimeTypes.includes(file.mimetype) && allowedExtensions.includes(ext)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only PDF, JPG, JPEG, PNG allowed.'), false);
+        }
+    }
+});
+
+router.post('/register', uploadCertificate.single('certificate'), async (req, res) => {
+    const { email, username, password, firstName, lastName, role } = req.body;
+    const certFile = req.file;
 
     if (!email || !username || !password) {
+        if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
         return res.status(400).json({ error: 'Email, username, and password are required' });
     }
 
     if (password.length < 6) {
+        if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    let selectedRole = 'user';
+    if (role && ['user', 'botanist'].includes(role)) {
+        selectedRole = role;
+    }
+
+    if (selectedRole === 'botanist' && !certFile) {
+        return res.status(400).json({ error: 'Certificate is required for Botanist registration' });
     }
 
     try {
@@ -24,6 +69,7 @@ router.post('/register', async (req, res) => {
             [email, username]
         );
         if (existing.length > 0) {
+            if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
             return res.status(409).json({ error: 'Email or username already exists' });
         }
 
@@ -31,13 +77,27 @@ router.post('/register', async (req, res) => {
 
         const [userRows] = await mysqlPool.query('SELECT roleId FROM roles WHERE roleName = ?', ['user']);
         if (userRows.length === 0) {
+            if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
             return res.status(500).json({ error: 'Default role not found' });
         }
         const userRoleId = userRows[0].roleId;
 
+        let isPending = false;
+        let accountRoleId = userRoleId;
+
+        if (selectedRole === 'botanist') {
+            const [botanistRows] = await mysqlPool.query('SELECT roleId FROM roles WHERE roleName = ?', ['botanist']);
+            if (botanistRows.length === 0) {
+                if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
+                return res.status(500).json({ error: 'Botanist role not found' });
+            }
+            accountRoleId = userRoleId;
+            isPending = true;
+        }
+
         const [result] = await mysqlPool.query(
             'INSERT INTO accounts (email, username, password_hash, roleId) VALUES (?, ?, ?, ?)',
-            [email, username, passwordHash, userRoleId]
+            [email, username, passwordHash, accountRoleId]
         );
 
         const accountId = result.insertId;
@@ -46,6 +106,31 @@ router.post('/register', async (req, res) => {
             'INSERT INTO profiles (accountId, firstName, lastName) VALUES (?, ?, ?)',
             [accountId, firstName || null, lastName || null]
         );
+
+        if (isPending) {
+            await insertRoleRequest(mysqlPool, accountId, 'botanist');
+            
+            if (certFile) {
+                const accountDir = path.join(settings.certificates.storageDir, String(accountId));
+                if (!fs.existsSync(accountDir)) {
+                    fs.mkdirSync(accountDir, { recursive: true });
+                }
+                const ext = path.extname(certFile.originalname).toLowerCase();
+                const uniqueName = `${crypto.randomUUID()}${ext}`;
+                const relativePath = path.join(String(accountId), uniqueName);
+                const fullPath = path.join(settings.certificates.storageDir, relativePath);
+                
+                fs.renameSync(certFile.path, fullPath);
+                
+                await mysqlPool.query(
+                    `INSERT INTO certificates (accountId, original_filename, stored_filename, stored_path, mime_type, size)
+                     VALUES (?, ?, ?, ?, ?, ?)`,
+                    [accountId, certFile.originalname, uniqueName, relativePath, certFile.mimetype, certFile.size]
+                );
+            }
+        } else if (certFile && fs.existsSync(certFile.path)) {
+            fs.unlinkSync(certFile.path);
+        }
 
         const perms = await loadAccountPermissions(accountId);
         const version = await getPermissionsVersion();
@@ -67,9 +152,11 @@ router.post('/register', async (req, res) => {
             email: perms.email || email,
             username,
             roles: perms.roles,
-            permissions: perms.permissions
+            permissions: perms.permissions,
+            pending: isPending
         });
     } catch (err) {
+        if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
         console.error('Register error:', err.message);
         res.status(500).json({ error: err.message });
     }

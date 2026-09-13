@@ -13,59 +13,6 @@ function handleRestrictedClick(event, featureName) {
     }
 }
 
-function updateNavForAuthState(user) {
-    const authLinks = document.querySelector('.auth-links');
-    if (!authLinks) return;
-
-    if (user) {
-        const isAdmin = (user.roles || []).includes('superadmin') || (user.roles || []).includes('admin');
-        const adminLink = isAdmin
-            ? `<a href="/admin/dashboard">ADMIN</a>`
-            : '';
-        authLinks.innerHTML = `${adminLink}<a href="#" id="navLogoutLink">LOG OUT (${escapeHtml(user.username)})</a>`;
-        const logoutLink = document.getElementById('navLogoutLink');
-        if (logoutLink) {
-            logoutLink.addEventListener('click', function(e) {
-                e.preventDefault();
-                if (typeof logoutUser === 'function') {
-                    logoutUser();
-                }
-            });
-        }
-    } else {
-        authLinks.innerHTML = `<a href="auth.html#login">LOG IN</a><a href="auth.html#register">SIGN UP</a>`;
-    }
-}
-
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = String(str == null ? '' : str);
-    return div.innerHTML;
-}
-
-async function checkAuth() {
-    try {
-        const response = await fetch('/api/auth/me', { credentials: 'include' });
-        if (response.ok) {
-            const data = await response.json();
-            sessionStorage.setItem('username', data.username);
-            sessionStorage.setItem('roles', JSON.stringify(data.roles || []));
-            sessionStorage.setItem('permissions', JSON.stringify(data.permissions || []));
-            return data;
-        }
-        clearAuthState();
-        return null;
-    } catch (err) {
-        return null;
-    }
-}
-
-function clearAuthState() {
-    sessionStorage.removeItem('username');
-    sessionStorage.removeItem('roles');
-    sessionStorage.removeItem('permissions');
-}
-
 function setActiveSidebarItem() {
     const sidebar = document.getElementById('librarySidebar');
     if (!sidebar) return;
@@ -79,10 +26,46 @@ function setActiveSidebarItem() {
     });
 }
 
+function initSliderAutoplayPause() {
+    const sliderWrapper = document.querySelector('.slider-wrapper');
+    const sliderTrack = document.querySelector('.slider-track');
+    if (!sliderWrapper || !sliderTrack) return;
+
+    let resumeTimer = null;
+    const RESUME_DELAY = 1500;
+
+    function pauseAnimation() {
+        sliderTrack.classList.add('paused');
+        sliderWrapper.classList.add('paused');
+    }
+
+    function resumeAnimation() {
+        if (resumeTimer) {
+            clearTimeout(resumeTimer);
+        }
+        resumeTimer = setTimeout(function() {
+            sliderTrack.classList.remove('paused');
+            sliderWrapper.classList.remove('paused');
+        }, RESUME_DELAY);
+    }
+
+    sliderWrapper.addEventListener('pointerdown', pauseAnimation, { passive: true });
+    sliderWrapper.addEventListener('pointerup', resumeAnimation, { passive: true });
+    sliderWrapper.addEventListener('pointerleave', resumeAnimation, { passive: true });
+    sliderWrapper.addEventListener('pointercancel', resumeAnimation, { passive: true });
+    sliderWrapper.addEventListener('touchstart', pauseAnimation, { passive: true });
+    sliderWrapper.addEventListener('touchend', resumeAnimation, { passive: true });
+    sliderWrapper.addEventListener('touchcancel', resumeAnimation, { passive: true });
+
+    if (window.matchMedia('(hover: hover)').matches) {
+        sliderWrapper.addEventListener('mouseenter', pauseAnimation);
+        sliderWrapper.addEventListener('mouseleave', resumeAnimation);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
-    const user = await checkAuth();
-    updateNavForAuthState(user);
     setActiveSidebarItem();
+    initSliderAutoplayPause();
 });
 
 window.handleRestrictedClick = handleRestrictedClick;

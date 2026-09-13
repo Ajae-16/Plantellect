@@ -1,6 +1,6 @@
-const SIDEBAR_ITEMS = [
-    { id: 'discoveries', label: 'DISCOVERIES', icon: '🔍', permissions: [], href: 'library.html' },
-    { id: 'plants', label: 'PLANTS', icon: '🌱', permissions: ['view_plants'], href: '#' },
+const SIDEBAR_Items = [
+    { id: 'discoveries', label: 'DISCOVERIES', icon: '🔍', permissions: [], href: 'home.html' },
+    { id: 'plants', label: 'PLANTS', icon: '🌱', permissions: ['view_plants'], href: 'library.html' },
     { id: 'record', label: 'RECORD PLANTS', icon: '🎥', permissions: ['record_plant'], href: '#' },
     { id: 'users', label: 'USERS', icon: '👥', permissions: ['view_logs'], href: '#' },
     { id: 'profile', label: 'PROFILE', icon: '👤', permissions: [], href: '#', className: 'profile-link' }
@@ -27,7 +27,7 @@ function hasRole(userRoles, requiredRoles) {
 }
 
 function getSidebarItems(permissions, roles) {
-    return SIDEBAR_ITEMS.filter(item => {
+    return SIDEBAR_Items.filter(item => {
         if (item.id === 'discoveries') return true;
         if (item.id === 'profile') return permissions.length > 0 || roles.length > 0;
         if (item.id === 'plants') return hasPermission(permissions, item.permissions) || roles.length > 0;
@@ -62,7 +62,7 @@ function renderSidebar(permissions, roles) {
 
     const logoutLink = `
         <a href="#" class="sidebar-item sidebar-logout-link" style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 20px;">
-            <span class="icon">🚪</span> LOG OUT
+            <span class="icon">🚪</span> SIGN OUT
         </a>
     `;
 
@@ -120,8 +120,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         <div id="restrictedModal" class="restricted-popup-overlay" style="display: none;">
             <div class="restricted-popup-box">
                 <span class="close-btn" id="closeRestrictedModal">&times;</span>
-                <p>Log in to unlock all features</p>
-                <button id="loginRedirectBtn" class="login-redirect-btn">Log in</button>
+                <p>Sign in to unlock all features</p>
+                <button id="loginRedirectBtn" class="login-redirect-btn">Sign in</button>
             </div>
         </div>
     `;

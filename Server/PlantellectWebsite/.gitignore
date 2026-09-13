@@ -3,3 +3,4 @@
 config/seed.cjs
 .kilo
 reference-ONLY
+certificates/

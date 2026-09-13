@@ -1,5 +1,10 @@
 @import './variables.css';
 
+.plantellect-logo {
+    height: var(--logo-height-fluid);
+    width: auto;
+}
+
 .btn,
 .login-btn,
 .signup-btn,
@@ -7,7 +12,8 @@
 .login-redirect-btn,
 .success-redirect-btn,
 .guest-continue-btn {
-    padding: 12px;
+    width: 100%;
+    padding: 14px;
     background: transparent;
     border: 2px solid var(--color-white);
     border-radius: var(--border-radius-pill);
@@ -37,8 +43,8 @@
     background-color: var(--color-forest-green);
     color: var(--color-white);
     border: none;
-    padding: 10px 25px;
-    font-size: 14px;
+    padding: 12px 28px;
+    font-size: 15px;
     border-radius: var(--border-radius-sm);
 }
 
@@ -53,8 +59,8 @@
     background-color: var(--color-error);
     color: var(--color-white);
     border: none;
-    padding: 10px 25px;
-    font-size: 14px;
+    padding: 12px 28px;
+    font-size: 15px;
     font-weight: bold;
     border-radius: var(--border-radius-sm);
     cursor: pointer;
@@ -67,7 +73,7 @@
 
 .guest-continue-btn {
     width: 100%;
-    padding: 10px;
+    padding: 12px;
     background: transparent;
     border: 2px solid var(--color-white);
     border-radius: var(--border-radius-pill);
@@ -207,6 +213,7 @@
     justify-content: center;
     align-items: center;
     z-index: var(--z-index-popup);
+    padding: 16px;
 }
 
 .success-popup-box,
@@ -214,12 +221,13 @@
 .restricted-popup-box,
 .guest-popup-box {
     background-color: var(--color-beige);
-    padding: 30px 40px;
+    padding: 24px;
     border-radius: var(--border-radius-md);
     border: 2px solid var(--color-forest-green);
     text-align: center;
     position: relative;
-    width: 350px;
+    width: 100%;
+    max-width: 92vw;
     box-shadow: var(--box-shadow-popup);
 }
 
@@ -236,8 +244,8 @@
 .guest-popup-box {
     background-color: var(--color-modal-bg);
     border: 2px solid var(--color-white);
-    width: 420px;
-    padding: 35px 30px;
+    max-width: 92vw;
+    padding: 28px 24px;
     border-radius: var(--border-radius-xl);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
     opacity: 0.95;
@@ -251,8 +259,8 @@
     font-size: 15px;
     font-weight: bold;
     color: var(--color-forest-green);
-    margin-bottom: 20px;
-    margin-top: 10px;
+    margin-bottom: 16px;
+    margin-top: 8px;
 }
 
 .error-popup-box p {
@@ -265,16 +273,16 @@
 
 .guest-popup-box p {
     color: var(--color-white);
-    font-size: 15px;
+    font-size: 14px;
     line-height: 1.5;
     letter-spacing: 1px;
-    margin-bottom: 25px;
+    margin-bottom: 20px;
 }
 
 .close-btn {
     position: absolute;
-    top: 10px;
-    right: 15px;
+    top: 8px;
+    right: 12px;
     font-size: 22px;
     font-weight: bold;
     color: var(--color-forest-green);
@@ -288,7 +296,7 @@
 
 .signup-prompt,
 .guest-prompt {
-    margin-top: 25px;
+    margin-top: 20px;
     text-align: center;
 }
 
@@ -311,8 +319,9 @@
 .plant-card {
     background-color: var(--color-beige);
     border: 1px solid var(--color-border-light);
-    width: 310px;
-    padding: 24px;
+    width: 100%;
+    max-width: min(88vw, 360px);
+    padding: 20px;
     border-radius: var(--border-radius-lg);
     box-shadow: var(--box-shadow-card);
     display: flex;
@@ -323,8 +332,8 @@
 
 .image-box {
     width: 100%;
-    height: 210px;
-    margin-bottom: 20px;
+    height: 200px;
+    margin-bottom: 16px;
     overflow: hidden;
     display: flex;
     justify-content: center;
@@ -338,18 +347,19 @@
 }
 
 .plant-card h3 {
-    font-size: 21px;
+    font-size: 19px;
     font-weight: bold;
     letter-spacing: 1px;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     color: var(--color-black);
+    text-align: center;
 }
 
 .plant-card p {
-    font-size: 17px;
+    font-size: 15px;
     line-height: 1.5;
     color: #222;
-    text-align: justify;
+    text-align: center;
 }
 
 .error-icon-area img {
@@ -366,8 +376,10 @@
     z-index: var(--z-index-modal);
     background-color: var(--color-modal-bg);
     opacity: 0.92;
-    width: var(--spacing-modal-width);
-    padding: var(--spacing-modal-padding);
+    width: 100%;
+    max-width: 92vw;
+    max-width: var(--spacing-modal-width);
+    padding: 40px 30px;
     border-radius: var(--border-radius-xl);
     box-shadow: var(--box-shadow-modal);
     display: flex;
@@ -379,26 +391,107 @@
 .error-modal h2 {
     color: var(--color-white);
     font-family: var(--font-primary);
-    font-size: 30px;
+    font-size: 24px;
     letter-spacing: 2px;
     font-weight: bold;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .error-modal h3 {
     color: var(--color-white);
     font-family: var(--font-primary);
-    font-size: 30px;
+    font-size: 24px;
     letter-spacing: 1.5px;
     font-weight: bold;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
 }
 
 .error-modal p {
     color: var(--color-white);
     font-family: var(--font-primary);
-    font-size: 13px;
+    font-size: 12px;
     letter-spacing: 1px;
     font-weight: bold;
-    margin-bottom: 35px;
+    margin-bottom: 28px;
+}
+
+@media (min-width: 480px) {
+    .btn,
+    .login-btn,
+    .signup-btn,
+    .signin-btn,
+    .login-redirect-btn,
+    .success-redirect-btn,
+    .guest-continue-btn {
+        width: auto;
+    }
+
+    .success-popup-box,
+    .error-popup-box,
+    .restricted-popup-box,
+    .guest-popup-box {
+        max-width: 400px;
+    }
+
+    .guest-popup-box {
+        max-width: 420px;
+    }
+
+    .plant-card {
+        max-width: 310px;
+    }
+}
+
+@media (min-width: 768px) {
+    .btn,
+    .login-btn,
+    .signup-btn,
+    .signin-btn,
+    .login-redirect-btn,
+    .success-redirect-btn,
+    .guest-continue-btn {
+        padding: 12px 28px;
+        font-size: 15px;
+    }
+
+    .signin-btn,
+    .success-redirect-btn,
+    .login-redirect-btn {
+        padding: 10px 25px;
+        font-size: 14px;
+    }
+
+    .error-btn {
+        padding: 10px 25px;
+        font-size: 14px;
+    }
+
+    .success-popup-box,
+    .error-popup-box,
+    .restricted-popup-box {
+        padding: 30px 40px;
+        width: 350px;
+    }
+
+    .guest-popup-box {
+        padding: 35px 30px;
+        width: 420px;
+    }
+
+    .error-modal {
+        padding: var(--spacing-modal-padding);
+        width: var(--spacing-modal-width);
+    }
+
+    .error-modal h2 {
+        font-size: 30px;
+    }
+
+    .error-modal h3 {
+        font-size: 30px;
+    }
+
+    .error-modal p {
+        font-size: 13px;
+    }
 }
