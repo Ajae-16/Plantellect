@@ -54,6 +54,11 @@ router.post('/register', uploadCertificate.single('certificate'), async (req, re
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
+    if (username.length < 6) {
+        if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
+        return res.status(400).json({ error: 'Username must be at least 6 characters' });
+    }
+
     let selectedRole = 'user';
     if (role && ['user', 'botanist'].includes(role)) {
         selectedRole = role;

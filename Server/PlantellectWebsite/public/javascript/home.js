@@ -3,20 +3,6 @@ async function openLibrary(event) {
     window.location.href = 'library.html';
 }
 
-async function handleRestrictedClick(event, featureName) {
-    if (featureName === 'discoveries') {
-        return;
-    }
-    const user = await checkAuth();
-    if (!user) {
-        if (event) event.preventDefault();
-        const modal = document.getElementById('restrictedModal');
-        if (modal) {
-            modal.style.display = 'flex';
-        }
-    }
-}
-
 function initCarousel() {
     const sliderWrapper = document.querySelector('.slider-wrapper');
     const sliderTrack = document.querySelector('.slider-track');
@@ -26,7 +12,7 @@ function initCarousel() {
     let startX = 0;
     let startScrollLeft = 0;
     let animationId = null;
-    let autoScrollSpeed = 0.5; // pixels per frame
+    let autoScrollSpeed = 0.5;
     let isAutoScrolling = true;
 
     function pauseAutoScroll() {
@@ -44,7 +30,7 @@ function initCarousel() {
 
     function startAutoScroll() {
         if (animationId) return;
-        
+
         function animate() {
             if (!isAutoScrolling) {
                 animationId = null;
@@ -58,10 +44,8 @@ function initCarousel() {
         animate();
     }
 
-    // Set initial transform
     sliderTrack.style.transform = 'translateX(0)';
 
-    // Mouse drag events
     sliderWrapper.addEventListener('mousedown', (e) => {
         isDragging = true;
         startX = e.clientX;
@@ -86,7 +70,6 @@ function initCarousel() {
         resumeAutoScroll();
     });
 
-    // Touch events for mobile
     sliderWrapper.addEventListener('touchstart', (e) => {
         isDragging = true;
         startX = e.touches[0].clientX;
@@ -107,16 +90,12 @@ function initCarousel() {
         resumeAutoScroll();
     }, { passive: true });
 
-    // Pause on hover
     sliderWrapper.addEventListener('mouseenter', pauseAutoScroll);
     sliderWrapper.addEventListener('mouseleave', resumeAutoScroll);
 
-    // Start auto-scroll
     startAutoScroll();
 
-    // Handle window resize - reset if needed
     window.addEventListener('resize', () => {
-        // The duplicated cards allow infinite scroll, no reset needed
     });
 }
 

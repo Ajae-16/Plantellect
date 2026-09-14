@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Profile</title>
+    <link href="https://fonts.googleapis.com/css2?family=Lancelot&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="css/public/profile.css">
+</head>
+<body>
+    <header>
+        <div class="nav-container">
+            <button class="nav-hamburger" aria-label="Open sidebar" aria-expanded="false" aria-controls="librarySidebar">&#9776;</button>
+            <nav>
+                <a href="home.html">HOME</a>
+                <a href="#" onclick="openLibrary(event)">PLANT LIBRARY</a>
+                <a href="about.html">ABOUT</a>
+            </nav>
+            <div class="auth-links">
+                <a href="auth.html#login">SIGN IN</a>
+                <a href="auth.html#register">SIGN UP</a>
+            </div>
+        </div>
+    </header>
+    <div class="background-image"></div>
+    <div class="library-container">
+        <div class="main-workspace">
+            <aside class="sidebar" id="librarySidebar">
+                <div class="sidebar-header">
+                    <h3>Menu</h3>
+                    <button class="sidebar-close" aria-label="Close sidebar">&times;</button>
+                </div>
+            </aside>
+            <main class="profile-main">
+                <div class="profile-card" id="profileCard" style="display: none;">
+                    <div class="profile-avatar" id="profileAvatar"></div>
+                    <h2 id="profileUsername"></h2>
+                    <p class="profile-email" id="profileEmail"></p>
+                    <div class="profile-roles" id="profileRoles"></div>
+                </div>
+                <div class="guest-prompt" id="guestPrompt" style="display: none;">
+                    <p>Please <a href="auth.html#login">sign in</a> to view your profile.</p>
+                </div>
+            </main>
+        </div>
+    </div>
+    <div class="sidebar-scrim"></div>
+    <script src="javascript/logout.js"></script>
+    <script src="javascript/sidebar.js"></script>
+    <script src="javascript/auth.js"></script>
+    <script src="javascript/nav-toggle.js"></script>
+    <script src="javascript/profile-script.js"></script>
+</body>
+</html>

@@ -9,10 +9,10 @@
     <link rel="stylesheet" href="css/public/auth.css">
 </head>
 <body>
-
+    <div class="background-image"></div>
     <div class="hero-container">
         <div class="auth-container" id="authContainer">
-<div class="forms-wrapper">
+            <div class="forms-wrapper">
                 <div class="form-container login-container">
                     <h2>SIGN IN</h2>
                     <img src="resource/logo.png" alt="Plantellect Logo" class="plantellect-logo">
@@ -101,9 +101,8 @@
                                 <div class="container-input">
                                     <div class="input-group">
                                         <input type="text" id="registerUsername" placeholder=" " required>
-                                        <span class="material-symbols-outlined input-icon">person</span>
                                         <label for="registerUsername">USERNAME</label>
-
+                                        <span class="material-symbols-outlined input-icon">person</span>
                                     </div>
 
                                     <div class="auth-requirements" id="usernameRequirements">
@@ -119,8 +118,8 @@
                                     <div class="input-group password-group">
                                         <div class="password-wrapper">
                                             <input type="password" id="registerPassword" placeholder=" " required>
-                                            <span class="material-symbols-outlined input-icon">lock</span>
                                             <label for="registerPassword">PASSWORD</label>
+                                            <span class="material-symbols-outlined input-icon">lock</span>
                                             <span class="eye-icon" id="toggleRegisterPassword" onclick="togglePasswordVisibility('registerPassword', 'toggleRegisterPassword')">&#128065;</span>
                                         </div>
                                     </div>
@@ -138,9 +137,10 @@
                                 <div class="container-input">
                                     <div class="input-group password-group">
                                         <div class="password-wrapper">
-                                            <input type="password" id="registerConfirmPassword" placeholder="        " required>
-                                            <span class="material-symbols-outlined input-icon">lock</span>
+                                            <input type="password" id="registerConfirmPassword" placeholder=" " required>
                                             <label for="registerConfirmPassword">CONFIRM PASS</label>
+                                            <span class="material-symbols-outlined input-icon">lock</span>
+                                            
                                             <span class="eye-icon" id="toggleRegisterConfirmPassword" onclick="togglePasswordVisibility('registerConfirmPassword', 'toggleRegisterConfirmPassword')">&#128065;</span>
                                         </div>
                                     </div>
@@ -162,7 +162,7 @@
 
                             <div class="container-input certificate-attachment">
                                 <div class="input-group">
-                                    <label for="registerCertificate" class="custom-file-upload" style="left: 0;">
+                                    <label for="registerCertificate" class="custom-file-upload" style= "left: 0;">
                                         Upload Certificate
                                     </label>
                                     <input type="file" id="registerCertificate" accept=".pdf,.jpg,.jpeg,.png" required>
@@ -170,7 +170,7 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="signup-btn">SIGN UP</button>
+                        <button type="submit" class="signup-btn" disabled>SIGN UP</button>
                         <p class="form-footer">Already have an account? 
                             <a href="#" class="link" onclick="switchToLogin(event)">Sign In</a>
                         </p>

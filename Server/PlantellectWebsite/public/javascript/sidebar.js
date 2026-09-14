@@ -3,7 +3,7 @@ const SIDEBAR_Items = [
     { id: 'plants', label: 'PLANTS', icon: '🌱', permissions: ['view_plants'], href: 'library.html' },
     { id: 'record', label: 'RECORD PLANTS', icon: '🎥', permissions: ['record_plant'], href: '#' },
     { id: 'users', label: 'USERS', icon: '👥', permissions: ['view_logs'], href: '#' },
-    { id: 'profile', label: 'PROFILE', icon: '👤', permissions: [], href: '#', className: 'profile-link' }
+    { id: 'profile', label: 'PROFILE', icon: '👤', permissions: [], href: 'profile.html', className: 'profile-link' }
 ];
 
 function getCachedAuth() {
@@ -42,8 +42,7 @@ function renderSidebar(permissions, roles) {
     if (!sidebar) return;
 
     const items = getSidebarItems(permissions, roles);
-    const currentPage = window.location.pathname.split('/').pop() || 'library.html';
-    const isLibraryPage = currentPage === 'library.html';
+    const currentPage = window.location.pathname.split('/').pop() || 'home.html';
 
     if (items.length === 0 || (items.length === 1 && items[0].id === 'discoveries')) {
         document.body.classList.add('no-sidebar');
@@ -54,20 +53,19 @@ function renderSidebar(permissions, roles) {
     document.body.classList.remove('no-sidebar');
 
     const sidebarHTML = items.map(item => {
-        const isActive = isLibraryPage && item.id === 'discoveries';
+        const isActive = item.href === currentPage;
         const itemClass = ['sidebar-item', item.className || '', isActive ? 'active' : ''].filter(Boolean).join(' ');
         const onclick = item.href === '#' ? `onclick="handleRestrictedClick(event, '${item.id}')"` : '';
         return `<a href="${item.href}" class="${itemClass}" ${onclick}><span class="icon">${item.icon}</span> ${item.label}</a>`;
     }).join('');
 
     const logoutLink = `
-        <a href="#" class="sidebar-item sidebar-logout-link" style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 20px;">
+        <a href="#" class="sidebar-item sidebar-logout-link">
             <span class="icon">🚪</span> SIGN OUT
         </a>
     `;
 
     sidebar.innerHTML = sidebarHTML + logoutLink;
-    attachLogoutListeners();
 }
 
 async function fetchAuth() {
@@ -102,15 +100,26 @@ function clearSidebarCache() {
     sessionStorage.removeItem('permissions');
 }
 
-function handleRestrictedClick(event, featureName) {
+async function handleRestrictedClick(event, featureName) {
     if (featureName === 'discoveries') return;
 
-    const cached = getCachedAuth();
-    if (cached.permissions.length === 0 && cached.roles.length === 0) {
-        event.preventDefault();
-        const modal = document.getElementById('restrictedModal');
-        if (modal) {
-            modal.style.display = 'flex';
+    if (typeof checkAuth === 'function') {
+        const user = await checkAuth();
+        if (!user) {
+            event.preventDefault();
+            const modal = document.getElementById('restrictedModal');
+            if (modal) {
+                modal.style.display = 'flex';
+            }
+        }
+    } else {
+        const cached = getCachedAuth();
+        if (cached.permissions.length === 0 && cached.roles.length === 0) {
+            event.preventDefault();
+            const modal = document.getElementById('restrictedModal');
+            if (modal) {
+                modal.style.display = 'flex';
+            }
         }
     }
 }
@@ -144,18 +153,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     await ensureSidebar();
 });
-
-function attachLogoutListeners() {
-    const logoutLinks = document.querySelectorAll('.sidebar-logout-link');
-    logoutLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            if (typeof logoutUser === 'function') {
-                logoutUser();
-            }
-        });
-    });
-}
 
 window.ensureSidebar = ensureSidebar;
 window.clearSidebarCache = clearSidebarCache;

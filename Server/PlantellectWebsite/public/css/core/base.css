@@ -13,17 +13,27 @@ body, html {
     overflow: visible;
 }
 
-.hero-container {
-    position: relative;
-    min-height: 100dvh;
+.background-image {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100dvh;
     width: 100vw;
     background-image: url('../../resource/Cucumber_leaf.jpg');
     background-size: cover;
     background-position: center;
+    z-index: 0;
+}
+
+.hero-container {
+    position: relative;
+    min-height: 100dvh;
+    width: 100vw;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     padding: 16px;
+    margin-top: var(--header-height);
 }
 
 .hero-container::before {
@@ -33,12 +43,15 @@ body, html {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: var(--color-overlay);
+    background: transparent;
     z-index: var(--z-index-overlay);
 }
 
 header {
-    position: relative;
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
     z-index: var(--z-index-header);
     display: flex;
     align-items: center;
@@ -62,10 +75,10 @@ header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: var(--spacing-nav-gap);
     width: 100%;
     max-width: var(--spacing-nav-container-max);
     margin-left: 0;
-    margin-right: var(--spacing-nav-container-margin-right);
     border-top: 2px solid var(--color-white);
     border-bottom: 2px solid var(--color-white);
     padding: 10px 20px;
@@ -124,6 +137,26 @@ nav a:hover {
 
 .auth-links a:hover {
     color: var(--color-cyan);
+}
+
+.nav-container--dark {
+    border-top-color: var(--color-forest-green);
+    border-bottom-color: var(--color-forest-green);
+}
+
+.nav-container--dark nav a,
+.nav-container--dark .auth-links a {
+    color: var(--color-black);
+}
+
+.nav-container--dark nav a.active,
+.nav-container--dark .auth-links a.active {
+    color: var(--color-success);
+}
+
+.nav-container--dark nav a:hover,
+.nav-container--dark .auth-links a:hover {
+    color: var(--color-success);
 }
 
 .hero-content {
@@ -223,7 +256,6 @@ nav a:hover {
     }
 
     .nav-container {
-        margin-left: var(--spacing-logo-offset);
         padding: 12px 40px;
         overflow: visible;
     }

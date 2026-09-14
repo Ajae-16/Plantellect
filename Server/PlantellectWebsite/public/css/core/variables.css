@@ -2,6 +2,7 @@
   --color-cyan: #00bcd4;
   --color-modal-bg: #303d2b;
   --color-forest-green: #2e6417;
+  --color-bg-nav-light: #7aca1a;
   --color-beige: #f5f5dc;
   --color-library-green: #c6e78f;
   --color-overlay: rgba(0, 0, 0, 0.4);
@@ -21,7 +22,7 @@
   --font-lancelot: 'Lancelot', serif;
 
   --spacing-logo-offset: 170px;
-  --spacing-nav-gap: 100px;
+  --spacing-nav-gap: 20px;
   --spacing-auth-gap: 50px;
   --spacing-modal-width: 600px;
   --spacing-modal-padding: 100px 60px;
@@ -80,4 +81,20 @@
 
   --logo-height-fluid: clamp(80px, 20vw, 150px);
   --logo-height-small-fluid: clamp(70px, 18vw, 130px);
+
+  --header-height: 64px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --header-height: 56px;
+    --spacing-nav-gap: 100px;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --header-height: 52px;
+    --spacing-nav-gap: 100px;
+  }
 }

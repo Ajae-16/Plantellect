@@ -1,6 +1,7 @@
 @import '../core/variables.css';
 @import '../core/base.css';
 @import '../core/components.css';
+@import '../core/sidebar.css';
 
 .about-modal {
     position: absolute;
@@ -192,6 +193,17 @@
 
 .slider-wrapper.dragging {
     cursor: grabbing;
+}
+
+@media (max-width: 479px) {
+    .slider-wrapper {
+        min-height: 320px;
+    }
+
+    .slider-track {
+        gap: 10px;
+        padding: 10px;
+    }
 }
 
 @media (min-width: 480px) {

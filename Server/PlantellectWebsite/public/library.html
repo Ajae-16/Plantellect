@@ -8,24 +8,28 @@
 </head>
 <body>
 
-    <div class="library-container">
-        <header>
-            <div class="nav-container">
-                <button class="nav-hamburger" aria-label="Open sidebar" aria-expanded="false" aria-controls="librarySidebar">&#9776;</button>
-                <nav>
-                    <a href="home.html">HOME</a>
-                    <a href="#" class="active" onclick="openLibrary(event)">PLANT LIBRARY</a>
-                    <a href="about.html">ABOUT</a>
-                </nav>
-                <div class="auth-links">
-                    <a href="auth.html#login">SIGN IN</a>
-                    <a href="auth.html#register">SIGN UP</a>
-                </div>
+    <header>
+        <div class="nav-container nav-container--dark">
+            <button class="nav-hamburger" aria-label="Open sidebar" aria-expanded="false" aria-controls="librarySidebar">&#9776;</button>
+            <nav>
+                <a href="home.html">HOME</a>
+                <a href="#" class="active" onclick="openLibrary(event)">PLANT LIBRARY</a>
+                <a href="about.html">ABOUT</a>
+            </nav>
+            <div class="auth-links">
+                <a href="auth.html#login">SIGN IN</a>
+                <a href="auth.html#register">SIGN UP</a>
             </div>
-        </header>
-
+        </div>
+    </header>
+    <div class="background-image"></div>
+    <div class="library-container">
         <div class="main-workspace">
             <aside class="sidebar" id="librarySidebar">
+                <div class="sidebar-header">
+                    <h3>Menu</h3>
+                    <button class="sidebar-close" aria-label="Close sidebar">&times;</button>
+                </div>
                 <!-- Injected by sidebar.js -->
             </aside>
 

@@ -1,4 +1,7 @@
 let selectedRole = 'user';
+let usernameValid = false;
+let passwordValid = false;
+let passwordsMatch = false;
 
 function switchToRegister(event) {
     if (event) event.preventDefault();
@@ -65,6 +68,18 @@ function validatePassword(password) {
     if (lowerItem) lowerItem.classList.toggle('valid', checks.lowercase);
     if (upperItem) upperItem.classList.toggle('valid', checks.uppercase);
     if (numberItem) numberItem.classList.toggle('valid', checks.number);
+
+    return Object.values(checks).every(v => v);
+}
+
+function validateUsername(username) {
+    const checks = {
+        length: username.length >= 6
+    };
+
+    const lengthItem = document.getElementById('req-username-length');
+
+    if (lengthItem) lengthItem.classList.toggle('valid', checks.length);
 
     return Object.values(checks).every(v => v);
 }
@@ -143,6 +158,11 @@ async function handleRegister(event) {
     const firstName = document.getElementById('registerFirstName').value.trim();
     const lastName = document.getElementById('registerLastName').value.trim();
     const certFile = document.getElementById('registerCertificate').files[0];
+
+    if (!validateUsername(username)) {
+        showError('Username must be at least 6 characters');
+        return;
+    }
 
     if (!validatePassword(password)) {
         showError('Password does not meet requirements');
@@ -234,7 +254,16 @@ function initAuthPage() {
     const registerPassword = document.getElementById('registerPassword');
     if (registerPassword) {
         registerPassword.addEventListener('input', function() {
-            validatePassword(this.value);
+            passwordValid = validatePassword(this.value);
+            updateSignupButtonState();
+        });
+    }
+
+    const registerUsername = document.getElementById('registerUsername');
+    if (registerUsername) {
+        registerUsername.addEventListener('input', function() {
+            usernameValid = validateUsername(this.value);
+            updateSignupButtonState();
         });
     }
 
@@ -246,7 +275,16 @@ function initAuthPage() {
             if (matchItem) {
                 matchItem.classList.toggle('valid', this.value === password && password.length > 0);
             }
+            passwordsMatch = this.value === password && password.length > 0;
+            updateSignupButtonState();
         });
+    }
+
+    function updateSignupButtonState() {
+        const signupBtn = document.querySelector('.signup-btn');
+        if (signupBtn) {
+            signupBtn.disabled = !(usernameValid && passwordValid && passwordsMatch);
+        }
     }
 
     selectRole('user');

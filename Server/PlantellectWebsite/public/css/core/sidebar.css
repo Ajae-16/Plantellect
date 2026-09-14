@@ -1,0 +1,214 @@
+@import './variables.css';
+
+body.drawer-open {
+    overflow: hidden;
+}
+
+body.no-sidebar {
+    /* Used when sidebar has no items (guest mode) */
+}
+
+.nav-hamburger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    background: var(--color-forest-green);
+    border: none;
+    border-radius: var(--border-radius-md);
+    color: var(--color-white);
+    font-size: 24px;
+    cursor: pointer;
+    flex-shrink: 0;
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    transition: background var(--transition-fast);
+}
+
+.nav-hamburger:hover {
+    background: var(--color-success);
+}
+
+.nav-hamburger:focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 2px;
+}
+
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    max-width: 85vw;
+    height: 100vh;
+    background: var(--color-white);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    padding-top: 80px;
+    transform: translateX(-100%);
+    transition: transform var(--transition-normal) ease;
+    z-index: var(--z-index-drawer);
+    box-shadow: var(--box-shadow-modal);
+    overflow-y: auto;
+}
+
+.sidebar.open {
+    transform: translateX(0);
+}
+
+.sidebar-scrim {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--color-overlay-darker);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--transition-normal), visibility var(--transition-normal);
+    z-index: var(--z-index-scrim);
+}
+
+.sidebar-scrim.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.sidebar-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--color-forest-green);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-header h3 {
+    color: var(--color-white);
+    font-family: var(--font-primary);
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.sidebar-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: transparent;
+    border: none;
+    border-radius: var(--border-radius-md);
+    color: var(--color-white);
+    font-size: 24px;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.sidebar-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 16px 0;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-decoration: none;
+    color: var(--color-forest-green);
+    font-weight: bold;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+    padding: 14px 20px;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar-item .icon {
+    font-size: 20px;
+    width: 24px;
+    text-align: center;
+}
+
+.sidebar-item.active {
+    color: var(--color-success);
+    background: rgba(0, 188, 212, 0.08);
+}
+
+.sidebar-item:hover {
+    color: var(--color-success);
+    background: rgba(0, 188, 212, 0.08);
+}
+
+.sidebar-item.profile-link {
+    margin-top: auto;
+    border-top: 1px solid var(--color-border-light);
+    padding-top: 16px;
+}
+
+.sidebar-logout-link {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-decoration: none;
+    color: var(--color-error);
+    font-weight: bold;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--color-border-light);
+    transition: background var(--transition-fast);
+}
+
+.sidebar-logout-link:hover {
+    background: rgba(169, 68, 66, 0.08);
+}
+
+.restricted-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--color-overlay);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: var(--z-index-popup);
+    padding: 16px;
+}
+
+@media (min-width: 768px) {
+    .sidebar-item.profile-link {
+        margin-top: 40px;
+        border-top: 1px solid #ccc;
+        padding-top: 20px;
+    }
+
+    .sidebar-logout-link {
+        padding: 0;
+        border-top: 1px solid #ccc;
+        padding-top: 20px;
+        margin-top: 40px;
+    }
+
+    .sidebar-scrim {
+        display: none;
+    }
+}

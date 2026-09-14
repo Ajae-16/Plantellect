@@ -1,31 +1,3 @@
-function handleRestrictedClick(event, featureName) {
-    if (featureName === 'discoveries') return;
-
-    const cachedPermissions = JSON.parse(sessionStorage.getItem('permissions') || '[]');
-    const cachedRoles = JSON.parse(sessionStorage.getItem('roles') || '[]');
-
-    if (cachedPermissions.length === 0 && cachedRoles.length === 0) {
-        event.preventDefault();
-        const modal = document.getElementById('restrictedModal');
-        if (modal) {
-            modal.style.display = 'flex';
-        }
-    }
-}
-
-function setActiveSidebarItem() {
-    const sidebar = document.getElementById('librarySidebar');
-    if (!sidebar) return;
-
-    const links = sidebar.querySelectorAll('.sidebar-item');
-    links.forEach(link => {
-        link.classList.remove('active');
-        if (link.getAttribute('href') === 'library.html') {
-            link.classList.add('active');
-        }
-    });
-}
-
 function initSliderAutoplayPause() {
     const sliderWrapper = document.querySelector('.slider-wrapper');
     const sliderTrack = document.querySelector('.slider-track');
@@ -64,8 +36,8 @@ function initSliderAutoplayPause() {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
-    setActiveSidebarItem();
     initSliderAutoplayPause();
-});
 
-window.handleRestrictedClick = handleRestrictedClick;
+    const user = await checkAuth();
+    updateNavForAuthState(user);
+});

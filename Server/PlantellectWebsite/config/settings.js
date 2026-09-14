@@ -7,6 +7,12 @@ const sessionTimeout = 24 // hours
 // rememberTimeout = persistent cookie duration when "remember me" is checked
 const rememberTimeout = 720 // hours
 
+const timezone = 'Asia/Manila' // timezone
+// File directory for storing botanist certificates.
+const certificateDir = path.join(__dirname, '..', 'administration', 'botanist', 'certificates' ); 
+// File size to accept for thr certificares.
+const maxCertificatesSize = 20 // start with MB
+
 module.exports = {
     server: {
         port: parseInt(process.env.PORT, 10) || 3000,
@@ -24,11 +30,11 @@ module.exports = {
     },
     system: {
         // Exposing this in config lets you easily check the active timezone across entire project
-        timezone: process.env.TZ || 'Asia/Manila'
+        timezone: timezone || env.TZ
     },
     certificates: {
-        storageDir: process.env.CERTIFICATES_DIR || path.join(__dirname, '..', 'certificates'),
-        maxSizeBytes: 20 * 1024 * 1024,
+        storageDir: certificateDir,
+        maxSizeBytes: maxCertificatesSize * 1024 * 1024, // KB, B
         allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'],
         allowedExtensions: ['.pdf', '.jpg', '.jpeg', '.png'],
         maxFilenameLength: 255,

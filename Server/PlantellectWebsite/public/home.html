@@ -9,23 +9,22 @@
 </head>
 <body>
 
+    <header>
+        <div class="nav-container">
+            <button class="nav-hamburger" aria-label="Open sidebar" aria-expanded="false" aria-controls="librarySidebar">&#9776;</button>
+            <nav>
+                <a href="home.html" class="active">HOME</a>
+                <a href="#" onclick="openLibrary(event)">PLANT LIBRARY</a>
+                <a href="about.html">ABOUT</a>
+            </nav>
+            <div class="auth-links">
+                <a href="auth.html#login">SIGN IN</a>
+                <a href="auth.html#register">SIGN UP</a>
+            </div>
+        </div>
+    </header>
+    <div class="background-image"></div>
     <div class="hero-container">
-        <header>
-            <div class="logo-area">
-                <img src="resource/logo.png" alt="Plantellect Logo">
-            </div>
-            <div class="nav-container">
-                <nav>
-                    <a href="home.html" class="active">HOME</a>
-                    <a href="#" onclick="openLibrary(event)">PLANT LIBRARY</a>
-                    <a href="about.html">ABOUT</a>
-                </nav>
-                <div class="auth-links">
-                    <a href="auth.html#login">SIGN IN</a>
-                    <a href="auth.html#register">SIGN UP</a>
-                </div>
-            </div>
-        </header>
         <div class="hero-content">
             <h1>Explore,    and    Expand<br>Your Botanist Mind</h1>
             <p>Identify, share, and discover plants with a
@@ -87,10 +86,18 @@
         </div>
     </div>
 
+    <div class="sidebar-scrim"></div>
+    <aside class="sidebar" id="librarySidebar">
+        <div class="sidebar-header">
+            <h3>Menu</h3>
+            <button class="sidebar-close" aria-label="Close sidebar">&times;</button>
+        </div>
+    </aside>
+
     <script src="javascript/logout.js"></script>
     <script src="javascript/sidebar.js"></script>
     <script src="javascript/auth.js"></script>
+    <script src="javascript/nav-toggle.js"></script>
     <script src="javascript/home.js"></script>
-
 </body>
 </html>
