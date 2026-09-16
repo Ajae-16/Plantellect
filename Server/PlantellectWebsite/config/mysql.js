@@ -7,10 +7,10 @@ const fs = require('fs');
 const settings = require('./settings');
 
 const mysqlPool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
+    host: process.env.DB_HOST,
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASS || '',
-    database: process.env.DB_NAME || 'plantellectdb',
+    database: process.env.DB_NAME,
     charset: 'utf8mb4',
     timezone: settings.system.timezone,
     waitForConnections: true,
