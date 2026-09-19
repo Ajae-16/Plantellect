@@ -7,7 +7,7 @@ const sessionTimeout = 24 // hours
 // rememberTimeout = persistent cookie duration when "remember me" is checked
 const rememberTimeout = 720 // hours
 
-const timezone = 'Asia/Manila' // timezone
+const timezone = '+08:00' // timezone (Asia/Manila)
 // File directory for storing botanist certificates.
 const certificateDir = path.join(__dirname, '..', 'administration', 'botanist', 'certificates' ); 
 // File size to accept for thr certificares.
@@ -19,8 +19,8 @@ module.exports = {
         env: process.env.NODE_ENV || 'development'
     },
     database: {
-        mongoUri: process.env.MONGO_URI || 'mongodb://superadmin:plantpassword@localhost:27017/plantellectmongodb?authSource=admin',
-        mysqlHost: process.env.DB_HOST || 'localhost'
+        mongoUri: process.env.MONGO_URI,
+        mysqlHost: process.env.DB_HOST
     },
     session: {
         secret: process.env.SESSION_SECRET,
