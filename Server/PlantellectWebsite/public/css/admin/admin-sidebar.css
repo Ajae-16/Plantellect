@@ -1,0 +1,313 @@
+@import '../core/variables.css';
+
+/* =========================================
+   SIDEBAR (mobile: off-canvas drawer)
+   ========================================= */
+
+.admin-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 260px;
+    max-width: 80vw;
+    background-color: var(--color-dark-forest-green);
+    color: var(--color-white);
+    z-index: var(--z-index-drawer);
+    transform: translateX(-100%);
+    transition: transform var(--transition-normal) ease;
+    overflow-y: auto;
+    box-shadow: var(--box-shadow-modal);
+}
+
+.admin-sidebar.open {
+    transform: translateX(0);
+}
+
+.admin-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.admin-sidebar-header h3 {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--color-library-green);
+}
+
+.admin-sidebar-close {
+    background: transparent;
+    border: none;
+    color: var(--color-white);
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.admin-sidebar-close:hover {
+    color: var(--color-bg-nav-light);
+}
+
+/* Collapse / expand toggle (desktop only, shown in the media query below) */
+.admin-sidebar-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin: 12px 14px 0 auto;
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    border-radius: 8px;
+    color: var(--color-white);
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.admin-sidebar nav {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 0;
+}
+
+.admin-sidebar nav a {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 22px;
+    color: var(--color-timberwolf);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    border-left: 3px solid transparent;
+    transition: background-color var(--transition-fast),
+                color var(--transition-fast),
+                border-color var(--transition-fast);
+}
+
+/* Nav icon (Material Symbols, or an emoji in a .nav-icon span) */
+.nav-icon,
+.admin-sidebar nav a .material-symbols-outlined {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    font-size: 22px;
+    flex-shrink: 0;
+}
+
+.nav-link-text {
+    flex: 1;
+    white-space: nowrap;
+}
+
+/* Pending-count pill shown next to a nav link (e.g. Dashboard, Plants) */
+.nav-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: var(--border-radius-pill);
+    background-color: var(--color-error-hover);
+    color: var(--color-white);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+/* Small red dot on the hamburger button when any nav badge is active,
+   so the notification is visible even while the drawer is closed. */
+.admin-hamburger {
+    position: relative;
+}
+
+.admin-hamburger.has-notifications::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background-color: var(--color-error-hover);
+    border: 2px solid var(--color-forest-green);
+}
+
+.admin-sidebar nav a:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--color-white);
+}
+
+.admin-sidebar nav a.active {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--color-bg-nav-light);
+    border-left-color: var(--color-bg-nav-light);
+    font-weight: 700;
+}
+
+.admin-sidebar nav a#adminLogoutLink {
+    margin-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--color-error-hover);
+}
+
+.admin-sidebar nav a#adminLogoutLink:hover {
+    background-color: rgba(217, 83, 79, 0.12);
+    color: var(--color-error-hover);
+}
+
+.admin-sidebar-scrim {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background-color: var(--color-overlay);
+    z-index: var(--z-index-scrim);
+    opacity: 0;
+    transition: opacity var(--transition-normal) ease;
+}
+
+.admin-sidebar-scrim.visible {
+    display: block;
+    opacity: 1;
+}
+
+/* =========================================
+   HOVER FLOAT (anything clickable)
+   Add the .is-clickable class to any other
+   clickable card / element to get the effect.
+   ========================================= */
+
+.admin-sidebar nav a,
+.admin-hamburger,
+.admin-sidebar-toggle,
+.btn-approve,
+.btn-deny,
+.role-box,
+.btn-view,
+.btn-expand,
+.page-btn,
+.is-clickable {
+    transition: transform var(--transition-fast) ease,
+                box-shadow var(--transition-fast) ease,
+                background-color var(--transition-fast),
+                color var(--transition-fast),
+                border-color var(--transition-fast);
+}
+
+.admin-sidebar nav a:hover,
+.admin-hamburger:hover,
+.admin-sidebar-toggle:hover,
+.btn-approve:not(:disabled):hover,
+.btn-deny:not(:disabled):hover,
+.role-box:hover,
+.btn-view:hover,
+.btn-expand:hover,
+.page-btn:not(:disabled):hover,
+.is-clickable:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25);
+}
+
+.admin-sidebar nav a:active,
+.btn-approve:active,
+.btn-deny:active,
+.is-clickable:active {
+    transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-sidebar nav a:hover,
+    .admin-hamburger:hover,
+    .admin-sidebar-toggle:hover,
+    .btn-approve:hover,
+    .btn-deny:hover,
+    .role-box:hover,
+    .btn-view:hover,
+    .btn-expand:hover,
+    .page-btn:hover,
+    .is-clickable:hover {
+        transform: none;
+    }
+}
+
+/* =========================================
+   SIDEBAR (desktop: static column + collapsible icon rail)
+   ========================================= */
+
+@media (min-width: 768px) {
+    .admin-sidebar {
+        position: static;
+        height: auto;
+        min-height: calc(100vh - 76px);
+        width: 240px;
+        max-width: none;
+        transform: none;
+        box-shadow: none;
+        flex-shrink: 0;
+        overflow-x: hidden;
+        transition: width var(--transition-normal) ease;
+    }
+
+    .admin-sidebar-header,
+    .admin-sidebar-close {
+        display: none;
+    }
+
+    .admin-sidebar-toggle {
+        display: flex;
+    }
+
+    .admin-sidebar nav {
+        padding-top: 12px;
+    }
+
+    .admin-sidebar-scrim {
+        display: none !important;
+    }
+
+    /* ----- Collapsed = icon rail ----- */
+    html.sidebar-collapsed .admin-sidebar {
+        width: 68px;
+    }
+
+    html.sidebar-collapsed .admin-sidebar-toggle {
+        margin: 12px auto 0;
+    }
+
+    html.sidebar-collapsed .admin-sidebar-toggle .toggle-glyph {
+        display: inline-block;
+        transform: rotate(180deg);
+    }
+
+    html.sidebar-collapsed .admin-sidebar nav a {
+        justify-content: center;
+        padding: 14px 0;
+        gap: 0;
+    }
+
+    html.sidebar-collapsed .nav-link-text {
+        display: none;
+    }
+
+    /* Badge becomes a small pip on the icon */
+    html.sidebar-collapsed .nav-badge {
+        position: absolute;
+        top: 6px;
+        right: 8px;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 4px;
+        font-size: 10px;
+    }
+}   

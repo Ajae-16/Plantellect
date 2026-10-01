@@ -1,0 +1,229 @@
+@import '../core/variables.css';
+
+/* =========================================================
+   public-theme.css
+   Dark mode for the public pages, built from the Plantellect
+   palette in variables.css (same approach as admin-theme.css).
+
+   Load this LAST in <head>, after the page's own stylesheet.
+   The theme is set by sidebar.js via <html data-theme="...">
+   ========================================================= */
+
+html[data-theme="light"] { color-scheme: light; }
+
+html[data-theme="dark"] {
+    color-scheme: dark;
+
+    --dk-bg:         #1b2118;
+    --dk-surface:    var(--color-dark-jungle-green);
+    --dk-surface-2:  var(--color-modal-bg);
+    --dk-hover:      #38472f;
+    --dk-border:     rgba(220, 215, 201, 0.16);
+    --dk-text:       var(--color-bone);
+    --dk-text-muted: rgba(234, 230, 213, 0.68);
+    --dk-accent:     var(--color-library-green);
+}
+
+/* ---------- Page ---------- */
+/* Page background follows the theme (this is what the Plants page shows) */
+/* ONE shared page background for Library AND Profile (both modes).
+   Change --page-bg here and both pages follow. */
+html[data-theme="light"] { --page-bg: var(--color-light-light-green); }
+html[data-theme="dark"]  { --page-bg: var(--dk-bg); }
+
+html,
+body {
+    background-color: var(--page-bg, var(--color-library-green));
+}
+
+html[data-theme="dark"] body {
+    color: var(--dk-text);
+}
+
+html,
+body,
+.plant-card,
+.plant-card h3,
+.plant-card p,
+.plant-card .image-box {
+    transition: background-color var(--transition-normal) ease,
+                color var(--transition-normal) ease,
+                border-color var(--transition-normal) ease;
+}
+
+/* ---------- Header on pages WITHOUT the cucumber photo (library) ---------- */
+html[data-theme="dark"] .nav-container--dark {
+    border-top-color: var(--dk-border);
+    border-bottom-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .nav-container--dark nav a,
+html[data-theme="dark"] .nav-container--dark .auth-links a {
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .nav-container--dark nav a.active,
+html[data-theme="dark"] .nav-container--dark nav a:hover,
+html[data-theme="dark"] .nav-container--dark .auth-links a:hover {
+    color: var(--dk-accent);
+}
+
+/* ---------- Library ---------- */
+html[data-theme="dark"] #plantSearchInput {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+    box-shadow: none;
+}
+
+html[data-theme="dark"] #plantSearchInput:focus {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-accent);
+}
+
+html[data-theme="dark"] #plantSearchInput::placeholder,
+html[data-theme="dark"] .search-input-wrapper .search-icon {
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .recent-searches-dropdown {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .recent-searches-header {
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .recent-search-pill {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .recent-search-pill:hover {
+    background-color: var(--dk-hover);
+    border-color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .recent-search-pill .material-symbols-outlined {
+    color: var(--dk-accent);
+}
+
+/* ---------- Plant cards (library grid + home slider) ---------- */
+html[data-theme="dark"] .plant-card {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .plant-card h3 {
+    color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .plant-card p {
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .plant-card .image-box {
+    background-color: var(--dk-surface-2);
+}
+
+/* ---------- Home slider ---------- */
+html[data-theme="dark"] .slider-wrapper {
+    background-color: var(--dk-bg);
+    border-color: var(--color-deep-sage);
+}
+
+/* ---------- "Sign in to unlock" popup ---------- */
+html[data-theme="dark"] .restricted-popup-box {
+    background-color: var(--dk-surface);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .restricted-popup-box .close-btn {
+    color: var(--dk-text-muted);
+}
+
+
+/* ---------- Cucumber photo (home + about): dim it in dark mode ---------- */
+.background-image--cucumber {
+    transition: filter var(--transition-normal) ease;
+}
+
+html[data-theme="dark"] .background-image--cucumber {
+    filter: brightness(0.45) saturate(0.85);
+}
+
+/* ---------- About modal ---------- */
+html[data-theme="dark"] .about-modal {
+    background-color: var(--dk-surface);
+    border: 1px solid var(--dk-border);
+}
+
+html[data-theme="dark"] .about-modal h2,
+html[data-theme="dark"] .about-modal h3 {
+    color: var(--dk-accent);
+}
+
+/* ---------- Profile ---------- */
+html[data-theme="dark"] .profile-card {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .profile-card h2 {
+    color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .profile-email {
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .guest-prompt {
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .guest-prompt a {
+    color: var(--dk-accent);
+}
+
+
+/* ---------- Plant cards: stronger selectors so they always win over the card styles ---------- */
+html[data-theme="dark"] .plant-grid .plant-card,
+html[data-theme="dark"] .slider-track .plant-card {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="dark"] .plant-grid .plant-card h3,
+html[data-theme="dark"] .slider-track .plant-card h3 {
+    color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .plant-grid .plant-card p,
+html[data-theme="dark"] .slider-track .plant-card p {
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .plant-grid .plant-card .image-box,
+html[data-theme="dark"] .slider-track .plant-card .image-box {
+    background-color: var(--dk-surface-2);
+}
+
+
+/* ---------- Library plant card text colors (change these to your color) ---------- */
+html[data-theme="light"] .plant-grid .plant-card h3 { color: #2f5d34; }
+html[data-theme="light"] .plant-grid .plant-card p  { color: #333333; }
+
+html[data-theme="dark"] .plant-grid .plant-card h3  { color: #a8d5a2; }
+html[data-theme="dark"] .plant-grid .plant-card p   { color: #e6e2d0; }
+
+
+/* ---------- Active nav link color (light mode) ---------- */
+html[data-theme="light"] .nav-container--dark nav a.active,
+html[data-theme="light"] .nav-container--dark nav a:hover {
+    color: #ffffff; /* change to any color you want */
+}

@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Plants</title>
+
+    <!-- Shared sidebar + theme logic (must load here, no defer) -->
+    <script src="/javascript/admin-sidebar.js"></script>
+
+    <link rel="stylesheet" href="/css/admin/admin-sidebar.css">
+    <link rel="stylesheet" href="/css/admin/admin-style.css">
+    <link rel="stylesheet" href="/css/admin/admin-plants.css">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="/css/admin/admin-theme.css">
+</head>
+<body>
+
+    <header class="admin-header">
+        <div class="admin-header-top">
+            <div class="admin-logo">
+                <img src="/resource/logo.png" alt="Plantellect Logo">
+                <span>Admin Dashboard</span>
+            </div>
+            <button class="admin-hamburger" aria-label="Open sidebar">☰</button>
+        </div>
+        <div class="admin-user" id="adminUser">Loading...</div>
+    </header>
+
+    <div class="admin-sidebar-scrim"></div>
+
+    <div class="admin-layout">
+        <aside class="admin-sidebar" id="adminSidebar">
+            <div class="admin-sidebar-header">
+                <h3>Menu</h3>
+                <button class="admin-sidebar-close" aria-label="Close sidebar">&times;</button>
+            </div>
+
+            <button class="admin-sidebar-toggle" id="adminSidebarToggle"
+                    aria-label="Toggle sidebar" title="Expand / collapse sidebar">
+                <span class="toggle-glyph">«</span>
+            </button>
+
+            <nav>
+                <a href="/admin/dashboard" title="Dashboard">
+                    <span class="material-symbols-outlined">home</span>
+                    <span class="nav-link-text">Dashboard</span>
+                    <span class="nav-badge" id="navBadgeDashboard" hidden>0</span>
+                </a>
+
+                <a href="/admin/users" data-perm="create_user" title="Users">
+                    <span class="material-symbols-outlined">person</span>
+                    <span class="nav-link-text">Users</span>
+                </a>
+                <a href="/admin/plants" class="active" data-perm="manage_plant" title="Plants">
+                    <span class="material-symbols-outlined">potted_plant</span>
+                    <span class="nav-link-text">Plants</span>
+                    <span class="nav-badge" id="navBadgePlants" hidden>0</span>
+                </a>
+                <a href="#" data-perm="view_logs" title="Logs">
+                    <span class="material-symbols-outlined">history_toggle_off</span>
+                    <span class="nav-link-text">Logs</span>
+                </a>
+                <a href="/home.html" title="Public">
+                    <span class="material-symbols-outlined">public</span>
+                    <span class="nav-link-text">Public</span>
+                </a>
+                <a href="#" id="adminLogoutLink" title="Sign out">
+                    <span class="material-symbols-outlined">logout</span>
+                    <span class="nav-link-text">Sign out</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <h1>Plants</h1>
+            <p class="admin-subtitle">Review upload requests and manage the plant inventory</p>
+
+            <div class="plants-container">
+
+                <!-- Pending plant upload requests -->
+                <section class="admin-section">
+                    <h2>
+                        Pending Plant Requests
+                        <span class="section-count-badge" id="plantRequestsSectionCount" hidden>0</span>
+                    </h2>
+                    <div class="pending-requests-list" id="plantRequestsList">
+                        <p>Loading...</p>
+                    </div>
+                </section>
+
+                <!-- Plants inventory -->
+                <section class="admin-section plants-inventory-section">
+                    <h2>Plants Inventory</h2>
+
+                    <div class="plants-filters">
+                        <div class="plants-search">
+                            <span class="search-icon">🔍</span>
+                            <input
+                                type="text"
+                                id="plantSearch"
+                                placeholder="Search by plant name..."
+                                aria-label="Search plants by name"
+                            >
+                        </div>
+                        <select id="plantTypeFilter" class="plants-filter-select" aria-label="Filter by plant type">
+                            <!-- Type options are populated from plant_types, so the
+                                 dropdown cannot drift from the database. -->
+                            <option value="all">All Types</option>
+                        </select>
+                    </div>
+
+                    <div class="plants-table-wrapper">
+                        <table class="plants-table">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Reviewed By</th>
+                                    <th>Recorded By</th>
+                                    <th>Date Uploaded</th>
+                                </tr>
+                            </thead>
+                            <tbody id="plantsTableBody">
+                                <!-- Rows injected by JS -->
+                            </tbody>
+                        </table>
+                        <div id="plantsEmptyState" class="plants-empty-state" hidden>
+                            <p>No plants match your search.</p>
+                        </div>
+                    </div>
+
+                    <div class="pagination-container">
+                        <div class="pagination-info" id="plantsPaginationInfo"></div>
+                        <div class="pagination-controls" id="plantsPaginationControls"></div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="/javascript/logout.js"></script>
+    <!-- home.js calls checkAuth(), which lives in auth.js, so auth.js loads first -->
+    <script src="/javascript/auth.js"></script>
+    <script src="/javascript/home.js"></script>
+
+    <!-- Plants page logic (sidebar, theme and badges live in admin-sidebar.js) -->
+    <script>
+        // ---------------------------------------------------------
+        // Plants page state + rendering
+        // ---------------------------------------------------------
+        const PAGE_SIZE = 10;
+        let pendingRequests = [];
+        let plantSearch = '';
+        let plantTypeFilterValue = 'all';
+        let plantsPage = 1;
+        let expandedPlantId = null;
+        // Labels and icons come from plant_types so the filter, the badges and
+        // the dropdown can never disagree with the database.
+        let typeMeta = {};
+
+        const typeLabels = {
+            'herbal': 'Herbal',
+            'flower': 'Flower',
+            'non-herbal-flower': 'Non-Herbal & Flower',
+        };
+
+        const typeIcons = {
+            'herbal': '🌿',
+            'flower': '🌸',
+            'non-herbal-flower': '🌳',
+        };
+
+        function labelForType(type, fallback) {
+            if (typeMeta[type]) return typeMeta[type].label;
+            return typeLabels[type] || fallback || type;
+        }
+
+        function iconForType(type) {
+            if (typeMeta[type]) return typeMeta[type].icon || typeIcons[type] || '🌱';
+            return typeIcons[type] || '🌱';
+        }
+
+        function typeBadgeClass(type) {
+            return 'plant-badge plant-badge-' + type;
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = String(str == null ? '' : str);
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return escapeHtml(dateStr);
+            return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+
+        // -----------------------------------------------------------------
+        // Pending plant requests (uploaded by botanists, awaiting review)
+        // -----------------------------------------------------------------
+        /**
+         * Thumbnail previews for a pending request. Photos open in a new tab so
+         * an admin can judge the actual image before approving. The draft text
+         * gets a summary, since a new-plant request has no photos yet.
+         */
+        function renderRequestPreview(r) {
+            const parts = [];
+
+            if (r.images && r.images.length > 0) {
+                const thumbs = r.images.map(img => `
+                    <a class="plant-preview-thumb"
+                       href="${escapeHtml(img.url)}"
+                       target="_blank" rel="noopener"
+                       title="Open photo in a new tab">
+                        <img src="${escapeHtml(img.url)}" alt="Submitted photo" loading="lazy">
+                    </a>`).join('');
+                parts.push(
+                    '<div class="plant-preview-grid">' + thumbs + '</div>' +
+                    '<p class="plant-preview-caption">' +
+                        r.images.length + ' photo' + (r.images.length === 1 ? '' : 's') +
+                        ' — click to open full size</p>'
+                );
+            } else if (r.requestType === 'plant_addition') {
+                const p = r.payload || {};
+                const detail = [
+                    p.scientificName,
+                    p.quantity != null ? p.quantity + ' in stock' : null,
+                    p.parts && p.parts.heightMaxCm ? p.parts.heightMaxCm + ' cm tall' : null,
+                    p.parts && p.parts.color ? p.parts.color : null
+                ].filter(Boolean);
+                if (detail.length > 0) {
+                    parts.push('<p class="plant-preview-text">' + detail.map(escapeHtml).join(' · ') + '</p>');
+                }
+            }
+
+            if (r.note) {
+                parts.push('<p class="plant-preview-note">“' + escapeHtml(r.note) + '”</p>');
+            }
+            return parts.join('');
+        }
+
+        function renderPlantRequests() {
+            const list = document.getElementById('plantRequestsList');
+            const sectionBadge = document.getElementById('plantRequestsSectionCount');
+
+            // Keep the section heading badge, the sidebar Plants badge, and
+            // the hamburger notification dot all in sync with the live count.
+            if (sectionBadge) {
+                if (pendingRequests.length > 0) {
+                    sectionBadge.textContent = pendingRequests.length;
+                    sectionBadge.hidden = false;
+                } else {
+                    sectionBadge.hidden = true;
+                }
+            }
+            loadNavBadges({ plants: pendingRequests.length });
+
+            if (pendingRequests.length === 0) {
+                list.innerHTML = '<p>No pending plant requests.</p>';
+                return;
+            }
+
+            list.innerHTML = pendingRequests.map(r => `
+                <div class="pending-request-card" data-id="${r.id}">
+                    <div class="plant-request-body">
+                        <span class="plant-request-icon" aria-hidden="true">${iconForType(r.type)}</span>
+                        <div class="request-info">
+                            <h3>${escapeHtml(r.plantName)}
+                                <span class="request-type-badge ${typeBadgeClass(r.type)}">${escapeHtml(labelForType(r.type))}</span>
+                                <span class="request-kind-badge">${r.requestType === 'plant_addition' ? 'New plant' : 'Contribution'}</span>
+                            </h3>
+                            <p>Submitted by: <strong>${escapeHtml(r.submittedByName || r.submittedBy)}</strong></p>
+                            <p class="request-date">Requested: ${formatDate(r.requestedAt)}</p>
+                            ${renderRequestPreview(r)}
+                        </div>
+                    </div>
+                    <div class="request-actions">
+                        <button class="btn-approve" data-id="${r.id}">Approve</button>
+                        <button class="btn-deny" data-id="${r.id}">Deny</button>
+                    </div>
+                </div>
+            `).join('');
+
+            list.querySelectorAll('.btn-approve').forEach(btn => {
+                btn.addEventListener('click', () => handleRequestDecision(btn.dataset.id, 'approve'));
+            });
+            list.querySelectorAll('.btn-deny').forEach(btn => {
+                btn.addEventListener('click', () => handleRequestDecision(btn.dataset.id, 'deny'));
+            });
+        }
+
+        async function handleRequestDecision(id, decision) {
+            const label = decision === 'approve' ? 'Approve' : 'Deny';
+            if (!confirm(`${label} this plant upload request?`)) return;
+
+            try {
+                const response = await fetch(`/admin/api/plant-requests/${id}/${decision}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({})
+                });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    alert('Error: ' + (err.error || `Failed to ${decision} request`));
+                    return;
+                }
+            } catch (err) {
+                console.error('Plant request decision error:', err);
+                alert('Error: ' + err.message);
+                return;
+            }
+            // Approving/denying resolves the request, so drop it from the
+            // pending list, and refresh the inventory in case it was approved
+            // (the reviewer's account then shows up as "Reviewed By").
+            pendingRequests = pendingRequests.filter(r => String(r.id) !== String(id));
+            renderPlantRequests();
+            loadPlants();
+        }
+
+        // -----------------------------------------------------------------
+        // Plants inventory (server-side search, filter and pagination)
+        // -----------------------------------------------------------------
+        function formatRange(min, max, note, unit) {
+            if (min == null && max == null) return note || '—';
+            if (min != null && max != null && min !== max) {
+                return `${min}–${max}${unit}`;
+            }
+            const only = min != null ? min : max;
+            return `${only}${unit}${note ? ' — ' + note : ''}`;
+        }
+
+        function renderPlantsTable(data) {
+            const plants = data.plants || [];
+            const tbody = document.getElementById('plantsTableBody');
+            const emptyState = document.getElementById('plantsEmptyState');
+            const total = data.total || 0;
+            const pageSize = data.pageSize || PAGE_SIZE;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+            if (plantsPage > totalPages) {
+                plantsPage = totalPages;
+                return loadPlants();
+            }
+
+            if (plants.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.hidden = false;
+            } else {
+                emptyState.hidden = true;
+                tbody.innerHTML = plants.map(p => {
+                    const isExpanded = expandedPlantId === p.id;
+                    const parts = p.parts || {};
+                    const desc = p.description || {};
+                    const row = `
+                        <tr class="plant-row" data-id="${escapeHtml(p.id)}">
+                            <td>
+                                <button class="btn-expand ${isExpanded ? 'expanded' : ''}" data-id="${escapeHtml(p.id)}" aria-label="Show plant details" aria-expanded="${isExpanded}">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M6 9l6 6 6-6"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                            <td class="plant-name-cell" data-label="Name">${escapeHtml(p.name)}</td>
+                            <td data-label="Type"><span class="${typeBadgeClass(p.type)}">${escapeHtml(labelForType(p.type, p.typeLabel))}</span></td>
+                            <td data-label="Reviewed By">${escapeHtml(p.reviewedBy || '—')}</td>
+                            <td data-label="Recorded By">${escapeHtml(p.recordedBy || '—')}</td>
+                            <td data-label="Date Uploaded">${formatDate(p.dateUploaded)}</td>
+                        </tr>
+                    `;
+
+                    if (!isExpanded) return row;
+
+                    return row + `
+                        <tr class="plant-detail-row" data-detail-for="${escapeHtml(p.id)}">
+                            <td colspan="6">
+                                <div class="plant-detail-content">
+                                    <div class="plant-detail-item">
+                                        <span class="label">Scientific Name</span>
+                                        <span class="value">${escapeHtml(p.scientificName || '—')}</span>
+                                    </div>
+                                    <div class="plant-detail-item">
+                                        <span class="label">Quantity</span>
+                                        <span class="value">${escapeHtml(p.quantity != null ? p.quantity : '—')}</span>
+                                    </div>
+                                    <div class="plant-detail-item">
+                                        <span class="label">Height</span>
+                                        <span class="value">${escapeHtml(formatRange(parts.heightMinCm, parts.heightMaxCm, parts.heightNote, ' cm'))}</span>
+                                    </div>
+                                    <div class="plant-detail-item">
+                                        <span class="label">Width</span>
+                                        <span class="value">${escapeHtml(formatRange(parts.widthMinCm, parts.widthMaxCm, parts.widthNote, ' cm'))}</span>
+                                    </div>
+                                    <div class="plant-detail-item">
+                                        <span class="label">Color / Shape / Texture</span>
+                                        <span class="value">${escapeHtml([parts.color, parts.shape, parts.texture].filter(Boolean).join(' · ') || '—')}</span>
+                                    </div>
+                                    <div class="plant-detail-item">
+                                        <span class="label">Uses</span>
+                                        <span class="value">${escapeHtml(desc.uses || '—')}</span>
+                                    </div>
+                                    <div class="plant-detail-item">
+                                        <span class="label">Benefits</span>
+                                        <span class="value">${escapeHtml(desc.benefits || '—')}</span>
+                                    </div>
+                                    <div class="plant-detail-item">
+                                        <span class="label">Harmful</span>
+                                        <span class="value">${escapeHtml(desc.harmful || '—')}</span>
+                                    </div>
+                                    <div class="plant-detail-item">
+                                        <span class="label">Approved Photos</span>
+                                        <span class="value">${escapeHtml(p.imageCount)} of ${escapeHtml(p.imageCount + (p.pendingImageCount || 0))} submitted</span>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            tbody.querySelectorAll('.btn-expand').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.id;
+                    expandedPlantId = (expandedPlantId === id) ? null : id;
+                    renderPlantsTable(lastPlantsResponse);
+                });
+            });
+
+            renderPlantsPagination(total, totalPages, pageSize);
+        }
+
+        function renderPlantsPagination(totalItems, totalPages, pageSize) {
+            const info = document.getElementById('plantsPaginationInfo');
+            const controls = document.getElementById('plantsPaginationControls');
+
+            if (totalItems === 0) {
+                info.textContent = 'No entries';
+                controls.innerHTML = '';
+                return;
+            }
+
+            const start = (plantsPage - 1) * pageSize + 1;
+            const end = Math.min(plantsPage * pageSize, totalItems);
+            info.innerHTML = `Showing <strong>${start}</strong> to <strong>${end}</strong> of <strong>${totalItems}</strong> entries`;
+
+            let buttons = `<button class="page-btn" data-page="prev" ${plantsPage === 1 ? 'disabled' : ''}>Prev</button>`;
+            for (let p = 1; p <= totalPages; p++) {
+                buttons += `<button class="page-btn ${p === plantsPage ? 'active' : ''}" data-page="${p}">${p}</button>`;
+            }
+            buttons += `<button class="page-btn" data-page="next" ${plantsPage === totalPages ? 'disabled' : ''}>Next</button>`;
+            controls.innerHTML = buttons;
+
+            controls.querySelectorAll('.page-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const val = btn.dataset.page;
+                    if (val === 'prev') plantsPage = Math.max(1, plantsPage - 1);
+                    else if (val === 'next') plantsPage = Math.min(totalPages, plantsPage + 1);
+                    else plantsPage = parseInt(val, 10);
+                    expandedPlantId = null;
+                    loadPlants();
+                });
+            });
+        }
+
+        let searchDebounce = null;
+        document.getElementById('plantSearch').addEventListener('input', (e) => {
+            plantSearch = e.target.value;
+            plantsPage = 1;
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(loadPlants, 300);
+        });
+
+        document.getElementById('plantTypeFilter').addEventListener('change', (e) => {
+            plantTypeFilterValue = e.target.value;
+            plantsPage = 1;
+            loadPlants();
+        });
+
+        // ---------------------------------------------------------
+        // Data loading. Search, type filter and pagination are all
+        // server-side, so only the current page of rows is held here.
+        // ---------------------------------------------------------
+        let lastPlantsResponse = { plants: [], total: 0, pageSize: PAGE_SIZE };
+
+        async function loadPlantTypes() {
+            try {
+                const response = await fetch('/api/plants/types', { credentials: 'include' });
+                if (!response.ok) return;
+                const data = await response.json();
+                (data.types || []).forEach(t => {
+                    typeMeta[t.typeName] = t;
+                });
+                // Populate the filter dropdown from the database.
+                const select = document.getElementById('plantTypeFilter');
+                const currentValue = select.value;
+                (data.types || []).forEach(t => {
+                    const option = document.createElement('option');
+                    option.value = t.typeName;
+                    option.textContent = t.label;
+                    select.appendChild(option);
+                });
+                select.value = currentValue;
+            } catch (err) {
+                console.error('Load plant types error:', err);
+            }
+        }
+
+        async function loadPlants() {
+            const params = new URLSearchParams();
+            if (plantSearch.trim()) params.set('search', plantSearch.trim());
+            if (plantTypeFilterValue !== 'all') params.set('type', plantTypeFilterValue);
+            params.set('page', String(plantsPage));
+
+            try {
+                const response = await fetch('/admin/api/plants?' + params.toString(), { credentials: 'include' });
+                if (response.status === 401) {
+                    window.location.href = '/auth.html';
+                    return;
+                }
+                if (!response.ok) throw new Error('Failed to load plants');
+                lastPlantsResponse = await response.json();
+                renderPlantsTable(lastPlantsResponse);
+            } catch (err) {
+                console.error('Load plants error:', err);
+                document.getElementById('plantsTableBody').innerHTML = '';
+                document.getElementById('plantsEmptyState').hidden = false;
+            }
+        }
+
+        async function loadPlantRequests() {
+            try {
+                const response = await fetch('/admin/api/plant-requests', { credentials: 'include' });
+                if (response.status === 401) {
+                    window.location.href = '/auth.html';
+                    return;
+                }
+                if (!response.ok) throw new Error('Failed to load plant requests');
+                const data = await response.json();
+                pendingRequests = data.requests || [];
+            } catch (err) {
+                console.error('Load plant requests error:', err);
+                pendingRequests = [];
+            }
+            // renderPlantRequests() also refreshes the sidebar Plants badge
+            // from this same data, so no separate fetch is needed for it.
+            renderPlantRequests();
+        }
+
+        (async function () {
+            const response = await fetch('/api/auth/me', { credentials: 'include' });
+            if (!response.ok) {
+                window.location.href = '/auth.html';
+                return;
+            }
+            const data = await response.json();
+
+            document.getElementById('adminUser').textContent = 'Logged in as ' + data.username;
+
+            const perms = data.permissions || [];
+            document.querySelectorAll('.admin-sidebar a[data-perm]').forEach(function (a) {
+                if (!perms.includes(a.getAttribute('data-perm'))) {
+                    a.style.display = 'none';
+                }
+            });
+
+            document.getElementById('adminLogoutLink').addEventListener('click', function (e) {
+                e.preventDefault();
+                logoutUser();
+            });
+
+            await loadPlantTypes();
+            loadPlantRequests();
+            loadPlants();
+        })();
+    </script>
+
+</body>
+</html>

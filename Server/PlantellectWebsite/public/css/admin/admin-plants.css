@@ -1,0 +1,453 @@
+@import '../core/variables.css';
+
+/* =========================================
+   PLANTS: PENDING REQUESTS
+   (list/card styles come from admin-style.css:
+   .admin-section, .pending-requests-list, .pending-request-card,
+   .request-info, .request-actions, .btn-approve, .btn-deny)
+   ========================================= */
+
+.request-type-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 10px;
+    border-radius: var(--border-radius-pill);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+}
+
+/* Plant-requests cards get a leaf-icon avatar so they read distinctly
+   from the plain role-request cards on the dashboard. */
+#plantRequestsList .pending-request-card {
+    align-items: center;
+}
+
+.plant-request-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    font-size: 18px;
+    background-color: var(--color-bg-light);
+    margin-right: 4px;
+}
+
+.plant-request-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.request-info h3 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+/* =========================================
+   PLANTS: INVENTORY
+   ========================================= */
+
+.plants-inventory-section {
+    margin-top: 40px;
+}
+
+.plants-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0 20px;
+}
+
+.plants-search {
+    position: relative;
+    flex: 1 1 240px;
+}
+
+.plants-search .search-icon {
+    position: absolute;
+    top: 50%;
+    left: 14px;
+    transform: translateY(-50%);
+    font-size: 14px;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.plants-search input {
+    width: 100%;
+    padding: 10px 14px 10px 38px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius-pill);
+    font-family: var(--font-primary);
+    font-size: 14px;
+    color: #333;
+    background-color: #fafafa;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.plants-search input:focus {
+    outline: none;
+    border-color: var(--color-forest-green);
+    background-color: var(--color-white);
+}
+
+.plants-filter-select {
+    padding: 10px 16px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius-pill);
+    font-family: var(--font-primary);
+    font-size: 14px;
+    color: #333;
+    background-color: #fafafa;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.plants-filter-select:focus {
+    outline: none;
+    border-color: var(--color-forest-green);
+    background-color: var(--color-white);
+}
+
+/* Table */
+.plants-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    background-color: var(--color-white);
+    border: 1px solid #eee;
+    border-radius: var(--border-radius-md);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.plants-table {
+    width: 100%;
+    min-width: 720px;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.plants-table thead th {
+    text-align: left;
+    color: var(--color-white);
+    background-color: var(--color-forest-green);
+    padding: 14px 16px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.plants-table thead th:first-child { width: 44px; border-radius: var(--border-radius-md) 0 0 0; }
+.plants-table thead th:last-child  { border-radius: 0 var(--border-radius-md) 0 0; }
+
+.plants-table tbody td {
+    padding: 14px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    color: #333;
+    vertical-align: middle;
+}
+
+.plants-table tbody tr.plant-row:hover { background-color: var(--color-bg-light); }
+.plants-table tbody tr:last-child td { border-bottom: none; }
+
+.plant-name-cell { font-weight: 600; color: var(--color-dark-jungle-green); }
+
+/* Type badges */
+.plant-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: var(--border-radius-pill);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.plant-badge-herbal        { background-color: rgba(0, 153, 79, 0.12);  color: var(--color-spanish-green); }
+.plant-badge-flower        { background-color: rgba(181, 83, 60, 0.12); color: var(--color-rust); }
+.plant-badge-non-herbal    { background-color: rgba(2, 132, 199, 0.12); color: var(--color-cerulean-blue); }
+.plant-badge-herbal-flower { background-color: rgba(212, 175, 55, 0.15); color: var(--color-dark-amber); }
+
+/* Expand toggle */
+.btn-expand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius-sm);
+    background: transparent;
+    color: var(--color-forest-green);
+    cursor: pointer;
+    transition: transform 0.2s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-expand svg {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.2s ease;
+}
+
+.btn-expand:hover {
+    background-color: var(--color-forest-green);
+    border-color: var(--color-forest-green);
+    color: var(--color-white);
+}
+
+.btn-expand.expanded svg {
+    transform: rotate(180deg);
+}
+
+/* Expanded detail row */
+.plant-detail-row td {
+    background-color: var(--color-bg-light);
+    padding: 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.plant-detail-content {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 18px 20px;
+}
+
+.plant-detail-item span.label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-forest-green);
+    margin-bottom: 3px;
+}
+
+.plant-detail-item span.value {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
+}
+
+.plants-empty-state {
+    padding: 40px 20px;
+    text-align: center;
+    color: #888;
+    font-size: 14px;
+}
+
+/* =========================================
+   PAGINATION (shared pattern with Users page)
+   ========================================= */
+
+.pagination-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #eee;
+}
+
+.pagination-info { color: #666; font-size: 13px; }
+
+.pagination-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.page-btn {
+    min-width: 36px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-white);
+    color: #333;
+    font-family: var(--font-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+    border-color: var(--color-forest-green);
+    color: var(--color-forest-green);
+}
+
+.page-btn.active {
+    background-color: var(--color-forest-green);
+    border-color: var(--color-forest-green);
+    color: var(--color-white);
+}
+
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* =========================================
+   RESPONSIVE
+   ========================================= */
+
+@media (min-width: 600px) {
+    .plants-search { max-width: 320px; }
+}
+
+@media (min-width: 768px) {
+    .plant-detail-content {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .pagination-container {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+    }
+}
+
+@media (min-width: 1024px) {
+    .plant-detail-content {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* =========================================
+   MOBILE INVENTORY: stacked cards instead of
+   a cramped, horizontally-scrolling table.
+   ========================================= */
+
+@media (max-width: 767px) {
+    .plants-table-wrapper {
+        overflow-x: visible;
+        background-color: transparent;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .plants-table {
+        min-width: 0;
+    }
+
+    .plants-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .plants-table tbody,
+    .plants-table tr,
+    .plants-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .plants-table tbody tr.plant-row {
+        position: relative;
+        background-color: var(--color-white);
+        border: 1px solid #eee;
+        border-radius: var(--border-radius-md);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        padding: 14px 16px 14px 56px;
+        margin-bottom: 10px;
+    }
+
+    .plants-table tbody tr.plant-row:hover {
+        background-color: var(--color-white);
+    }
+
+    .plants-table tbody td {
+        padding: 5px 0;
+        border-bottom: none;
+    }
+
+    .plants-table tbody td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--color-forest-green);
+        margin-bottom: 2px;
+    }
+
+    .plants-table tbody td:first-child {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        width: auto;
+        padding: 0;
+    }
+
+    .plant-detail-row {
+        margin-top: -10px;
+        margin-bottom: 10px;
+    }
+
+    .plant-detail-row td {
+        border-radius: 0 0 var(--border-radius-md) var(--border-radius-md);
+        border: 1px solid #eee;
+        border-top: none;
+    }
+
+    .plant-detail-content {
+        padding: 16px;
+    }
+}
+/* =========================================
+   PLANT REQUEST PREVIEW (pending plant requests)
+   ========================================= */
+.plant-preview-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.plant-preview-thumb {
+    display: block;
+    width: 76px;
+    height: 76px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #e0e0e0;
+    background: #f4f4f4;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.plant-preview-thumb:hover {
+    border-color: var(--color-forest-green, #2e6417);
+    transform: scale(1.04);
+}
+
+.plant-preview-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.plant-preview-caption,
+.plant-preview-text,
+.plant-preview-note {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: #666;
+}
+
+.plant-preview-caption { color: var(--color-forest-green, #2e6417); font-weight: 600; }
+.plant-preview-note { font-style: italic; }

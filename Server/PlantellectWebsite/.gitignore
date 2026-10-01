@@ -4,4 +4,8 @@ config/seed.cjs
 .kilo
 reference-ONLY
 certificates/
-administration/botanist/certificates/
+administration/botanist/*
+config/reset.cjs
+config/testingdb.cjs
+config/ids.js
+scripts

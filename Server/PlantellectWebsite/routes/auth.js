@@ -1,149 +1,131 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
-const multer = require('multer');
-const path = require('path');
-const crypto = require('crypto');
 const fs = require('fs');
 const { mysqlPool } = require('../config/mysql.js');
-const { getPermissionsVersion, loadAccountPermissions, insertCertificate, insertRoleRequest } = require('../config/mysql.js');
-const { logAuthEvent } = require('../models/Authlog');
+const {
+    getPermissionsVersion,
+    loadAccountPermissions,
+    insertCertificate,
+    insertRoleRequest,
+    recordConsent
+} = require('../config/mysql.js');
+const { logAuthEvent } = require('../mongoose-schemas/Authlog');
 const settings = require('../config/settings');
+const { uploadCertificate } = require('../config/upload');
 
 const router = express.Router();
 
-const certificateStorage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, settings.certificates.storageDir);
-    },
-    filename: function (req, file, cb) {
-        const ext = path.extname(file.originalname).toLowerCase();
-        const uniqueName = `${crypto.randomUUID()}${ext}`;
-        cb(null, uniqueName);
-    }
-});
+const CONSENT_TYPES = ['terms', 'info_usage'];
 
-const uploadCertificate = multer({
-    storage: certificateStorage,
-    limits: {
-        fileSize: settings.certificates.maxSizeBytes
-    },
-    fileFilter: function (req, file, cb) {
-        const allowedMimeTypes = settings.certificates.allowedMimeTypes;
-        const allowedExtensions = settings.certificates.allowedExtensions;
-        const ext = path.extname(file.originalname).toLowerCase();
-        
-        if (allowedMimeTypes.includes(file.mimetype) && allowedExtensions.includes(ext)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Invalid file type. Only PDF, JPG, JPEG, PNG allowed.'), false);
-        }
+function discardUploadedFile(file) {
+    if (file && file.path && fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
     }
-});
+}
+
+/**
+ * Replaces the session id before storing the authenticated session, so an id
+ * planted before sign-in is not still valid afterwards. Fails the request rather
+ * than falling back to the old id.
+ */
+function regenerateThenSet(req, sessionData) {
+    return new Promise((resolve, reject) => {
+        req.session.regenerate((err) => {
+            if (err) return reject(err);
+            Object.assign(req.session, sessionData);
+            req.session.save((saveErr) => (saveErr ? reject(saveErr) : resolve()));
+        });
+    });
+}
 
 router.post('/register', uploadCertificate.single('certificate'), async (req, res) => {
     const { email, username, password, firstName, lastName, role } = req.body;
     const certFile = req.file;
 
     if (!email || !username || !password) {
-        if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
+        discardUploadedFile(certFile);
         return res.status(400).json({ error: 'Email, username, and password are required' });
     }
-
     if (password.length < 6) {
-        if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
+        discardUploadedFile(certFile);
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
-
     if (username.length < 6) {
-        if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
+        discardUploadedFile(certFile);
         return res.status(400).json({ error: 'Username must be at least 6 characters' });
+    }
+
+    // Consent is required from the server's point of view, not just the browser's.
+    const acceptedTerms = ['true', 'on', '1'].includes(String(req.body.agreeTerms).toLowerCase());
+    const acceptedInfo = ['true', 'on', '1'].includes(String(req.body.agreeInfo).toLowerCase());
+    if (!acceptedTerms || !acceptedInfo) {
+        discardUploadedFile(certFile);
+        return res.status(400).json({ error: 'You must agree to the terms and to the use of your information' });
     }
 
     let selectedRole = 'user';
     if (role && ['user', 'botanist'].includes(role)) {
         selectedRole = role;
     }
-
     if (selectedRole === 'botanist' && !certFile) {
         return res.status(400).json({ error: 'Certificate is required for Botanist registration' });
     }
 
+    const conn = await mysqlPool.getConnection();
     try {
-        const [existing] = await mysqlPool.query(
+        const [existing] = await conn.query(
             'SELECT accountId FROM accounts WHERE email = ? OR username = ?',
             [email, username]
         );
         if (existing.length > 0) {
-            if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
+            await conn.rollback();
+            discardUploadedFile(certFile);
             return res.status(409).json({ error: 'Email or username already exists' });
         }
 
-        const passwordHash = await bcrypt.hash(password, 10);
-
-        const [userRows] = await mysqlPool.query('SELECT roleId FROM roles WHERE roleName = ?', ['user']);
+        const [userRows] = await conn.query('SELECT roleId FROM roles WHERE roleName = ?', ['user']);
         if (userRows.length === 0) {
-            if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
+            await conn.rollback();
+            discardUploadedFile(certFile);
             return res.status(500).json({ error: 'Default role not found' });
         }
-        const userRoleId = userRows[0].roleId;
 
-        let isPending = false;
-        let accountRoleId = userRoleId;
-
-        if (selectedRole === 'botanist') {
-            const [botanistRows] = await mysqlPool.query('SELECT roleId FROM roles WHERE roleName = ?', ['botanist']);
-            if (botanistRows.length === 0) {
-                if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
-                return res.status(500).json({ error: 'Botanist role not found' });
-            }
-            accountRoleId = userRoleId;
-            isPending = true;
-        }
-
-        const [result] = await mysqlPool.query(
-            'INSERT INTO accounts (email, username, password_hash, roleId) VALUES (?, ?, ?, ?)',
-            [email, username, passwordHash, accountRoleId]
+        // A pending botanist gets a usable 'user' account straight away; the
+        // botanist permissions arrive only when an admin approves.
+        const isPending = selectedRole === 'botanist';
+        const passwordHash = await bcrypt.hash(password, 10);
+        const accountId = await require('../config/ids.js').insertRow(
+            conn,
+            'accounts',
+            ['email', 'username', 'passwordHash', 'roleId', 'status'],
+            [email, username, passwordHash, userRows[0].roleId, 'active']
         );
 
-        const accountId = result.insertId;
-
-        await mysqlPool.query(
+        await conn.query(
             'INSERT INTO profiles (accountId, firstName, lastName) VALUES (?, ?, ?)',
             [accountId, firstName || null, lastName || null]
         );
+        await recordConsent(conn, accountId, CONSENT_TYPES, settings.terms.version);
 
         if (isPending) {
-            await insertRoleRequest(mysqlPool, accountId, 'botanist');
-            
+            await insertRoleRequest(conn, accountId, 'botanist');
             if (certFile) {
-                const accountDir = path.join(settings.certificates.storageDir, String(accountId));
-                if (!fs.existsSync(accountDir)) {
-                    fs.mkdirSync(accountDir, { recursive: true });
-                }
-                const ext = path.extname(certFile.originalname).toLowerCase();
-                const uniqueName = `${crypto.randomUUID()}${ext}`;
-                const relativePath = path.join(String(accountId), uniqueName);
-                const fullPath = path.join(settings.certificates.storageDir, relativePath);
-                
-                fs.renameSync(certFile.path, fullPath);
-                
-                await mysqlPool.query(
-                    `INSERT INTO certificates (accountId, original_filename, stored_filename, stored_path, mime_type, size)
-                     VALUES (?, ?, ?, ?, ?, ?)`,
-                    [accountId, certFile.originalname, uniqueName, relativePath, certFile.mimetype, certFile.size]
-                );
+                await insertCertificate(conn, accountId, certFile);
             }
-        } else if (certFile && fs.existsSync(certFile.path)) {
-            fs.unlinkSync(certFile.path);
+        } else {
+            discardUploadedFile(certFile);
         }
+
+        await conn.commit();
 
         const perms = await loadAccountPermissions(accountId);
         const version = await getPermissionsVersion();
-
-        req.session.accountId = accountId;
-        req.session.roles = perms.roles;
-        req.session.permissions = perms.permissions;
-        req.session.permissionsVersion = version;
+        await regenerateThenSet(req, {
+            accountId,
+            roles: perms.roles,
+            permissions: perms.permissions,
+            permissionsVersion: version
+        });
 
         await logAuthEvent({
             accountId,
@@ -152,7 +134,7 @@ router.post('/register', uploadCertificate.single('certificate'), async (req, re
             userAgent: req.get('User-Agent') || ''
         });
 
-        res.json({
+        res.status(201).json({
             accountId,
             email: perms.email || email,
             username,
@@ -161,9 +143,12 @@ router.post('/register', uploadCertificate.single('certificate'), async (req, re
             pending: isPending
         });
     } catch (err) {
-        if (certFile && fs.existsSync(certFile.path)) fs.unlinkSync(certFile.path);
+        await conn.rollback();
+        discardUploadedFile(certFile);
         console.error('Register error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Registration failed' });
+    } finally {
+        conn.release();
     }
 });
 
@@ -175,20 +160,12 @@ router.post('/login', async (req, res) => {
     }
 
     try {
-        let account;
-        if (email) {
-            const [rows] = await mysqlPool.query(
-                'SELECT accountId, email, username, password_hash FROM accounts WHERE email = ?',
-                [email]
-            );
-            account = rows[0];
-        } else {
-            const [rows] = await mysqlPool.query(
-                'SELECT accountId, email, username, password_hash FROM accounts WHERE username = ?',
-                [username]
-            );
-            account = rows[0];
-        }
+        const field = email ? 'email' : 'username';
+        const [rows] = await mysqlPool.query(
+            `SELECT accountId, email, username, passwordHash, status FROM accounts WHERE ${field} = ?`,
+            [email || username]
+        );
+        const account = rows[0];
 
         if (!account) {
             await logAuthEvent({
@@ -201,7 +178,7 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        const passwordMatch = await bcrypt.compare(password, account.password_hash);
+        const passwordMatch = await bcrypt.compare(password, account.passwordHash);
         if (!passwordMatch) {
             await logAuthEvent({
                 accountId: 0,
@@ -213,15 +190,24 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
+        if (account.status !== 'active') {
+            return res.status(403).json({
+                error: 'This account has been suspended. Contact an administrator.'
+            });
+        }
+
+        await mysqlPool.query('UPDATE accounts SET lastLoginAt = NOW() WHERE accountId = ?', [account.accountId]);
+
         const perms = await loadAccountPermissions(account.accountId);
         const version = await getPermissionsVersion();
-
-        req.session.accountId = account.accountId;
-        req.session.roles = perms.roles;
-        req.session.permissions = perms.permissions;
-        req.session.permissionsVersion = version;
-
         const rememberMe = ['true', 'on', '1', true].includes(req.body.rememberMe);
+
+        await regenerateThenSet(req, {
+            accountId: account.accountId,
+            roles: perms.roles,
+            permissions: perms.permissions,
+            permissionsVersion: version
+        });
         req.session.cookie.maxAge = rememberMe ? settings.session.rememberMeTimeout : undefined;
 
         await logAuthEvent({
@@ -240,7 +226,7 @@ router.post('/login', async (req, res) => {
         });
     } catch (err) {
         console.error('Login error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Login failed' });
     }
 });
 
@@ -264,7 +250,7 @@ router.post('/logout', async (req, res) => {
         });
     } catch (err) {
         console.error('Logout error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Logout failed' });
     }
 });
 
@@ -297,7 +283,7 @@ router.get('/me', async (req, res) => {
         });
     } catch (err) {
         console.error('Me error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to load session' });
     }
 });
 

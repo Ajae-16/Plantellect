@@ -1,15 +1,82 @@
 @import './variables.css';
 
+/* =========================================================
+   sidebar.css (public)
+   Same look as the admin sidebar:
+     - mobile (<768px): off-canvas drawer
+     - desktop (>=768px): docked full-height column that collapses to an icon rail
+   Page content is pushed over by body.has-sidebar (added by sidebar.js).
+   ========================================================= */
+
+:root {
+    --sidebar-width: 240px;
+    --sidebar-width-collapsed: 68px;
+
+    /* Spacing that scales with the screen height / width */
+    --sidebar-item-pad-y: clamp(10px, 1.9vh, 14px);
+    --sidebar-item-pad-x: clamp(16px, 2vw, 22px);
+    --sidebar-item-gap: clamp(10px, 1.2vw, 14px);
+    --sidebar-item-font: clamp(14px, 1.1vw + 6px, 15px);
+    --sidebar-group-gap: clamp(8px, 1.5vh, 12px);
+
+    /* ----- Sidebar colors: LIGHT mode (default) -----
+       A lighter forest green than --color-forest-green (#2e6417).
+       Move this line into variables.css if you prefer. */
+    --color-light-forest-green: #3f7d20;
+
+    --sb-bg:                 var(--color-light-forest-green);
+    --sb-text:               var(--color-bg-light);
+    --sb-text-hover:         var(--color-white);
+    --sb-heading:            var(--color-beige);
+    --sb-border:             rgba(255, 255, 255, 0.22);
+    --sb-hover-bg:           rgba(255, 255, 255, 0.10);
+    --sb-active-bg:          rgba(255, 255, 255, 0.18);
+    --sb-active-text:        var(--color-white);
+    --sb-active-border:      var(--color-library-green);
+    --sb-toggle-bg:          rgba(255, 255, 255, 0.14);
+    --sb-switch-bg:          rgba(0, 0, 0, 0.20);
+    --sb-switch-active-bg:   var(--color-bg-light);
+    --sb-switch-active-text: var(--color-forest-green);
+    --sb-logout:             #ffd6d3;
+    --sb-logout-hover-bg:    rgba(0, 0, 0, 0.18);
+    --sb-shadow:             0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+/* ----- Sidebar colors: DARK mode ----- */
+html[data-theme="dark"] {
+    --sb-bg:                 var(--color-dark-jungle-green);
+    --sb-text:               var(--color-timberwolf);
+    --sb-text-hover:         var(--color-white);
+    --sb-heading:            var(--color-library-green);
+    --sb-border:             rgba(220, 215, 201, 0.16);
+    --sb-hover-bg:           rgba(255, 255, 255, 0.06);
+    --sb-active-bg:          rgba(255, 255, 255, 0.10);
+    --sb-active-text:        var(--color-bg-nav-light);
+    --sb-active-border:      var(--color-bg-nav-light);
+    --sb-toggle-bg:          rgba(255, 255, 255, 0.08);
+    --sb-switch-bg:          rgba(0, 0, 0, 0.30);
+    --sb-switch-active-bg:   var(--color-bg-nav-light);
+    --sb-switch-active-text: var(--color-dark-jungle-green);
+    --sb-logout:             var(--color-error-hover);
+    --sb-logout-hover-bg:    rgba(217, 83, 79, 0.12);
+    --sb-shadow:             0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
 body.drawer-open {
     overflow: hidden;
 }
 
-body.no-sidebar {
-    /* Used when sidebar has no items (guest mode) */
+/* Guests (and the moment before sidebar.js renders) get no sidebar at all */
+body:not(.has-sidebar) .sidebar {
+    display: none;
 }
 
+/* =========================================
+   HAMBURGER (mobile only)
+   ========================================= */
+
 .nav-hamburger {
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     width: 44px;
@@ -24,7 +91,6 @@ body.no-sidebar {
     position: sticky;
     left: 0;
     z-index: 10;
-    transition: background var(--transition-fast);
 }
 
 .nav-hamburger:hover {
@@ -36,23 +102,32 @@ body.no-sidebar {
     outline-offset: 2px;
 }
 
+@media (max-width: 767px) {
+    .nav-hamburger {
+        display: flex;
+    }
+}
+
+/* =========================================
+   SIDEBAR (mobile: off-canvas drawer)
+   ========================================= */
+
 .sidebar {
     position: fixed;
     top: 0;
     left: 0;
-    width: 280px;
-    max-width: 85vw;
+    width: min(280px, 82vw);
     height: 100vh;
-    background: var(--color-white);
+    height: 100dvh;
     display: flex;
     flex-direction: column;
-    gap: 0;
-    padding: 0;
-    padding-top: 80px;
+    background: var(--sb-bg);
+    color: var(--sb-text);
+    padding: 64px 0 0;
     transform: translateX(-100%);
     transition: transform var(--transition-normal) ease;
     z-index: var(--z-index-drawer);
-    box-shadow: var(--box-shadow-modal);
+    box-shadow: var(--sb-shadow);
     overflow-y: auto;
 }
 
@@ -62,11 +137,8 @@ body.no-sidebar {
 
 .sidebar-scrim {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: var(--color-overlay-darker);
+    inset: 0;
+    background: var(--color-overlay);
     opacity: 0;
     visibility: hidden;
     transition: opacity var(--transition-normal), visibility var(--transition-normal);
@@ -86,16 +158,15 @@ body.no-sidebar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
-    background: var(--color-forest-green);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 18px 20px;
+    background: var(--sb-bg);
+    border-bottom: 1px solid var(--sb-border);
 }
 
 .sidebar-header h3 {
-    color: var(--color-white);
-    font-family: var(--font-primary);
-    font-size: 18px;
-    font-weight: bold;
+    color: var(--sb-heading);
+    font-size: 15px;
+    text-transform: uppercase;
     letter-spacing: 1px;
 }
 
@@ -103,89 +174,175 @@ body.no-sidebar {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
     background: transparent;
     border: none;
     border-radius: var(--border-radius-md);
-    color: var(--color-white);
-    font-size: 24px;
+    color: var(--sb-text);
+    line-height: 1;
     cursor: pointer;
-    transition: background var(--transition-fast);
+    padding: 4px 8px;
 }
 
 .sidebar-close:hover {
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--sb-active-text);
+}
+
+/* Collapse / expand toggle (desktop only) */
+.sidebar-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin: 12px 14px 0 auto;
+    flex-shrink: 0;
+    background: var(--sb-toggle-bg);
+    border: none;
+    border-radius: 8px;
+    color: var(--sb-text);
+    cursor: pointer;
 }
 
 .sidebar-nav {
     display: flex;
     flex-direction: column;
-    gap: 0;
-    padding: 16px 0;
-    flex: 1;
-    overflow-y: auto;
+    flex: 1 0 auto;
+    gap: 2px;
+    padding: var(--sidebar-group-gap) 0;
+    /* reset the global header `nav` rules from base.css, just in case */
+    min-width: 0;
+    padding-left: 0;
 }
 
-.sidebar-item {
+.sidebar-item,
+.sidebar-logout-link {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: var(--sidebar-item-gap);
+    padding: var(--sidebar-item-pad-y) var(--sidebar-item-pad-x);
+    color: var(--sb-text);
     text-decoration: none;
-    color: var(--color-forest-green);
-    font-weight: bold;
-    font-size: 15px;
-    letter-spacing: 0.5px;
-    padding: 14px 20px;
-    transition: background var(--transition-fast), color var(--transition-fast);
+    font-size: var(--sidebar-item-font);
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    border-left: 3px solid transparent;
 }
 
-.sidebar-item .icon {
-    font-size: 20px;
+.sidebar-item .icon,
+.sidebar-item .material-symbols-outlined {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 24px;
-    text-align: center;
+    font-size: 22px;
+    flex-shrink: 0;
 }
 
-.sidebar-item.active {
-    color: var(--color-success);
-    background: rgba(0, 188, 212, 0.08);
+.nav-link-text {
+    flex: 1;
+    white-space: nowrap;
 }
 
 .sidebar-item:hover {
-    color: var(--color-success);
-    background: rgba(0, 188, 212, 0.08);
+    background-color: var(--sb-hover-bg);
+    color: var(--sb-text-hover);
+}
+
+.sidebar-item.active {
+    background-color: var(--sb-active-bg);
+    color: var(--sb-active-text);
+    border-left-color: var(--sb-active-border);
+    font-weight: 700;
 }
 
 .sidebar-item.profile-link {
-    margin-top: auto;
-    border-top: 1px solid var(--color-border-light);
-    padding-top: 16px;
+    margin-top: var(--sidebar-group-gap);
+    border-top: 1px solid var(--sb-border);
 }
 
 .sidebar-logout-link {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    text-decoration: none;
-    color: var(--color-error);
-    font-weight: bold;
-    font-size: 15px;
-    letter-spacing: 0.5px;
-    padding: 14px 20px;
-    border-top: 1px solid var(--color-border-light);
-    transition: background var(--transition-fast);
+    margin-top: var(--sidebar-group-gap);
+    border-top: 1px solid var(--sb-border);
+    color: var(--sb-logout);
 }
 
 .sidebar-logout-link:hover {
-    background: rgba(169, 68, 66, 0.08);
+    background-color: var(--sb-logout-hover-bg);
+    color: var(--sb-logout);
 }
+
+/* =========================================
+   APPEARANCE SWITCH (its own block at the bottom)
+   ========================================= */
+
+.sidebar-theme-switch {
+    flex-shrink: 0;
+    margin: var(--sidebar-group-gap) 16px clamp(12px, 2.5vh, 20px);
+    padding-top: clamp(10px, 2vh, 16px);
+    border-top: 1px solid var(--sb-border);
+}
+
+.sidebar-theme-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--sb-heading);
+}
+
+.sidebar-theme-options {
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    border-radius: var(--border-radius-pill);
+    background-color: var(--sb-switch-bg);
+}
+
+.sidebar-theme-options button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 8px;
+    border: none;
+    border-radius: var(--border-radius-pill);
+    background: transparent;
+    color: var(--sb-text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar-theme-options button .material-symbols-outlined {
+    font-size: 18px;
+}
+
+.sidebar-theme-options button:hover {
+    color: var(--sb-text-hover);
+}
+
+.sidebar-theme-options button.active {
+    background-color: var(--sb-switch-active-bg);
+    color: var(--sb-switch-active-text);
+}
+
+.sidebar-theme-options button:focus-visible {
+    outline: 2px solid var(--sb-active-border);
+    outline-offset: 2px;
+}
+
+/* =========================================
+   "SIGN IN TO UNLOCK" POPUP
+   ========================================= */
 
 .restricted-popup-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
     background-color: var(--color-overlay);
     display: flex;
     justify-content: center;
@@ -194,21 +351,246 @@ body.no-sidebar {
     padding: 16px;
 }
 
-@media (min-width: 768px) {
-    .sidebar-item.profile-link {
-        margin-top: 40px;
-        border-top: 1px solid #ccc;
-        padding-top: 20px;
-    }
+.restricted-popup-box {
+    position: relative;
+    width: 100%;
+    max-width: 340px;
+    padding: 32px 24px 24px;
+    text-align: center;
+    background: var(--color-white);
+    color: #222;
+    border-radius: var(--border-radius-xl);
+    box-shadow: var(--box-shadow-popup);
+}
 
-    .sidebar-logout-link {
-        padding: 0;
-        border-top: 1px solid #ccc;
-        padding-top: 20px;
-        margin-top: 40px;
-    }
+.restricted-popup-box p {
+    margin-bottom: 18px;
+    font-size: 16px;
+    font-weight: 500;
+}
 
+.restricted-popup-box .close-btn {
+    position: absolute;
+    top: 8px;
+    right: 14px;
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+    color: #888;
+}
+
+.restricted-popup-box .close-btn:hover {
+    color: var(--color-error-hover);
+}
+
+.login-redirect-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: var(--border-radius-pill);
+    background: var(--color-forest-green);
+    color: var(--color-white);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.login-redirect-btn:hover {
+    background: var(--color-success);
+}
+
+/* =========================================
+   HOVER FLOAT (same as admin)
+   ========================================= */
+
+.sidebar-item,
+.sidebar-logout-link,
+.nav-hamburger,
+.sidebar-toggle {
+    transition: transform var(--transition-fast) ease,
+                box-shadow var(--transition-fast) ease,
+                background-color var(--transition-fast),
+                background var(--transition-fast),
+                color var(--transition-fast),
+                border-color var(--transition-fast);
+}
+
+.sidebar-item:hover,
+.sidebar-logout-link:hover,
+.nav-hamburger:hover,
+.sidebar-toggle:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25);
+}
+
+.sidebar-item:active,
+.sidebar-logout-link:active {
+    transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar,
     .sidebar-scrim {
+        transition: none;
+    }
+
+    .sidebar-item:hover,
+    .sidebar-logout-link:hover,
+    .nav-hamburger:hover,
+    .sidebar-toggle:hover {
+        transform: none;
+    }
+}
+
+/* =========================================
+   SIDEBAR (desktop: docked column + collapsible icon rail)
+   ========================================= */
+
+@media (min-width: 768px) {
+    .sidebar {
+        width: var(--sidebar-width);
+        max-width: none;
+        padding-top: 0;
+        transform: none;
+        box-shadow: none;
+        border-right: 1px solid var(--sb-border);
+        overflow-x: hidden;
+        z-index: var(--z-index-header);
+        transition: width var(--transition-normal) ease;
+    }
+
+    .sidebar-header,
+    .sidebar-close,
+    .sidebar-scrim {
+        display: none !important;
+    }
+
+    .sidebar-toggle {
+        display: flex;
+    }
+
+    /* Push page content beside the docked sidebar */
+    body.has-sidebar {
+        padding-left: var(--sidebar-width);
+        transition: padding-left var(--transition-normal) ease;
+    }
+
+    /* ----- Collapsed = icon rail ----- */
+    html.sidebar-collapsed .sidebar {
+        width: var(--sidebar-width-collapsed);
+    }
+
+    html.sidebar-collapsed body.has-sidebar {
+        padding-left: var(--sidebar-width-collapsed);
+    }
+
+    html.sidebar-collapsed .sidebar-toggle {
+        margin: 12px auto 0;
+    }
+
+    html.sidebar-collapsed .sidebar-toggle .toggle-glyph {
+        transform: rotate(180deg);
+    }
+
+    html.sidebar-collapsed .sidebar-item,
+    html.sidebar-collapsed .sidebar-logout-link {
+        justify-content: center;
+        /* right padding balances the 3px active border so icons stay centred */
+        padding: var(--sidebar-item-pad-y) 3px var(--sidebar-item-pad-y) 0;
+        gap: 0;
+    }
+
+    html.sidebar-collapsed .nav-link-text {
         display: none;
     }
+
+    /* Appearance switch: the two options stack as icon-only buttons */
+    html.sidebar-collapsed .sidebar-theme-switch {
+        margin: 16px 8px 20px;
+    }
+
+    html.sidebar-collapsed .sidebar-theme-label,
+    html.sidebar-collapsed .sidebar-theme-text {
+        display: none;
+    }
+
+    html.sidebar-collapsed .sidebar-theme-options {
+        flex-direction: column;
+        border-radius: var(--border-radius-xl);
+    }
+
+    html.sidebar-collapsed .sidebar-theme-options button {
+        padding: 8px 0;
+    }
+}
+
+
+/* =========================================
+   SMALL SCREENS / SHORT SCREENS
+   ========================================= */
+
+@media (max-width: 479px) {
+    .sidebar-theme-options button {
+        padding: 6px 6px;
+        font-size: 12px;
+    }
+}
+
+@media (max-height: 600px) {
+    :root {
+        --sidebar-item-pad-y: 8px;
+        --sidebar-group-gap: 6px;
+    }
+
+    .sidebar-toggle {
+        margin-top: 8px;
+    }
+
+    .sidebar-theme-label {
+        margin-bottom: 4px;
+    }
+}
+
+
+/* =========================================
+   THEME BUTTON FOR GUESTS (no sidebar to hold the switch)
+   ========================================= */
+
+.theme-fab {
+    position: fixed;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 50%;
+    background: var(--color-forest-green);
+    color: var(--color-white);
+    box-shadow: var(--box-shadow-popup);
+    cursor: pointer;
+    z-index: var(--z-index-popup);
+    transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.theme-fab:hover {
+    background: var(--color-success);
+    transform: translateY(-2px);
+}
+
+.theme-fab:focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 2px;
+}
+
+
+/* Smooth color change when the theme is switched */
+.sidebar,
+.sidebar-header {
+    transition-property: transform, width, background-color, border-color;
+    transition-duration: var(--transition-normal);
+    transition-timing-function: ease;
 }

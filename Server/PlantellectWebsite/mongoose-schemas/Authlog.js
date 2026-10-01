@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 
 const authlogSchema = new mongoose.Schema(
     {
-        accountId: { type: Number, required: true },
+        // Account ids are prefixed strings ('acc_000001'), not integers.
+        accountId: { type: String, required: true },
         action: { type: String, required: true, enum: ['login', 'logout', 'register', 'failed_login'] },
         ip: { type: String, default: '' },
         userAgent: { type: String, default: '' },

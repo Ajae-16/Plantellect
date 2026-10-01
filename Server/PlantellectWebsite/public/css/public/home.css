@@ -3,6 +3,42 @@
 @import '../core/components.css';
 @import '../core/sidebar.css';
 
+/* =========================================
+   HOME ONLY: cucumber leaf background
+   ========================================= */
+
+.background-image {
+    background-image: url('../../resource/Cucumber_leaf.jpg');
+    background-size: cover;
+    background-position: center;
+}
+
+/* 100vw ignores the docked sidebar and overflows sideways */
+.hero-container {
+    width: 100%;
+}
+
+/* No logo is rendered in this header, so drop the 170px logo gap from the nav */
+@media (min-width: 1024px) {
+    nav {
+        padding-left: 0;
+    }
+}
+
+/* Keep the hero text inside the space beside the sidebar */
+@media (min-width: 1024px) {
+    .hero-content {
+        left: clamp(24px, 6vw, var(--spacing-hero-content-left));
+        right: 24px;
+        width: auto;
+        max-width: var(--spacing-hero-content-width);
+    }
+}
+
+/* =========================================
+   ABOUT MODAL
+   ========================================= */
+
 .about-modal {
     position: absolute;
     top: 50%;
@@ -162,6 +198,10 @@
         font-size: 20px;
     }
 }
+
+/* =========================================
+   SLIDER
+   ========================================= */
 
 .slider-wrapper {
     width: 100%;

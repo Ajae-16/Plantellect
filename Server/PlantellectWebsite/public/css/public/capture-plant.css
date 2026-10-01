@@ -1,0 +1,232 @@
+
+.scan-plant-btn {
+    padding: 10px 24px;
+    background-color: var(--color-library-green, #2e7d32);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.scan-plant-btn:hover {
+    background-color: var(--color-library-green-dark, #1b5e20);
+    transform: translateY(-1px);
+}
+
+.scan-plant-btn:active {
+    transform: translateY(0);
+}
+
+/* Scan Modal */
+.scan-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.scan-modal.active {
+    display: flex;
+}
+
+.scan-modal-content {
+    background-color: white;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.scan-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.scan-modal-header h3 {
+    margin: 0;
+    font-size: 20px;
+    color: var(--color-library-green, #2e7d32);
+}
+
+.scan-modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    line-height: 1;
+}
+
+.scan-modal-close:hover {
+    color: #000;
+}
+
+.scan-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.scan-upload-area {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.scan-upload-area:hover,
+.scan-upload-area.drag-over {
+    border-color: var(--color-library-green, #2e7d32);
+}
+
+.scan-upload-prompt p {
+    margin: 4px 0;
+    color: #666;
+}
+
+.scan-upload-hint {
+    font-size: 12px !important;
+    color: #999 !important;
+}
+
+.scan-preview {
+    text-align: center;
+}
+
+.scan-preview img {
+    max-width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.scan-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.scan-action-btn {
+    padding: 10px 20px;
+    border: 1px solid #ccc;
+    background-color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.scan-action-btn:hover {
+    background-color: #f0f0f0;
+}
+
+.scan-action-btn.primary {
+    background-color: var(--color-library-green, #2e7d32);
+    color: white;
+    border-color: var(--color-library-green, #2e7d32);
+}
+
+.scan-action-btn.primary:hover {
+    background-color: var(--color-library-green-dark, #1b5e20);
+}
+
+.scan-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.scan-results {
+    margin-top: 8px;
+}
+
+.scan-result-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: #666;
+}
+
+.scan-predictions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.scan-prediction-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background-color: #f8f8f8;
+    border-radius: 8px;
+}
+
+.scan-prediction-rank {
+    font-weight: 700;
+    color: var(--color-library-green, #2e7d32);
+    min-width: 24px;
+}
+
+.scan-prediction-name {
+    font-weight: 600;
+    flex: 1;
+}
+
+.scan-prediction-sci {
+    font-style: italic;
+    font-size: 13px;
+    color: #888;
+}
+
+.scan-prediction-bar {
+    flex: 1;
+    height: 8px;
+    background-color: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+    min-width: 60px;
+}
+
+.scan-prediction-fill {
+    height: 100%;
+    background-color: var(--color-library-green, #2e7d32);
+    border-radius: 4px;
+    transition: width 0.3s;
+}
+
+.scan-prediction-conf {
+    font-weight: 600;
+    min-width: 45px;
+    text-align: right;
+}
+
+.scan-loading {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+}
+
+.scan-error {
+    color: #d32f2f;
+    text-align: center;
+    padding: 16px;
+}

@@ -1,0 +1,329 @@
+@import '../core/variables.css';
+
+/* =========================================================
+   admin-theme.css
+   1) Appearance switch (light / dark) at the bottom of the sidebar
+   2) Dark mode, built from the Plantellect palette in variables.css
+
+   Load this LAST in <head>, after the page's own stylesheet.
+   The theme is set by admin-sidebar.js via <html data-theme="...">
+   ========================================================= */
+
+/* =========================================
+   APPEARANCE SWITCH (its own block, apart from the nav links)
+   ========================================= */
+
+/* Sidebar becomes a column so the switch sits at the very bottom */
+.admin-sidebar {
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-sidebar nav {
+    flex: 1 0 auto;
+}
+
+.admin-theme-switch {
+    flex-shrink: 0;
+    margin: 24px 16px 20px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.admin-theme-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--color-library-green);
+}
+
+.admin-theme-options {
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    border-radius: var(--border-radius-pill);
+    background-color: rgba(0, 0, 0, 0.25);
+}
+
+.admin-theme-options button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 8px;
+    border: none;
+    border-radius: var(--border-radius-pill);
+    background: transparent;
+    color: var(--color-timberwolf);
+    font-family: var(--font-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.admin-theme-options button .material-symbols-outlined {
+    font-size: 18px;
+}
+
+.admin-theme-options button:hover {
+    color: var(--color-white);
+}
+
+.admin-theme-options button.active {
+    background-color: var(--color-bg-nav-light);
+    color: var(--color-dark-jungle-green);
+}
+
+.admin-theme-options button:focus-visible {
+    outline: 2px solid var(--color-bg-nav-light);
+    outline-offset: 2px;
+}
+
+/* Collapsed rail: the two options stack as icon-only buttons */
+@media (min-width: 768px) {
+    html.sidebar-collapsed .admin-theme-switch {
+        margin: 16px 8px 20px;
+    }
+
+    html.sidebar-collapsed .admin-theme-label,
+    html.sidebar-collapsed .admin-theme-text {
+        display: none;
+    }
+
+    html.sidebar-collapsed .admin-theme-options {
+        flex-direction: column;
+        border-radius: var(--border-radius-xl);
+    }
+
+    html.sidebar-collapsed .admin-theme-options button {
+        padding: 8px 0;
+    }
+}
+
+/* =========================================
+   DARK MODE
+   ========================================= */
+
+html[data-theme="light"] { color-scheme: light; }
+
+html[data-theme="dark"] {
+    color-scheme: dark;
+
+    --dk-bg:         #1b2118;                       /* deeper than dark-jungle-green */
+    --dk-surface:    var(--color-dark-jungle-green);/* #2c3427 */
+    --dk-surface-2:  var(--color-modal-bg);         /* #303d2b */
+    --dk-hover:      #38472f;
+    --dk-border:     rgba(220, 215, 201, 0.16);     /* timberwolf, faint */
+    --dk-text:       var(--color-bone);             /* #eae6d5 */
+    --dk-text-muted: rgba(234, 230, 213, 0.68);
+    --dk-accent:     var(--color-library-green);    /* #c6e78f */
+    --dk-header-row: var(--color-dark-forest-green);/* table headers */
+}
+
+/* ---------- Page ---------- */
+html[data-theme="dark"] body,
+html[data-theme="dark"] .admin-layout,
+html[data-theme="dark"] .admin-main {
+    background-color: var(--dk-bg);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .admin-main h1,
+html[data-theme="dark"] .admin-main h2,
+html[data-theme="dark"] .admin-main h3 {
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .admin-subtitle,
+html[data-theme="dark"] .request-info p,
+html[data-theme="dark"] .request-date {
+    color: var(--dk-text-muted);
+}
+
+/* ---------- Cards / panels ---------- */
+html[data-theme="dark"] .admin-card,
+html[data-theme="dark"] .pending-request-card,
+html[data-theme="dark"] .role-detail-panel,
+html[data-theme="dark"] .plants-table-wrapper {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .admin-card p {
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .plant-request-icon {
+    background-color: var(--dk-surface-2);
+}
+
+/* ---------- Search + selects ---------- */
+html[data-theme="dark"] .users-search input,
+html[data-theme="dark"] .plants-search input,
+html[data-theme="dark"] .filter-select,
+html[data-theme="dark"] .plants-filter-select {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .users-search input:focus,
+html[data-theme="dark"] .plants-search input:focus,
+html[data-theme="dark"] .filter-select:focus,
+html[data-theme="dark"] .plants-filter-select:focus {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .users-search input::placeholder,
+html[data-theme="dark"] .plants-search input::placeholder {
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .users-search .search-icon,
+html[data-theme="dark"] .plants-search .search-icon {
+    color: var(--dk-text);
+    opacity: 0.6;
+}
+
+/* ---------- Tables ---------- */
+html[data-theme="dark"] .role-detail-header {
+    border-bottom-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .users-table-wrapper {
+    border-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .users-table thead th,
+html[data-theme="dark"] .plants-table thead th {
+    background-color: var(--dk-header-row);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .users-table tbody td,
+html[data-theme="dark"] .plants-table tbody td {
+    color: var(--dk-text);
+    border-bottom-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .users-table tbody tr:hover,
+html[data-theme="dark"] .plants-table tbody tr.plant-row:hover {
+    background-color: var(--dk-hover);
+}
+
+html[data-theme="dark"] .plant-name-cell {
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .btn-view {
+    border-color: var(--dk-accent);
+    color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .btn-view:hover {
+    background-color: var(--dk-accent);
+    color: var(--color-dark-jungle-green);
+}
+
+html[data-theme="dark"] .users-empty-state,
+html[data-theme="dark"] .plants-empty-state {
+    color: var(--dk-text-muted);
+}
+
+/* ---------- Plants: expand row + details ---------- */
+html[data-theme="dark"] .btn-expand {
+    border-color: var(--dk-border);
+    color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .btn-expand:hover {
+    background-color: var(--dk-accent);
+    border-color: var(--dk-accent);
+    color: var(--color-dark-jungle-green);
+}
+
+html[data-theme="dark"] .plant-detail-row td {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .plant-detail-item span.label {
+    color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .plant-detail-item span.value {
+    color: var(--dk-text);
+}
+
+/* Mobile stacked plant cards */
+@media (max-width: 767px) {
+    html[data-theme="dark"] .plants-table tbody tr.plant-row {
+        background-color: var(--dk-surface);
+        border-color: var(--dk-border);
+    }
+
+    html[data-theme="dark"] .plants-table tbody td[data-label]::before {
+        color: var(--dk-accent);
+    }
+}
+
+/* ---------- Pagination ---------- */
+html[data-theme="dark"] .pagination-container {
+    border-top-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .pagination-info {
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .page-btn {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .page-btn:hover:not(:disabled) {
+    border-color: var(--dk-accent);
+    color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .page-btn.active {
+    background-color: var(--color-bg-nav-light);
+    border-color: var(--color-bg-nav-light);
+    color: var(--color-dark-jungle-green);
+}
+
+/* ---------- Badges (lighter text so they stay readable) ---------- */
+html[data-theme="dark"] .badge-admin,
+html[data-theme="dark"] .plant-badge-herbal-flower {
+    color: var(--color-library-green);
+}
+
+html[data-theme="dark"] .badge-botanist,
+html[data-theme="dark"] .plant-badge-herbal {
+    color: #5fd08f;
+}
+
+html[data-theme="dark"] .badge-user,
+html[data-theme="dark"] .plant-badge-non-herbal {
+    color: #6cc3f0;
+}
+
+html[data-theme="dark"] .badge-active {
+    color: #5fe3a0;
+}
+
+html[data-theme="dark"] .badge-inactive {
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .plant-badge-flower {
+    color: #f0a48f;
+}

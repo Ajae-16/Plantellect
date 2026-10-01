@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Users</title>
+
+    <!-- Shared sidebar + theme logic (must load here, no defer) -->
+    <script src="/javascript/logout.js"></script>
+    <script src="/javascript/admin-sidebar.js"></script>
+
+    <link rel="stylesheet" href="/css/admin/admin-sidebar.css">
+    <link rel="stylesheet" href="/css/admin/admin-style.css">
+    <link rel="stylesheet" href="/css/admin/admin-user.css">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="/css/admin/admin-theme.css">
+</head>
+<body>
+
+    <header class="admin-header">
+        <div class="admin-header-top">
+            <div class="admin-logo">
+                <img src="/resource/logo.png" alt="Plantellect Logo">
+                <span>Admin Dashboard</span>
+            </div>
+            <button class="admin-hamburger" aria-label="Open sidebar">☰</button>
+        </div>
+        <div class="admin-user" id="adminUser">Loading...</div>
+    </header>
+
+    <div class="admin-sidebar-scrim"></div>
+
+    <div class="admin-layout">
+        <aside class="admin-sidebar" id="adminSidebar">
+            <div class="admin-sidebar-header">
+                <h3>Menu</h3>
+                <button class="admin-sidebar-close" aria-label="Close sidebar">&times;</button>
+            </div>
+
+            <button class="admin-sidebar-toggle" id="adminSidebarToggle"
+                    aria-label="Toggle sidebar" title="Expand / collapse sidebar">
+                <span class="toggle-glyph">«</span>
+            </button>
+
+            <nav>
+                <a href="/admin/dashboard" title="Dashboard">
+                    <span class="material-symbols-outlined">home</span>
+                    <span class="nav-link-text">Dashboard</span>
+                    <span class="nav-badge" id="navBadgeDashboard" hidden>0</span>
+                </a>
+
+                <a href="/admin/users" class="active" data-perm="create_user" title="Users">
+                    <span class="material-symbols-outlined">person</span>
+                    <span class="nav-link-text">Users</span>
+                </a>
+                <a href="/admin/plants" data-perm="manage_plant" title="Plants">
+                    <span class="material-symbols-outlined">potted_plant</span>
+                    <span class="nav-link-text">Plants</span>
+                    <span class="nav-badge" id="navBadgePlants" hidden>0</span>
+                </a>
+                <a href="#" data-perm="view_logs" title="Logs">
+                    <span class="material-symbols-outlined">history_toggle_off</span>
+                    <span class="nav-link-text">Logs</span>
+                </a>
+                <a href="/home.html" title="Public">
+                    <span class="material-symbols-outlined">public</span>
+                    <span class="nav-link-text">Public</span>
+                </a>
+                <a href="#" id="adminLogoutLink" title="Sign out">
+                    <span class="material-symbols-outlined">logout</span>
+                    <span class="nav-link-text">Sign out</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <h1>Users and Roles</h1>
+            <p class="admin-subtitle">Manage Administrators, Botanists and Standard Accounts</p>
+
+            <div class="users-container">
+
+                <!-- Big role boxes -->
+                <div class="role-boxes">
+                    <button class="role-box role-box--admin" data-role="admin" type="button">
+                        <span class="role-box-icon" aria-hidden="true">
+                            <span class="material-symbols-outlined">admin_panel_settings</span>
+                        </span>
+                        <span class="role-box-text">
+                            <span class="role-box-label">Administrators</span>
+                            <span class="role-box-count" id="countAdmin">0</span>
+                        </span>
+                    </button>
+
+                    <button class="role-box role-box--botanist" data-role="botanist" type="button">
+                        <span class="role-box-icon" aria-hidden="true">
+                            <span class="material-symbols-outlined">potted_plant</span>
+                        </span>
+                        <span class="role-box-text">
+                            <span class="role-box-label">Botanists</span>
+                            <span class="role-box-count" id="countBotanist">0</span>
+                        </span>
+                    </button>
+
+                    <button class="role-box role-box--user" data-role="user" type="button">
+                        <span class="role-box-icon" aria-hidden="true">
+                            <span class="material-symbols-outlined">person</span>
+                        </span>
+                        <span class="role-box-text">
+                            <span class="role-box-label">Users</span>
+                            <span class="role-box-count" id="countUsers">0</span>
+                        </span>
+                    </button>
+
+                    <button class="role-box role-box--active" data-role="active" type="button">
+                        <span class="role-box-icon" aria-hidden="true">
+                            <span class="material-symbols-outlined">how_to_reg</span>
+                        </span>
+                        <span class="role-box-text">
+                            <span class="role-box-label">Active Users</span>
+                            <span class="role-box-count" id="countActive">0</span>
+                        </span>
+                    </button>
+                </div>
+
+                <!-- Details panel: visible on load, collapses when the active box is clicked again -->
+                <section class="role-detail-panel open" id="roleDetailPanel">
+                    <div class="role-detail-header">
+                        <h2 id="roleDetailTitle">Administrators</h2>
+                        <div class="users-filters">
+                            <div class="users-search">
+                                <span class="search-icon material-symbols-outlined">search</span>
+                                <input
+                                    type="text"
+                                    id="userSearch"
+                                    placeholder="Search by name or email..."
+                                    aria-label="Search users"
+                                >
+                            </div>
+                            <select id="statusFilter" class="filter-select" aria-label="Filter by status">
+                                <option value="all">Statuses</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                            <select id="roleFilter" class="filter-select" hidden aria-label="Filter by role">
+                                <option value="all">Roles</option>
+                                <option value="admin">Admin</option>
+                                <option value="superadmin">Superadmin</option>
+                                <option value="botanist">Botanist</option>
+                                <option value="user">User</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="users-table-wrapper">
+                        <table class="users-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <!-- Rows injected by JS -->
+                            </tbody>
+                        </table>
+                        <div id="usersEmptyState" class="users-empty-state" hidden>
+                            <p>No users match your search.</p>
+                        </div>
+                    </div>
+
+                    <div class="pagination-container">
+                        <div class="pagination-info" id="paginationInfo"></div>
+                        <div class="pagination-controls" id="paginationControls"></div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- home.js calls checkAuth(), which lives in auth.js, so auth.js loads first -->
+    <script src="/javascript/auth.js"></script>
+    <script src="/javascript/home.js"></script>
+
+    <!-- Users page logic (sidebar, theme and badges live in admin-sidebar.js) -->
+    <script>
+        // ---------------------------------------------------------
+        // Users page state + rendering
+        // ---------------------------------------------------------
+        const PAGE_SIZE = 10;
+        let currentPage = 1;
+        let currentFilter = 'admin';
+        let currentSearch = '';
+        let selectedStatus = 'all';
+        let selectedRole = 'all';
+        let viewerPermissions = [];
+        let currentAccountId = null;
+
+        const statusFilterEl = document.getElementById('statusFilter');
+        const roleFilterEl = document.getElementById('roleFilter');
+
+        const filterLabels = {
+            admin: 'Administrators',
+            botanist: 'Botanists',
+            user: 'Users',
+            active: 'Active Accounts'
+        };
+
+        /** Translates the active card plus the panel filters into API params. */
+        function buildQuery() {
+            const params = new URLSearchParams();
+            if (currentSearch.trim()) params.set('search', currentSearch.trim());
+            params.set('page', String(currentPage));
+            if (currentFilter === 'active') {
+                // The active card filters on status, not on a role.
+                params.set('status', selectedStatus === 'all' ? 'active' : selectedStatus);
+                if (selectedRole !== 'all') params.set('role', selectedRole);
+            } else {
+                params.set('role', currentFilter);
+                if (selectedStatus !== 'all') params.set('status', selectedStatus);
+            }
+            return params;
+        }
+
+        function hasPermission(name) {
+            return viewerPermissions.indexOf(name) !== -1;
+        }
+
+        // Counts come from the response, not from the current page of rows.
+        function updateCounts(counts) {
+            if (!counts) return;
+            document.getElementById('countAdmin').textContent = counts.admin;
+            document.getElementById('countBotanist').textContent = counts.botanist;
+            document.getElementById('countUsers').textContent = counts.user;
+            document.getElementById('countActive').textContent = counts.active;
+        }
+
+        function renderTable(data) {
+            const users = data.users || [];
+            const tbody = document.getElementById('usersTableBody');
+            const emptyState = document.getElementById('usersEmptyState');
+            const total = data.total || 0;
+            const pageSize = data.pageSize || PAGE_SIZE;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+            // Narrowing a filter can leave us past the end of the results.
+            if (currentPage > totalPages) {
+                currentPage = totalPages;
+                return loadUsers();
+            }
+
+            document.getElementById('roleDetailTitle').textContent = filterLabels[currentFilter];
+
+            if (users.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.hidden = false;
+            } else {
+                emptyState.hidden = true;
+                tbody.innerHTML = users.map(renderRow).join('');
+            }
+
+            renderPagination(total, totalPages, pageSize);
+            wireRowActions();
+        }
+
+        /**
+         * Builds one row. The action buttons are assembled outside the row
+         * template so the markup stays flat and easy to read.
+         */
+        function renderRow(u) {
+            const notSelf = u.id !== currentAccountId;
+            const isSuperadmin = u.role === 'superadmin';
+            const privileged = u.role === 'admin' || isSuperadmin;
+
+            const suspendLabel = u.status === 'active' ? 'Suspend' : 'Activate';
+            const suspendBtn = hasPermission('archive_user') && notSelf
+                ? '<button class="btn-toggle-status" data-id="' + escapeHtml(u.id) +
+                  '" data-status="' + escapeHtml(u.status) + '">' + suspendLabel + '</button>'
+                : '';
+
+            let roleBtn = '';
+            if (hasPermission('admin_promote') && notSelf) {
+                const label = isSuperadmin ? 'Revoke superadmin' : (privileged ? 'Revoke admin' : 'Make admin');
+                roleBtn = '<button class="btn-toggle-admin" data-id="' + escapeHtml(u.id) +
+                    '" data-role="' + escapeHtml(u.role) + '">' + label + '</button>';
+            }
+
+            return '<tr>' +
+                '<td>' + escapeHtml(u.name) + '</td>' +
+                '<td>' + escapeHtml(u.email) + '</td>' +
+                '<td><span class="badge badge-' + escapeHtml(u.role) + '">' + capitalize(u.role) + '</span></td>' +
+                '<td><span class="badge badge-' + escapeHtml(u.status) + '">' + capitalize(u.status) + '</span></td>' +
+                '<td class="user-actions">' +
+                    '<button class="btn-view" data-id="' + escapeHtml(u.id) + '">View</button>' +
+                    suspendBtn + roleBtn +
+                '</td>' +
+            '</tr>';
+        }
+
+        function renderPagination(totalItems, totalPages, pageSize) {
+            const info = document.getElementById('paginationInfo');
+            const controls = document.getElementById('paginationControls');
+
+            if (totalItems === 0) {
+                info.textContent = 'No entries';
+                controls.innerHTML = '';
+                return;
+            }
+
+            const start = (currentPage - 1) * pageSize + 1;
+            const end = Math.min(currentPage * pageSize, totalItems);
+            info.innerHTML = `Showing <strong>${start}</strong> to <strong>${end}</strong> of <strong>${totalItems}</strong> entries`;
+
+            let buttons = `<button class="page-btn" data-page="prev" ${currentPage === 1 ? 'disabled' : ''}>Prev</button>`;
+            for (let p = 1; p <= totalPages; p++) {
+                buttons += `<button class="page-btn ${p === currentPage ? 'active' : ''}" data-page="${p}">${p}</button>`;
+            }
+            buttons += `<button class="page-btn" data-page="next" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>`;
+            controls.innerHTML = buttons;
+
+            controls.querySelectorAll('.page-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const val = btn.dataset.page;
+                    if (val === 'prev') currentPage = Math.max(1, currentPage - 1);
+                    else if (val === 'next') currentPage = Math.min(totalPages, currentPage + 1);
+                    else currentPage = parseInt(val, 10);
+                    loadUsers();
+                });
+            });
+        }
+
+        function wireRowActions() {
+            document.querySelectorAll('.btn-toggle-status').forEach(btn => {
+                btn.addEventListener('click', () => toggleAccount(btn.dataset.id, { status: btn.dataset.status === 'active' ? 'inactive' : 'active' }));
+            });
+            document.querySelectorAll('.btn-toggle-admin').forEach(btn => {
+                const currentRole = btn.dataset.role;
+                const privileged = currentRole === 'admin' || currentRole === 'superadmin';
+                // Revoking a superadmin demotes them to user; the server refuses
+                // if that would leave no active superadmin.
+                btn.addEventListener('click', () => toggleAccount(
+                    btn.dataset.id,
+                    { role: privileged ? 'user' : 'admin' },
+                    privileged ? `Revoke ${currentRole} from` : 'Grant admin to'
+                ));
+            });
+        }
+
+        async function toggleAccount(accountId, body, roleLabel) {
+            const label = body.status
+                ? (body.status === 'inactive' ? 'Suspend' : 'Reactivate')
+                : (roleLabel || (body.role === 'admin' ? 'Grant admin to' : 'Revoke admin from'));
+            if (!confirm(`${label} account ${accountId}?`)) return;
+
+            const isStatus = Boolean(body.status);
+            try {
+                const response = await fetch(`/admin/api/users/${encodeURIComponent(accountId)}/${isStatus ? 'status' : 'role'}`, {
+                    method: isStatus ? 'PATCH' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(body)
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    alert('Error: ' + (result.error || 'Request failed'));
+                    return;
+                }
+                await loadUsers();
+            } catch (err) {
+                console.error('Account action error:', err);
+                alert('Error: ' + err.message);
+            }
+        }
+
+        function capitalize(s) {
+            return s.charAt(0).toUpperCase() + s.slice(1);
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = String(str == null ? '' : str);
+            return div.innerHTML;
+        }
+
+        // Box click -> switch filter + expand detail panel
+        const detailPanel = document.getElementById('roleDetailPanel');
+        document.querySelectorAll('.role-box').forEach(box => {
+            // The Administrators card is the default view, so mark it active to
+            // match the panel being open on load.
+            if (box.dataset.role === currentFilter) {
+                box.classList.add('active-role');
+            }
+        });
+
+        document.querySelectorAll('.role-box').forEach(box => {
+            box.addEventListener('click', () => {
+                const alreadyActive = box.classList.contains('active-role');
+
+                // Clicking the already-open card again collapses it, so the
+                // page can return to the plain, nothing-expanded default.
+                if (alreadyActive) {
+                    box.classList.remove('active-role');
+                    detailPanel.classList.remove('open');
+                    return;
+                }
+
+                document.querySelectorAll('.role-box').forEach(b => b.classList.remove('active-role'));
+                box.classList.add('active-role');
+                currentFilter = box.dataset.role;
+                currentPage = 1;
+                currentSearch = '';
+                document.getElementById('userSearch').value = '';
+
+                selectedStatus = 'all';
+                selectedRole = 'all';
+                statusFilterEl.value = 'all';
+                roleFilterEl.value = 'all';
+                roleFilterEl.hidden = currentFilter !== 'active';
+
+                detailPanel.classList.add('open');
+                detailPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                loadUsers();
+            });
+        });
+
+        // Debounced so typing does not fire a request per keystroke.
+        let searchTimer = null;
+        document.getElementById('userSearch').addEventListener('input', (e) => {
+            currentSearch = e.target.value;
+            currentPage = 1;
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(loadUsers, 300);
+        });
+
+        // Status filter (all panels)
+        statusFilterEl.addEventListener('change', (e) => {
+            selectedStatus = e.target.value;
+            currentPage = 1;
+            loadUsers();
+        });
+
+        // Role filter (extra refinement for the active-users panel)
+        roleFilterEl.addEventListener('change', (e) => {
+            selectedRole = e.target.value;
+            currentPage = 1;
+            loadUsers();
+        });
+
+        // ---------------------------------------------------------
+        // Data loading. Filtering, search and pagination are all
+        // server-side, so the counts in the cards come from the
+        // response's own aggregate rather than from this page's rows.
+        // ---------------------------------------------------------
+        async function loadUsers() {
+            try {
+                const response = await fetch('/admin/api/users?' + buildQuery().toString(), { credentials: 'include' });
+                if (response.status === 401) {
+                    window.location.href = '/auth.html';
+                    return;
+                }
+                if (!response.ok) throw new Error('Failed to load users');
+                const data = await response.json();
+                updateCounts(data.counts);
+                renderTable(data);
+            } catch (err) {
+                console.error('Load users error:', err);
+                document.getElementById('usersTableBody').innerHTML = '';
+                document.getElementById('usersEmptyState').hidden = false;
+            }
+        }
+
+        (async function () {
+            const response = await fetch('/api/auth/me', { credentials: 'include' });
+            if (!response.ok) {
+                window.location.href = '/auth.html';
+                return;
+            }
+            const data = await response.json();
+
+            document.getElementById('adminUser').textContent = 'Logged in as ' + data.username;
+            currentAccountId = data.accountId || null;
+            viewerPermissions = data.permissions || [];
+
+            const perms = viewerPermissions;
+            document.querySelectorAll('.admin-sidebar a[data-perm]').forEach(function (a) {
+                if (!perms.includes(a.getAttribute('data-perm'))) {
+                    a.style.display = 'none';
+                }
+            });
+
+            document.getElementById('adminLogoutLink').addEventListener('click', function (e) {
+                e.preventDefault();
+                logoutUser();
+            });
+
+            loadUsers();
+            loadNavBadges();
+        })();
+    </script>
+
+</body>
+</html>

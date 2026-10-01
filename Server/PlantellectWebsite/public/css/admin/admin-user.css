@@ -1,0 +1,359 @@
+@import '../core/variables.css';
+
+/* =========================================
+   USERS: BIG ROLE BOXES
+   ========================================= */
+
+.role-boxes {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+
+.role-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    text-align: left;
+    width: 100%;
+    min-height: 140px;
+    border: none;
+    border-radius: var(--border-radius-lg);
+    padding: 24px 28px;
+    background:
+        linear-gradient(100deg,
+            var(--color-dark-forest-green) 0%,
+            var(--color-modal-bg) 55%,
+            var(--color-reseda-green) 100%);
+    color: var(--color-white);
+    box-shadow: var(--box-shadow-card);
+    cursor: pointer;
+    font-family: var(--font-primary);
+    overflow: hidden;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.role-box:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--box-shadow-popup);
+}
+
+.role-box:focus-visible {
+    outline: 2px solid var(--color-bg-nav-light);
+    outline-offset: 2px;
+}
+
+.role-box.active-role {
+    box-shadow: 0 0 0 2px var(--color-bg-nav-light), var(--box-shadow-popup);
+}
+
+.role-box-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    color: var(--color-library-green);
+}
+
+.role-box--botanist .role-box-icon { color: var(--color-spanish-green); }
+.role-box--user .role-box-icon     { color: var(--color-cerulean-blue); }
+.role-box--active .role-box-icon   { color: var(--color-success); }
+
+.role-box-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.role-box-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+}
+
+.role-box-label {
+    color: var(--color-white);
+    font-size: 22px;
+    font-weight: 500;
+    text-transform: capitalize;
+    letter-spacing: 0.3px;
+}
+
+.role-box-count {
+    display: inline-block;
+    color: var(--color-library-green);
+    background: rgba(255, 255, 255, 0.1);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 2px 12px;
+    border-radius: var(--border-radius-pill);
+}
+
+.role-box--botanist .role-box-count { color: var(--color-spanish-green); }
+.role-box--user .role-box-count     { color: var(--color-cerulean-blue); }
+.role-box--active .role-box-count   { color: var(--color-success); }
+
+/* =========================================
+   ROLE DETAIL PANEL (expands on box click)
+   ========================================= */
+
+.role-detail-panel {
+    background-color: var(--color-white);
+    border: 1px solid #e6e6e6;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--box-shadow-card);
+    padding: 0;
+    margin-top: 24px;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.3s ease, opacity 0.25s ease, padding 0.3s ease;
+}
+
+.role-detail-panel.open {
+    max-height: 2000px;
+    opacity: 1;
+    padding: 28px;
+}
+
+.role-detail-header {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.role-detail-header h2 {
+    color: var(--color-dark-jungle-green);
+    font-size: 20px;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+/* Filters row (search + status/role selects), lives inside the panel */
+.users-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.filter-select {
+    padding: 10px 16px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius-pill);
+    font-family: var(--font-primary);
+    font-size: 14px;
+    color: #333;
+    background-color: #fafafa;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: var(--color-forest-green);
+    background-color: var(--color-white);
+}
+
+/* Search bar */
+.users-search {
+    position: relative;
+    width: 100%;
+    flex: 1 1 220px;
+}
+
+.users-search .search-icon {
+    position: absolute;
+    top: 50%;
+    left: 14px;
+    transform: translateY(-50%);
+    font-size: 14px;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.users-search input {
+    width: 100%;
+    padding: 10px 14px 10px 38px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius-pill);
+    font-family: var(--font-primary);
+    font-size: 14px;
+    color: #333;
+    background-color: #fafafa;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.users-search input:focus {
+    outline: none;
+    border-color: var(--color-forest-green);
+    background-color: var(--color-white);
+}
+
+/* Table */
+.users-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #eee;
+    border-radius: var(--border-radius-md);
+}
+
+.users-table {
+    width: 100%;
+    min-width: 560px;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.users-table thead th {
+    text-align: left;
+    color: var(--color-white);
+    background-color: var(--color-forest-green);
+    padding: 14px 18px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.users-table thead th:first-child { border-radius: var(--border-radius-md) 0 0 0; }
+.users-table thead th:last-child  { border-radius: 0 var(--border-radius-md) 0 0; }
+
+.users-table tbody td {
+    padding: 16px 18px;
+    border-bottom: 1px solid #f0f0f0;
+    color: #333;
+    vertical-align: middle;
+}
+
+.users-table tbody tr:hover { background-color: var(--color-bg-light); }
+.users-table tbody tr:last-child td { border-bottom: none; }
+
+.btn-view {
+    padding: 6px 14px;
+    border: 1px solid var(--color-forest-green);
+    border-radius: var(--border-radius-sm);
+    background: transparent;
+    color: var(--color-forest-green);
+    font-family: var(--font-primary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-view:hover {
+    background-color: var(--color-forest-green);
+    color: var(--color-white);
+}
+
+.users-empty-state {
+    padding: 40px 20px;
+    text-align: center;
+    color: #888;
+    font-size: 14px;
+}
+
+/* Role / status pills */
+.badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: var(--border-radius-pill);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.badge-admin    { background-color: rgba(46, 100, 23, 0.12); color: var(--color-forest-green); }
+.badge-superadmin { background-color: rgba(245, 158, 11, 0.14); color: var(--color-amber); }
+.badge-botanist { background-color: rgba(0, 153, 79, 0.12); color: var(--color-spanish-green); }
+.badge-user     { background-color: rgba(2, 132, 199, 0.12); color: var(--color-cerulean-blue); }
+.badge-active   { background-color: rgba(0, 191, 99, 0.14); color: var(--color-success); }
+.badge-inactive { background-color: rgba(176, 176, 176, 0.2); color: #777; }
+
+/* =========================================
+   PAGINATION
+   ========================================= */
+
+.pagination-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #eee;
+}
+
+.pagination-info { color: #666; font-size: 13px; }
+
+.pagination-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.page-btn {
+    min-width: 36px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-white);
+    color: #333;
+    font-family: var(--font-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+    border-color: var(--color-forest-green);
+    color: var(--color-forest-green);
+}
+
+.page-btn.active {
+    background-color: var(--color-forest-green);
+    border-color: var(--color-forest-green);
+    color: var(--color-white);
+}
+
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* =========================================
+   RESPONSIVE
+   ========================================= */
+.role-box-icon .material-symbols-outlined { font-size: 45px; }
+.users-search .search-icon { font-size: 20px; }
+
+@media (min-width: 600px) {
+    .role-detail-header {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .users-search { max-width: 320px; }
+    .users-filters { justify-content: flex-end; }
+}
+
+@media (min-width: 768px) {
+    .role-boxes {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .pagination-container {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+    }
+}

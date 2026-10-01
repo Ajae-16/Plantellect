@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Botanist Profile</title>
+    <link href="https://fonts.googleapis.com/css2?family=Lancelot&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="css/plants.css">
+</head>
+<body>
+
+    <div class="profile-container">
+        <!-- Navigation Header with Theme Toggle Button -->
+        <div class="profile-header-bar" style="justify-content: space-between;">
+            <a href="plant-profile.html" class="back-btn">
+                <span class="material-symbols-outlined" style="font-size: 18px;">arrow_back</span> Back to Plant Profile
+            </a>
+            
+            <!-- Theme Toggle Icon Button -->
+            <button id="themeToggleBtn" class="theme-btn" onclick="toggleTheme()" title="Toggle theme">
+                <span class="material-symbols-outlined" id="themeIcon" style="font-size: 20px;">light_mode</span>
+            </button>
+        </div>
+
+        <!-- Public Botanist Information -->
+        <div class="botanist-hero">
+            <div class="avatar-circle" id="botanistAvatar">—</div>
+            <h1 id="botanistName">Loading…</h1>
+            <div class="role-badge">
+                <span class="material-symbols-outlined" style="font-size: 16px;">verified</span> Verified Plant Expert &amp; Botanist
+            </div>
+            <p class="botanist-bio" id="botanistBio"></p>
+
+            <!-- Quantitative Metrics Bar -->
+            <div class="metrics-bar">
+                <div class="metric-item">
+                    <div class="metric-value" id="botanistPlantCount">—</div>
+                    <div class="metric-label">Verified Plants</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-value" id="botanistAccuracy">—</div>
+                    <div class="metric-label">Avg CNN Accuracy</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-value" id="botanistSpecialization">—</div>
+                    <div class="metric-label">Specialization</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Verified Contributions Showcase -->
+        <div class="contributions-section">
+            <h3><span class="material-symbols-outlined">eco</span> Verified Plant Contributions</h3>
+
+            <div class="plant-grid" id="contributionGrid">
+                <p class="muted">Loading contributions…</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="javascript/botanist-profile.js"></script>
+
+</body>
+</html>

@@ -42,6 +42,121 @@ body, html {
     margin: 0 auto;
 }
 
+/* No logo is rendered in this header, so drop the 170px logo gap from the nav */
+@media (min-width: 1024px) {
+    nav {
+        padding-left: 0;
+    }
+}
+
+/* =========================================
+   SEARCH BAR (was inline styles in library.html)
+   ========================================= */
+
+.library-search-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 25px;
+}
+
+.search-input-wrapper {
+    position: relative;
+    max-width: 650px;
+    width: 100%;
+}
+
+#plantSearchInput {
+    width: 100%;
+    padding: 14px 20px 14px 45px;
+    border-radius: var(--border-radius-pill);
+    border: 1px solid var(--color-border-light);
+    outline: none;
+    font-size: 15px;
+    background-color: var(--color-white);
+    color: #222;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+#plantSearchInput:focus {
+    border-color: var(--color-forest-green);
+}
+
+.search-input-wrapper .search-icon {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #888;
+    font-size: 20px;
+    pointer-events: none;
+}
+
+/* Recent Searches Horizontal Pill Container Styles */
+.recent-searches-dropdown {
+    max-width: 650px;
+    width: 100%;
+    margin-top: 8px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    padding: 10px 14px;
+    z-index: 1000;
+}
+
+.recent-searches-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.clear-recent {
+    cursor: pointer;
+    color: #d9534f;
+}
+
+.clear-recent:hover {
+    text-decoration: underline;
+}
+
+.recent-searches-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.recent-search-pill {
+    background-color: #fff; /* matches search bar background */
+    border: 1px solid #ccc;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+    border-radius: 50px; /* Fully oval / pill-shaped */
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.recent-search-pill:hover {
+    background-color: #f0f5f1;
+    border-color: #4CAF50;
+}
+
+.recent-search-pill .material-symbols-outlined {
+    font-size: 14px;
+    color: #888;
+}
+
 @media (max-width: 479px) {
     .plant-grid {
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -53,48 +168,11 @@ body, html {
     .library-container {
         padding: 20px;
     }
-
-    .nav-container {
-        padding: 12px 24px;
-    }
-
-    nav {
-        gap: 70px;
-    }
-
-    nav a,
-    .auth-links a {
-        font-size: 15px;
-    }
-
-    .auth-links {
-        gap: 35px;
-    }
 }
 
 @media (min-width: 768px) {
     .library-container {
         padding: 20px;
-    }
-
-    .nav-container {
-        margin-left: var(--spacing-logo-offset);
-        padding: 15px 40px;
-        overflow: visible;
-    }
-
-    nav {
-        gap: 80px;
-        padding-left: 120px;
-    }
-
-    nav a,
-    .auth-links a {
-        font-size: 15px;
-    }
-
-.auth-links {
-        gap: 40px;
     }
 
     .main-workspace {

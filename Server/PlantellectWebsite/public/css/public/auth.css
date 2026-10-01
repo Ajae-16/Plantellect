@@ -261,6 +261,17 @@
     transform: translateY(0);
 }
 
+.signup-btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.signup-btn[aria-disabled="true"]:hover {
+    background: var(--color-cyan);
+    transform: none;
+    box-shadow: none;
+}
+
 .form-footer {
     margin-top: 16px;
     text-align: center;

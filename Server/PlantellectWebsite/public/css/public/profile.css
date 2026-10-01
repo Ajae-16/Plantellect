@@ -3,9 +3,23 @@
 @import '../core/components.css';
 @import '../core/sidebar.css';
 
+/* Same page background as the library (the value comes from --page-bg in public-theme.css) */
+html,
+body {
+    background-color: var(--page-bg, var(--color-library-green));
+    overflow-x: hidden;
+}
+
+.library-container {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 60px);
+    padding: 16px;
+}
+
 .profile-main {
     flex: 1;
-    padding: 40px 20px;
+    padding: 24px 0;
     max-width: 600px;
     margin: 0 auto;
     width: 100%;
@@ -15,7 +29,7 @@
     background: var(--color-white);
     border-radius: var(--border-radius-xl);
     box-shadow: var(--box-shadow-card);
-    padding: 40px 30px;
+    padding: 32px 20px;
     text-align: center;
     border: 1px solid var(--color-border-light);
 }
@@ -36,18 +50,20 @@
 }
 
 .profile-card h2 {
-    font-size: 28px;
+    font-size: clamp(22px, 5vw, 32px);
     font-weight: bold;
     color: var(--color-forest-green);
     margin-bottom: 8px;
     letter-spacing: 1px;
     font-family: var(--font-primary);
+    word-break: break-word;
 }
 
 .profile-email {
     color: #666;
     font-size: 16px;
     margin-bottom: 24px;
+    word-break: break-word;
 }
 
 .profile-roles {
@@ -75,14 +91,20 @@
 }
 
 .guest-prompt a {
-    color: var(--color-cyan);
+    color: var(--color-cerulean-blue);
     font-weight: bold;
     text-decoration: underline;
 }
 
+@media (min-width: 480px) {
+    .library-container {
+        padding: 20px;
+    }
+}
+
 @media (min-width: 768px) {
     .profile-main {
-        padding: 60px 40px;
+        padding: 40px 0;
     }
 
     .profile-card {
@@ -93,9 +115,5 @@
         width: 120px;
         height: 120px;
         font-size: 44px;
-    }
-
-    .profile-card h2 {
-        font-size: 32px;
     }
 }

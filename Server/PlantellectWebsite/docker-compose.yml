@@ -31,6 +31,27 @@ services:
     volumes:
       - mongo_data:/data/db
 
+# ML Inference Service (FastAPI + TensorFlow CPU)
+  ml_service:
+    build:
+      context: ./ml
+      dockerfile: Dockerfile
+    container_name: plantellect_ml
+    restart: always
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./ml/model:/app/model
+    environment:
+      - MODEL_PATH=/app/model/main/best_model.keras
+      - CLASSES_PATH=/app/model/main/classes.json
+      - TF_CPP_MIN_LOG_LEVEL=2
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
 volumes:
   mysql_data:
   mongo_data:

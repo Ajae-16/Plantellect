@@ -12,7 +12,12 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "seed": "node config/seed.cjs",
+    "seed:test": "node config/testingdb.cjs",
+    "db:reset": "node config/reset.cjs",
+    "verify:db": "node scripts/verify-db.cjs",
+    "verify:scripts": "node scripts/check-scripts.cjs",
+    "test:api": "node scripts/api-test.cjs"
   },
   "dependencies": {
     "@mapbox/node-pre-gyp": "^2.0.3",

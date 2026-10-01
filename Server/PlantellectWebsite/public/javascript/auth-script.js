@@ -158,6 +158,9 @@ async function handleRegister(event) {
     const firstName = document.getElementById('registerFirstName').value.trim();
     const lastName = document.getElementById('registerLastName').value.trim();
     const certFile = document.getElementById('registerCertificate').files[0];
+    
+    const checkbox1 = document.getElementById('agreeTerms');
+    const checkbox2 = document.getElementById('agreeInfo');
 
     if (!validateUsername(username)) {
         showError('Username must be at least 6 characters');
@@ -180,6 +183,33 @@ async function handleRegister(event) {
         return;
     }
 
+    const termsChecked = checkbox1 && checkbox1.checked;
+    const infoChecked = checkbox2 && checkbox2.checked;
+    
+    if (!termsChecked && !infoChecked) {
+        // Neither checked - prompt to read terms
+        const modal = document.getElementById('termsModal');
+        if (modal) {
+            modal.style.display = 'flex';
+            const scrollBox = document.getElementById('termsScrollBox');
+            if (scrollBox && scrollBox.scrollHeight <= scrollBox.clientHeight + 5) {
+                unlockConsentControls();
+            }
+        }
+        showError('Please read the Terms & Conditions and check both agreement boxes');
+        return;
+    }
+    
+    if (!termsChecked) {
+        showError('You must agree to the Terms & Conditions');
+        return;
+    }
+    
+    if (!infoChecked) {
+        showError('You must agree to the Information Usage');
+        return;
+    }
+
     try {
         const formData = new FormData();
         formData.append('email', email);
@@ -188,6 +218,8 @@ async function handleRegister(event) {
         formData.append('firstName', firstName);
         formData.append('lastName', lastName);
         formData.append('role', selectedRole);
+        formData.append('agreeTerms', checkbox1 && checkbox1.checked ? 'true' : 'false');
+        formData.append('agreeInfo', checkbox2 && checkbox2.checked ? 'true' : 'false');
         if (certFile) {
             formData.append('certificate', certFile);
         }
@@ -238,6 +270,14 @@ function initAuthPage() {
     document.getElementById('loginForm').addEventListener('submit', handleLogin);
     document.getElementById('registerForm').addEventListener('submit', handleRegister);
 
+    const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+    if (forgotPasswordLink) {
+        forgotPasswordLink.addEventListener('click', function(event) {
+            event.preventDefault();
+            window.location.href = 'forgot-pass.html';
+        });
+    }
+
     const guestLink = document.getElementById('guestLink');
     if (guestLink) {
         guestLink.addEventListener('click', function(event) {
@@ -251,10 +291,93 @@ function initAuthPage() {
         guestContinueBtn.addEventListener('click', handleGuestContinue);
     }
 
+    // Terms & Conditions Modal Interactivity Logic
+    const openModalBtn = document.getElementById('openTermsModal');
+    const modal = document.getElementById('termsModal');
+    const scrollBox = document.getElementById('termsScrollBox');
+    const closeBtn = document.getElementById('closeTermsBtn');
+    
+    const checkbox1 = document.getElementById('agreeTerms');
+    const checkbox2 = document.getElementById('agreeInfo');
+    const labelBox1 = document.getElementById('labelBox1');
+    const labelBox2 = document.getElementById('labelBox2');
+
+    let hasScrolledToBottom = false;
+
+    if (openModalBtn && modal) {
+        openModalBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            modal.style.display = 'flex';
+            if (scrollBox && checkbox1 && checkbox2) {
+                if (scrollBox.scrollHeight <= scrollBox.clientHeight + 5) {
+                    unlockConsentControls();
+                }
+            }
+        });
+    }
+
+    function unlockConsentControls() {
+        if (!hasScrolledToBottom) {
+            hasScrolledToBottom = true;
+            
+            checkbox1.disabled = false;
+            checkbox2.disabled = false;
+            if (labelBox1) {
+                labelBox1.style.cursor = 'pointer';
+                labelBox1.style.color = '#fff';
+            }
+            if (labelBox2) {
+                labelBox2.style.cursor = 'pointer';
+                labelBox2.style.color = '#fff';
+            }
+
+            if (closeBtn) {
+                closeBtn.disabled = false;
+                closeBtn.style.opacity = '1';
+            }
+        }
+    }
+
+    if (scrollBox && checkbox1 && checkbox2) {
+        scrollBox.addEventListener('scroll', function() {
+            if (scrollBox.scrollHeight - scrollBox.scrollTop <= scrollBox.clientHeight + 5) {
+                unlockConsentControls();
+            }
+        });
+    }
+
+    if (closeBtn && modal) {
+        closeBtn.addEventListener('click', function() {
+            if (hasScrolledToBottom) {
+                modal.style.display = 'none';
+            } else {
+                alert('Please read and scroll to the bottom of the terms first.');
+            }
+        });
+    }
+
+    if (checkbox1) {
+        checkbox1.addEventListener('change', updateSignupButtonState);
+    }
+    if (checkbox2) {
+        checkbox2.addEventListener('change', updateSignupButtonState);
+    }
+
     const registerPassword = document.getElementById('registerPassword');
+    const confirmPassword = document.getElementById('registerConfirmPassword');
+
     if (registerPassword) {
         registerPassword.addEventListener('input', function() {
             passwordValid = validatePassword(this.value);
+            
+            const confirmVal = confirmPassword ? confirmPassword.value : '';
+            const matchItem = document.getElementById('req-match');
+            
+            passwordsMatch = (this.value === confirmVal) && (confirmVal.length > 0) && passwordValid;
+            
+            if (matchItem) {
+                matchItem.classList.toggle('valid', passwordsMatch);
+            }
             updateSignupButtonState();
         });
     }
@@ -267,23 +390,30 @@ function initAuthPage() {
         });
     }
 
-    const confirmPassword = document.getElementById('registerConfirmPassword');
     if (confirmPassword) {
         confirmPassword.addEventListener('input', function() {
-            const password = document.getElementById('registerPassword').value;
+            const password = registerPassword ? registerPassword.value : '';
             const matchItem = document.getElementById('req-match');
+            
+            passwordsMatch = (this.value === password) && (this.value.length > 0) && passwordValid;
+            
             if (matchItem) {
-                matchItem.classList.toggle('valid', this.value === password && password.length > 0);
+                matchItem.classList.toggle('valid', passwordsMatch);
             }
-            passwordsMatch = this.value === password && password.length > 0;
             updateSignupButtonState();
         });
     }
 
     function updateSignupButtonState() {
         const signupBtn = document.querySelector('.signup-btn');
+        const chk1 = document.getElementById('agreeTerms');
+        const chk2 = document.getElementById('agreeInfo');
+        const termsChecked = chk1 && chk2 && chk1.checked && chk2.checked;
+        const ready = usernameValid && passwordValid && passwordsMatch && termsChecked;
+
         if (signupBtn) {
-            signupBtn.disabled = !(usernameValid && passwordValid && passwordsMatch);
+            signupBtn.disabled = false;
+            signupBtn.setAttribute('aria-disabled', ready ? 'false' : 'true');
         }
     }
 

@@ -13,16 +13,25 @@ body, html {
     overflow: visible;
 }
 
+/* Plain backdrop for every page. The cucumber photo is added ONLY in
+   css/public/home.css, so it never shows anywhere else. */
 .background-image {
     position: fixed;
     top: 0;
     left: 0;
     height: 100dvh;
     width: 100vw;
+    background-color: var(--color-dark-forest-green);
+    z-index: 0;
+}
+
+/* The cucumber photo: add this modifier ONLY on pages that should show it
+   (home.html and about.html).  <div class="background-image background-image--cucumber"> */
+.background-image--cucumber {
     background-image: url('../../resource/Cucumber_leaf.jpg');
     background-size: cover;
     background-position: center;
-    z-index: 0;
+    background-repeat: no-repeat;
 }
 
 .hero-container {
@@ -94,7 +103,9 @@ header {
     display: none;
 }
 
-nav {
+/* Header navigation only: the sidebar menu is a <div>, not a <nav>,
+   so these rules never touch it. */
+header nav {
     display: flex;
     gap: var(--spacing-nav-gap);
     padding-left: 0;
@@ -102,7 +113,7 @@ nav {
     min-width: max-content;
 }
 
-nav a {
+header nav a {
     color: var(--color-white);
     text-decoration: none;
     font-size: 14px;
@@ -112,11 +123,11 @@ nav a {
     white-space: nowrap;
 }
 
-nav a.active {
+header nav a.active {
     color: var(--color-cyan);
 }
 
-nav a:hover {
+header nav a:hover {
     color: var(--color-cyan);
 }
 
@@ -217,7 +228,7 @@ nav a:hover {
         padding: 12px 40px;
     }
 
-    nav a {
+    header nav a {
         font-size: 15px;
     }
 
@@ -260,12 +271,12 @@ nav a:hover {
         overflow: visible;
     }
 
-    nav {
+    header nav {
         padding-left: var(--spacing-logo-offset);
         gap: var(--spacing-nav-gap);
     }
 
-    nav a {
+    header nav a {
         font-size: 16px;
     }
 

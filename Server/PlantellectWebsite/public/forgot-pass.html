@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Reset Password</title>
+    <link href="https://fonts.googleapis.com/css2?family=Lancelot&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="css/public/auth.css">
+</head>
+<body class="forgot-page">
+    <div class="background-image"></div>
+    <div class="hero-container">
+        <!-- Starts with 'active' class so the right side (Forgot Password / Email) is visible initially -->
+        <div class="auth-container active" id="authContainer">
+            <div class="forms-wrapper">
+                
+                <!-- LEFT SIDE: NEW PASSWORD CONTAINER (Shown after code verification) -->
+                <div class="form-container login-container">
+                    <h2>NEW PASSWORD</h2>
+                    <img src="resource/logo.png" alt="Plantellect Logo" class="plantellect-logo">
+
+                    <form id="resetPasswordForm" class="auth-form">
+                        <div class="container-input-group" style="margin-top: 5px;">
+                            <div class="input-group password-group">
+                                <div class="password-wrapper">
+                                    <input type="password" id="newPassword" placeholder=" " required>
+                                    <label for="newPassword">NEW PASSWORD</label>
+                                    <span class="material-symbols-outlined input-icon">lock</span>
+                                    <span class="eye-icon" id="toggleNewPassword" onclick="togglePasswordVisibility('newPassword', 'toggleNewPassword')">&#128065;</span>
+                                </div>
+                            </div>
+
+                            <div class="auth-requirements" id="passwordRequirements" style="margin-bottom: 10px;">
+                                <ul>
+                                    <li id="req-length">At least 6 characters</li>
+                                    <li id="req-lowercase">One lowercase letter</li>
+                                    <li id="req-uppercase">One uppercase letter</li>
+                                    <li id="req-number">One number</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="input-group password-group">
+                                <div class="password-wrapper">
+                                    <input type="password" id="confirmNewPassword" placeholder=" " required>
+                                    <label for="confirmNewPassword">CONFIRM PASS</label>
+                                    <span class="material-symbols-outlined input-icon">lock</span>
+                                    <span class="eye-icon" id="toggleConfirmPassword" onclick="togglePasswordVisibility('confirmNewPassword', 'toggleConfirmPassword')">&#128065;</span>
+                                </div>
+                            </div>
+
+                            <div class="auth-requirements" id="confirmPasswordRequirements">
+                                <ul>
+                                    <li id="req-match">Password match</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="login-btn" id="updatePasswordBtn" style="margin-top: 15px;" disabled>UPDATE PASSWORD</button>
+
+                        <p class="form-footer" style="margin-top: 10px;">Remember your password? 
+                            <a href="#" class="link" onclick="backToSignIn(event)">Sign In</a>
+                        </p>
+                    </form>
+                    <div class="auth-container-footer"></div>
+                </div>
+
+                <div class="form-container-dummy"><!-- dummy --></div>
+                
+                <!-- RIGHT SIDE: EMAIL & 6-DIGIT CODE CONTAINER -->
+                <div class="form-container register-container">
+                    <h2>FORGOT PASSWORD</h2>
+                    <img src="resource/logo.png" alt="Plantellect Logo" class="plantellect-logo">
+
+                    <form id="forgotPasswordForm" class="auth-form">
+                        <div class="container-input-group" style="margin-top: 10px;">
+                            <div class="input-group" id="emailGroup">
+                                <input type="email" id="fpEmail" placeholder=" " required>
+                                <label for="fpEmail">EMAIL</label>
+                                <span class="material-symbols-outlined input-icon">mail</span>
+                            </div>
+
+                            <!-- Hidden 6-digit code box that appears after clicking Send Code -->
+                            <div class="input-group" id="codeGroup" style="display: none; margin-top: 15px;">
+                                <input type="text" id="fpCode" placeholder=" " maxlength="6">
+                                <label for="fpCode">ENTER 6-DIGIT CODE</label>
+                                <span class="material-symbols-outlined input-icon">pin</span>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="signup-btn" id="actionButton" style="margin-top: 20px;">SEND A CODE</button>
+
+                        <p class="form-footer" style="margin-top: 15px;" id="formFooterText">
+                            Didn't get the code? <a href="#" class="link" id="resendLink" onclick="resendCode(event)">Resend code</a>
+                        </p>
+                    </form>
+                    <div class="auth-container-footer"></div>
+                </div>
+
+            </div>
+
+            <!-- SLIDING OVERLAY PANEL -->
+            <div class="overlay-container">
+                <div class="overlay">
+                    <div class="overlay-panel overlay-left">
+                        <h2>Set New Password</h2>
+                        <p>Ensure your account is secure by creating a strong new password.</p>
+                        <button class="btn-ghost" onclick="backToSignIn(event)">Back to Sign In</button>
+                    </div>
+                    <div class="overlay-panel overlay-right">
+                        <h2>Need Help?</h2>
+                        <p>Enter your registered email address to get started with resetting your credentials.</p>
+                        <button class="btn-ghost" onclick="backToSignIn(event)">Sign In</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success & Error Modals -->
+    <div class="success-popup-overlay" id="successModal" style="display: none;">
+        <div class="success-popup-box">
+            <p id="successMessage">Operation successful!</p>
+            <button class="success-redirect-btn" id="successModalBtn" onclick="closeSuccessModal()">OK</button>
+        </div>
+    </div>
+
+    <div class="success-popup-overlay" id="errorModal" style="display: none;">
+        <div class="success-popup-box error-popup-box">
+            <p id="errorMessage">An error occurred!</p>
+            <button class="success-redirect-btn error-btn" onclick="closeErrorModal()">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        let codeSent = false;
+        let passwordValid = false;
+        let passwordsMatch = false;
+        let countdownTimer = null;
+        let timeLeft = 30;
+
+        function startCooldown() {
+            const resendLink = document.getElementById('resendLink');
+            if (!resendLink) return;
+
+            timeLeft = 30;
+            resendLink.style.pointerEvents = 'none';
+            resendLink.style.opacity = '0.5';
+
+            if (countdownTimer) clearInterval(countdownTimer);
+
+            countdownTimer = setInterval(() => {
+                if (timeLeft > 0) {
+                    resendLink.textContent = `Resend code (${timeLeft}s)`;
+                    timeLeft--;
+                } else {
+                    clearInterval(countdownTimer);
+                    resendLink.textContent = 'Resend code';
+                    resendLink.style.pointerEvents = 'auto';
+                    resendLink.style.opacity = '1';
+                }
+            }, 1000);
+        }
+
+        function togglePasswordVisibility(inputId, iconId) {
+            const passwordInput = document.getElementById(inputId);
+            const toggleIcon = document.getElementById(iconId);
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.style.opacity = '1';
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.style.opacity = '0.6';
+            }
+        }
+
+        function validatePassword(password) {
+            const checks = {
+                length: password.length >= 6,
+                lowercase: /[a-z]/.test(password),
+                uppercase: /[A-Z]/.test(password),
+                number: /[0-9]/.test(password)
+            };
+
+            document.getElementById('req-length').classList.toggle('valid', checks.length);
+            document.getElementById('req-lowercase').classList.toggle('valid', checks.lowercase);
+            document.getElementById('req-uppercase').classList.toggle('valid', checks.uppercase);
+            document.getElementById('req-number').classList.toggle('valid', checks.number);
+
+            return Object.values(checks).every(v => v);
+        }
+
+        function updateUpdateButtonState() {
+            const updateBtn = document.getElementById('updatePasswordBtn');
+            if (updateBtn) {
+                updateBtn.disabled = !(passwordValid && passwordsMatch);
+            }
+        }
+
+        function backToSignIn(event) {
+            if (event) event.preventDefault();
+            const container = document.getElementById('authContainer');
+            container.classList.remove('active');
+            setTimeout(() => {
+                window.location.href = 'auth.html#login';
+            }, 600);
+        }
+
+        function resendCode(event) {
+            event.preventDefault();
+            const email = document.getElementById('fpEmail').value.trim();
+            if (email) {
+                document.getElementById('successMessage').textContent = 'A new verification code has been resent to ' + email + '!';
+                document.getElementById('successModal').style.display = 'flex';
+                startCooldown(); // Restarts the 30-second timer on resend click
+            }
+        }
+
+        function closeSuccessModal() {
+            document.getElementById('successModal').style.display = 'none';
+        }
+
+        function closeErrorModal() {
+            document.getElementById('errorModal').style.display = 'none';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const forgotForm = document.getElementById('forgotPasswordForm');
+            const actionButton = document.getElementById('actionButton');
+            const codeGroup = document.getElementById('codeGroup');
+            const fpCode = document.getElementById('fpCode');
+            const fpEmail = document.getElementById('fpEmail');
+
+            if (forgotForm) {
+                forgotForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const email = fpEmail.value.trim();
+
+                    if (!codeSent) {
+                        // Step 1: Send Code Clicked -> Reveal 6-digit code box and start 30s timer
+                        if (email) {
+                            codeSent = true;
+                            codeGroup.style.display = 'block';
+                            fpCode.setAttribute('required', 'true');
+                            fpEmail.setAttribute('readonly', 'true');
+                            actionButton.textContent = 'VERIFY CODE';
+                            
+                            startCooldown(); // Triggers the 30s timer
+                        }
+                    } else {
+                        // Step 2: Verify Code Clicked -> Check code (using '123456' as valid example)
+                        const codeVal = fpCode.value.trim();
+                        if (codeVal === '123456' || codeVal.length === 6) {
+                            // Code is correct -> Slide container left to reveal password reset form
+                            document.getElementById('authContainer').classList.remove('active');
+                        } else {
+                            document.getElementById('errorMessage').textContent = 'Invalid verification code. Please try again.';
+                            document.getElementById('errorModal').style.display = 'flex';
+                        }
+                    }
+                });
+            }
+
+            // Real-time password validation listeners
+            const newPasswordInput = document.getElementById('newPassword');
+            if (newPasswordInput) {
+                newPasswordInput.addEventListener('input', function() {
+                    passwordValid = validatePassword(this.value);
+                    const confirmVal = document.getElementById('confirmNewPassword').value;
+                    const matchItem = document.getElementById('req-match');
+                    if (matchItem) {
+                        matchItem.classList.toggle('valid', confirmVal === this.value && this.value.length > 0);
+                    }
+                    passwordsMatch = confirmVal === this.value && this.value.length > 0;
+                    updateUpdateButtonState();
+                });
+            }
+
+            const confirmPasswordInput = document.getElementById('confirmNewPassword');
+            if (confirmPasswordInput) {
+                confirmPasswordInput.addEventListener('input', function() {
+                    const password = document.getElementById('newPassword').value;
+                    const matchItem = document.getElementById('req-match');
+                    if (matchItem) {
+                        matchItem.classList.toggle('valid', this.value === password && password.length > 0);
+                    }
+                    passwordsMatch = this.value === password && password.length > 0;
+                    updateUpdateButtonState();
+                });
+            }
+
+            const resetForm = document.getElementById('resetPasswordForm');
+            if (resetForm) {
+                resetForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    document.getElementById('successMessage').textContent = 'Password successfully updated! You can now sign in.';
+                    document.getElementById('successModal').style.display = 'flex';
+                    document.getElementById('successModalBtn').onclick = function() {
+                        window.location.href = 'auth.html#login';
+                    };
+                });
+            }
+        });
+    </script>
+</body>
+</html>

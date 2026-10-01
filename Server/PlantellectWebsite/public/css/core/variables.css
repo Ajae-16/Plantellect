@@ -2,6 +2,7 @@
   --color-cyan: #00bcd4;
   --color-modal-bg: #303d2b;
   --color-forest-green: #2e6417;
+  --color-deep-sage: #3a5a40;
   --color-bg-nav-light: #7aca1a;
   --color-beige: #f5f5dc;
   --color-library-green: #c6e78f;
@@ -16,6 +17,20 @@
   --color-border-light: #c0c0c0;
   --color-border-white: #ffffff;
   --color-bg-light: #fbf9f1;
+  --color-metallic-gold: #d4af37;
+  --color-rust: #b5533c;
+  --color-seal-brown: #6b4423;
+  --color-amber: #f59e0b;
+  --color-dark-amber: #d97706;
+  --color-cerulean-blue: #0284c7;
+  --color-dark-jungle-green: #2c3427;
+  --color-reseda-green: #5a6654;
+  --color-timberwolf: #dcd7c9;
+  --color-bone: #eae6d5;
+  --color-spanish-green: #00994f;
+  --color-dark-forest-green: #234c11;
+  --color-light-forest-green: #327715;
+  --color-light-light-green: #78b35e;
 
   --font-primary: 'Roboto', sans-serif;
   --font-seasons: 'The Seasons', serif;
