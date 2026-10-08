@@ -2,12 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { requirePermission } = require('../middleware/authMiddleware');
-const { mysqlPool } = require('../config/mysql.js');
-const {
-    listCertificatesByAccount,
-    deleteCertificate,
-    bumpPermissionsVersion
-} = require('../config/mysql.js');
+const { decideRoleRequest, listCertificatesByAccount } = require('../config/mysql.js');
 const settings = require('../config/settings');
 
 const router = express.Router();
@@ -15,67 +10,38 @@ const router = express.Router();
 /**
  * Approves or denies a pending role_permission request from the unified
  * approval_requests queue.
+ *
+ * The decision body moved into config/mysql.js as `decideRoleRequest` because
+ * there are now two callers — this route and the automatic pass — and two copies
+ * of a privilege grant is exactly how they drift apart. This handler is now only
+ * the HTTP mapping: which verb, which note, which certificate flag, which status
+ * code. The response shape is unchanged, because callers of this endpoint already
+ * depend on `message`, `accountId` and `newRole`.
  */
 async function reviewRoleRequestHandler(req, res, next) {
     const { requestId } = req.params;
-    const reviewerId = req.session.accountId;
-    const { note, deleteCertificate: shouldDeleteCertificate } = req.body;
     const approve = req.path.endsWith('/approve');
+    const { note, deleteCertificate } = req.body;
     const status = approve ? 'approved' : 'denied';
 
-    const conn = await mysqlPool.getConnection();
     try {
-        await conn.beginTransaction();
-
-        const [requestRows] = await conn.query(
-            `SELECT accountId, requestedRole FROM approval_requests
-             WHERE requestId = ? AND status = 'pending' AND requestType = 'role_permission'
-             FOR UPDATE`,
-            [requestId]
-        );
-        if (requestRows.length === 0) {
-            await conn.rollback();
-            return res.status(409).json({ error: 'Pending role request not found or already resolved' });
-        }
-
-        const { accountId, requestedRole } = requestRows[0];
-
-        if (approve) {
-            const [roleRows] = await conn.query('SELECT roleId FROM roles WHERE roleName = ?', [requestedRole]);
-            if (roleRows.length === 0) {
-                await conn.rollback();
-                return res.status(400).json({ error: 'Invalid role' });
-            }
-            await conn.query('UPDATE accounts SET roleId = ? WHERE accountId = ?', [roleRows[0].roleId, accountId]);
-            await bumpPermissionsVersion(conn);
-        }
-
-        await conn.query(
-            `UPDATE approval_requests
-             SET status = ?, reviewedBy = ?, reviewedAt = NOW(), note = ?
-             WHERE requestId = ?`,
-            [status, reviewerId, note || null, requestId]
-        );
-
-        if (!approve && shouldDeleteCertificate) {
-            const certs = await listCertificatesByAccount(conn, accountId);
-            for (const cert of certs) {
-                await deleteCertificate(conn, cert.certificateId);
-            }
-        }
-
-        await conn.commit();
-
+        const result = await decideRoleRequest(requestId, req.session.accountId, {
+            approve,
+            note,
+            // Only ever meaningful on a denial, and only when the client sent it —
+            // an approval must not destroy the certificate the request exists to
+            // present as evidence.
+            deleteCertificate: !approve && deleteCertificate === true
+        });
+        if (result.error) return res.status(result.code).json({ error: result.error });
         res.json({
             message: `Role request ${status}`,
-            accountId,
-            ...(approve ? { newRole: requestedRole } : {})
+            accountId: result.accountId,
+            approvalMode: result.approvalMode,
+            ...(approve ? { newRole: result.newRole } : {})
         });
     } catch (err) {
-        await conn.rollback();
         next(err);
-    } finally {
-        conn.release();
     }
 }
 

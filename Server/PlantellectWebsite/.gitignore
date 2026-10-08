@@ -1,7 +1,6 @@
 # environment variables
 .env
 config/seed.cjs
-.kilo
 reference-ONLY
 certificates/
 administration/botanist/*

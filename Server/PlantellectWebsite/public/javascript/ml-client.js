@@ -47,23 +47,16 @@ async function getModelInfo() {
     return response.json();
 }
 
-/**
- * Check if the ML service is healthy.
- * @returns {Promise<boolean>} True if healthy
- */
-async function checkMLHealth() {
-    try {
-        const response = await fetch('/api/ml/health', {
-            method: 'GET',
-            credentials: 'include'
-        });
-        return response.ok;
-    } catch {
-        return false;
-    }
+// NOTE: there is deliberately no health check here. An earlier checkMLHealth()
+// called /api/ml/health, which the Express proxy never exposed, so it could only
+// ever resolve to false — a function that reports every deployment as broken is
+// worse than no function. Nothing new may build on /api/ml/health.
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { predictPlant, getModelInfo };
 }
 
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { predictPlant, getModelInfo, checkMLHealth };
+if (typeof window !== 'undefined') {
+    window.predictPlant = predictPlant;
+    window.getModelInfo = getModelInfo;
 }

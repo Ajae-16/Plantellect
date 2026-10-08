@@ -234,11 +234,10 @@ document.addEventListener('click', function(e) {
     }
 });
 
-document.addEventListener('DOMContentLoaded', async function() {
+// No auth call here: sidebar.js owns the header render and the single
+// /api/auth/me fetch, so this page cannot show a stale signed-out header.
+document.addEventListener('DOMContentLoaded', function() {
     initSliderAutoplayPause();
-
-    const user = await checkAuth();
-    updateNavForAuthState(user);
 
     loadLibraryPlants();
 });

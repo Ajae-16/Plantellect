@@ -117,3 +117,124 @@ body {
         font-size: 44px;
     }
 }
+/* =========================================================
+   MY REPORTS 
+   Deliberately NOT inside .profile-card: the reports are the
+   one part of this page that a plain `user` sees, and a
+   botanist sees too. Putting them inside the card would tie
+   their visibility to the account header's own state.
+   ========================================================= */
+
+.profile-reports {
+    margin-top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.profile-reports h2 {
+    font-size: 1.3rem;
+    color: var(--color-forest-green);
+}
+
+.profile-muted {
+    color: var(--color-seal-brown);
+    font-size: 0.88rem;
+}
+
+.profile-notice {
+    padding: 0.7rem 0.9rem;
+    border-radius: var(--border-radius-md);
+    background-color: #fdf0d5;
+    color: var(--color-seal-brown);
+    font-size: 0.9rem;
+}
+
+.report-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.report-card {
+    background-color: var(--color-white);
+    border: 1px solid var(--color-timberwolf);
+    border-left: 4px solid var(--color-timberwolf);
+    border-radius: var(--border-radius-md);
+    padding: 0.9rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.report-card header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.report-card h3 {
+    font-size: 1rem;
+    color: var(--color-dark-forest-green);
+}
+
+.report-when {
+    font-size: 0.78rem;
+    color: var(--color-seal-brown);
+    white-space: nowrap;
+}
+
+.report-photo {
+    width: 110px;
+    height: 110px;
+    object-fit: cover;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-timberwolf);
+}
+
+.report-note {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--color-dark-forest-green);
+}
+
+.profile-btn,
+.profile-btn-secondary {
+    align-self: flex-start;
+    font-size: 0.85rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: var(--border-radius-pill);
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+}
+
+.profile-btn {
+    background-color: var(--color-forest-green);
+    color: var(--color-white);
+}
+
+.profile-btn-secondary {
+    background-color: transparent;
+    border-color: var(--color-forest-green);
+    color: var(--color-forest-green);
+}
+
+.report-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+/* The state is the reason this row exists, so it is carried by the left edge
+   rather than by the heading alone. */
+.report-added { border-left-color: #2e9e5b; }
+.report-waiting { border-left-color: var(--color-library-green); }
+.report-recording { border-left-color: #6b5bab; }
+.report-not_recorded { border-left-color: var(--color-rust); }
+.report-not_added { border-left-color: var(--color-rust); }
+.report-not_a_plant { border-left-color: var(--color-rust); }
+.report-cancelled { border-left-color: var(--color-timberwolf); }

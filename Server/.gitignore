@@ -1,5 +1,7 @@
-.kilo/*
-.kilo
 Pharmacy Database
 .vsls.json
 docs
+ml/model
+*.keras
+*.h5
+*.tflite

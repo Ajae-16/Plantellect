@@ -44,6 +44,22 @@
             <div class="guest-prompt" id="guestPrompt" style="display: none;">
                 <p>Please <a href="auth.html#login">sign in</a> to view your profile.</p>
             </div>
+
+            <!--  Present for EVERY signed-in account, including a
+                 botanist who has never filed one: "you have filed none" is a
+                 different statement from a section that does not exist, and a
+                 botanist needs to find out that filing one is possible. -->
+            <section class="profile-reports" id="myReports" hidden>
+                <h2>My reports</h2>
+                <p class="profile-muted" id="myReportsSummary"></p>
+                <p class="profile-notice" id="myReportsNotice" hidden></p>
+                <div id="myReportsList" class="report-list"></div>
+                <div id="myReportsPagination" class="report-pagination" hidden>
+                    <button type="button" class="btn profile-btn-secondary" id="myReportsPrev">Previous</button>
+                    <span id="myReportsInfo" class="profile-muted"></span>
+                    <button type="button" class="btn profile-btn-secondary" id="myReportsNext">Next</button>
+                </div>
+            </section>
         </main>
     </div>
 

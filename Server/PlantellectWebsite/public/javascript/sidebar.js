@@ -8,10 +8,21 @@
      - guest              : no sidebar
      - user               : Discoveries, Plants, Scan, Profile      (no Record)
      - botanist           : Discoveries, Plants, Scan, Record, Profile
-     - admin / superadmin : Discoveries, Plants, Profile            (no Scan, no Record)
+     - admin / superadmin : Discoveries, Plants, Scan, Record, Profile (all items they have permissions for)
 
-   Handles: role-based rendering, dark / light mode, desktop icon rail,
-   mobile off-canvas drawer and the "Sign in to unlock" popup.
+   Record is decided by the record_plant permission, not the role name. Every
+   item is a plain link to a real page — SCAN PLANT is capture-plant.html and
+   RECORD PLANTS is record.html, not a modal and not a #scan hash.
+
+   Handles: the auth authority (one /api/auth/me fetch, the .auth-links render
+   and window.plantAuth), role-based sidebar rendering, dark / light mode,
+   desktop icon rail, mobile off-canvas drawer, item badges and the
+   "Sign in to unlock" popup.
+
+   A page must NOT fetch /api/auth/me or render .auth-links itself. Doing so is
+   what left record.html, capture-plant.html and discoveries.html with a
+   permanently signed-out header: the session was fine, the header was simply
+   never told. scripts/check-scripts.cjs asserts that.
    ========================================================= */
 (function () {
     'use strict';
@@ -27,6 +38,14 @@
     }
     function writeStore(key, value) {
         try { localStorage.setItem(key, value); } catch (e) {}
+    }
+
+    /* Sidebar markup is built from a static table, but a badge value could come
+       from an API, so it is escaped rather than trusted. */
+    function escapeText(str) {
+        var div = document.createElement('div');
+        div.textContent = String(str == null ? '' : str);
+        return div.innerHTML;
     }
 
     /* ---------------------------------------------------------
@@ -93,39 +112,203 @@
     }
 
     /* ---------------------------------------------------------
-       1. Sidebar items + auth
+       1. THE auth authority
+
+       sidebar.js is loaded in <head> with no defer on every public page,
+       before any page script, so it is the one file a page cannot forget to
+       load. That is why identity lives here and not in a page script:
+
+         - /api/auth/me is fetched ONCE, and the FULL user is kept.
+         - .auth-links is rendered from that one answer, on DOMContentLoaded
+           (this file runs before the header exists in the DOM).
+         - window.plantAuth is the single awaitable for pages that gate.
+
+       auth.js previously fetched the same endpoint independently and returned a
+       different shape ({ permissions, roles } here vs the whole user there), and
+       BOTH wrote the same three sessionStorage keys — so whichever resolved last
+       won, and a page reading the cache could see permissions but no username.
+       There is now exactly one writer of those keys: writeSessionUser below.
+       --------------------------------------------------------- */
+
+    /** Resolved once the single fetch has finished. null means signed out. */
+    var plantAuthUser = null;
+
+    function readSessionUser() {
+        try {
+            return {
+                username: sessionStorage.getItem('username') || '',
+                roles: JSON.parse(sessionStorage.getItem('roles') || '[]'),
+                permissions: JSON.parse(sessionStorage.getItem('permissions') || '[]')
+            };
+        } catch (e) {
+            return { username: '', roles: [], permissions: [] };
+        }
+    }
+
+    function writeSessionUser(user) {
+        try {
+            sessionStorage.setItem('username', user.username || '');
+            sessionStorage.setItem('roles', JSON.stringify(user.roles || []));
+            sessionStorage.setItem('permissions', JSON.stringify(user.permissions || []));
+        } catch (e) {}
+    }
+
+    function clearSessionUser() {
+        try {
+            sessionStorage.removeItem('username');
+            sessionStorage.removeItem('roles');
+            sessionStorage.removeItem('permissions');
+        } catch (e) {}
+    }
+
+    /**
+     * ONE shape for the whole app: { accountId, username, email, roles, permissions }
+     * or null. Every consumer reads this, so a page cannot get a half user.
+     *
+     * A failure is null rather than a throw. This is a UI convenience layer — the
+     * APIs are the real gate — and a rejected promise here would blank a header
+     * on a page whose content is otherwise fine.
+     * Returns a tri-state: { state: 'user', user: {...} } | { state: 'anonymous' } | { state: 'unknown' }
+     */
+    async function fetchCurrentUser() {
+        try {
+            var response = await fetch('/api/auth/me', { credentials: 'include' });
+            if (response.status === 401) return { state: 'anonymous' };
+            if (!response.ok) return { state: 'unknown' };
+            var data = await response.json();
+            return {
+                state: 'user',
+                user: {
+                    accountId: data.accountId || null,
+                    username: data.username || '',
+                    email: data.email || '',
+                    roles: data.roles || [],
+                    permissions: data.permissions || []
+                }
+            };
+        } catch (err) {
+            console.error('Failed to fetch auth:', err);
+            return { state: 'unknown' };
+        }
+    }
+
+    // Started while <head> parses, resolved whenever the answer arrives. Nothing
+    // here touches the DOM: the header is rendered on DOMContentLoaded below.
+    var plantAuthReady = fetchCurrentUser().then(function (result) {
+        if (result.state === 'user') {
+            plantAuthUser = result.user;
+            writeSessionUser(result.user);
+        } else if (result.state === 'anonymous') {
+            plantAuthUser = null;
+            clearSessionUser();
+        } else if (result.state === 'unknown') {
+            // One automatic retry after 500ms
+            return new Promise(function (r) { setTimeout(r, 500); })
+                .then(function () { return fetchCurrentUser(); })
+                .then(function (retryResult) {
+                    if (retryResult.state === 'user') {
+                        plantAuthUser = retryResult.user;
+                        writeSessionUser(retryResult.user);
+                    } else if (retryResult.state === 'anonymous') {
+                        plantAuthUser = null;
+                        clearSessionUser();
+                    }else {
+                        var cached = readSessionUser();
+                        if (cached.username || cached.roles.length) {
+                            plantAuthUser = {
+                                account: null,
+                                username: cached.username,
+                                email: '',
+                                roles: cached.roles,
+                                permissions: cached.permissions
+
+                            };
+                        }
+                    }
+                    // Second unknown → give up, keep last known good
+                    return plantAuthUser;
+                });
+        }
+        return result.state === 'user' ? result.user : null;
+    });
+
+    /**
+     * The header's SIGN OUT (username) / SIGN IN + SIGN UP, from session state.
+     *
+     * The username is escaped: it comes from an accounts row, and the sign-out
+     * link carries a click handler, so it is the one piece of account data that
+     * reaches an href-bearing element.
+     */
+    function renderAuthLinks(user) {
+        var authLinks = document.querySelector('.auth-links');
+        if (!authLinks) return;
+        authLinks.setAttribute('data-ready', '1');
+        if (!user) {
+            authLinks.innerHTML =
+                '<a href="auth.html#login">SIGN IN</a><a href="auth.html#register">SIGN UP</a>';
+            return;
+        }
+
+        var roles = user.roles || [];
+        var isAdmin = roles.indexOf('admin') !== -1 || roles.indexOf('superadmin') !== -1;
+        var adminLink = isAdmin ? '<a href="/admin/dashboard">ADMIN</a>' : '';
+        authLinks.innerHTML = adminLink +
+            '<a href="#" id="navLogoutLink">SIGN OUT (' + escapeText(user.username) + ')</a>';
+
+        var logoutLink = document.getElementById('navLogoutLink');
+        if (logoutLink) {
+            logoutLink.addEventListener('click', function (e) {
+                e.preventDefault();
+                if (typeof window.logoutUser === 'function') window.logoutUser();
+            });
+        }
+    }
+
+    window.plantAuth = {
+        /** Resolves with the full user, or null when signed out. Never rejects. */
+        ready: plantAuthReady,
+        /** Synchronous read of the resolved user, for code already inside await ready. */
+        user: function () { return plantAuthUser; }
+    };
+
+    /* ---------------------------------------------------------
+       2. Sidebar items
        --------------------------------------------------------- */
     // icon = a Material Symbols name (https://fonts.google.com/icons)
+    // Every item is a plain page link: no onclick handlers, so a click either
+    // navigates or does not exist. `badge` is an optional marker set via
+    // markSidebarBadge(); empty by default, so nothing is rendered unless
+    // something asks for it.
     var SIDEBAR_ITEMS = [
-        { id: 'discoveries', label: 'DISCOVERIES', icon: 'home', href: 'home.html',
-          show: function () { return true; } },
         { id: 'plants', label: 'PLANTS', icon: 'potted_plant', href: 'library.html',
           show: function (c) { return c.loggedIn; } },
-        { id: 'scan', label: 'SCAN PLANT', icon: 'center_focus_strong', href: 'library.html#scan',
-          show: function (c) { return c.loggedIn && !c.isAdmin; } },
-        { id: 'record', label: 'RECORD PLANTS', icon: 'videocam', href: '#',
-          show: function (c) { return c.isBotanist && !c.isAdmin; } },
+        { id: 'scan', label: 'SCAN PLANT', icon: 'center_focus_strong', href: 'capture-plant.html',
+          show: function (c) { return c.permissions.includes('scan_plant'); } },
+        // Before RECORD PLANTS on purpose: the dot is the "somebody has flagged
+        // a plant you can help with" signal, and an item placed after RECORD is
+        // the one that gets pushed off a short screen.
+        { id: 'discoveries', label: 'DISCOVERIES', icon: 'travel_explore', href: 'discoveries.html',
+          show: function (c) { return c.canDiscover; } },
+        { id: 'record', label: 'RECORD PLANTS', icon: 'edit_note', href: 'record.html',
+          show: function (c) { return c.canRecord; } },
         { id: 'profile', label: 'PROFILE', icon: 'person', href: 'profile.html', className: 'profile-link',
           show: function (c) { return c.loggedIn; } }
     ];
-
-    function getCachedAuth() {
-        try {
-            return {
-                permissions: JSON.parse(sessionStorage.getItem('permissions') || '[]'),
-                roles: JSON.parse(sessionStorage.getItem('roles') || '[]')
-            };
-        } catch (e) {
-            return { permissions: [], roles: [] };
-        }
-    }
 
     function getSidebarItems(permissions, roles) {
         var isAdmin = roles.indexOf('admin') !== -1 || roles.indexOf('superadmin') !== -1;
         var ctx = {
             loggedIn: permissions.length > 0 || roles.length > 0,
             isAdmin: isAdmin,
-            isBotanist: roles.indexOf('botanist') !== -1
+            isBotanist: roles.indexOf('botanist') !== -1,
+            permissions: permissions,
+            // Driven by the permission, not the role name: who holds
+            // record_plant is the question, and role names are not the source of
+            // truth for it. Admins now get RECORD if they hold the permission.
+            canRecord: permissions.indexOf('record_plant') !== -1,
+            // Same rule as canRecord: the queue is botanist work, but admins
+            // with record_plant can also see it.
+            canDiscover: permissions.indexOf('record_plant') !== -1
         };
         return SIDEBAR_ITEMS.filter(function (item) { return item.show(ctx); });
     }
@@ -158,6 +341,28 @@
         updateThemeSwitch();
     }
 
+    // Which sidebar items carry a dot, and what it counts. Populated by
+    // markSidebarBadge(); empty by default, so nothing is rendered unless
+    // something asks for it.
+    var sidebarBadges = {};
+
+    /**
+     * Marks (or clears) a badge on a sidebar item and re-renders. The fetch that
+     * decides what the badge says is deliberately NOT in this file's render
+     * path: a badge source is a feature concern, not a sidebar concern, and a
+     * failing fetch must not take the sidebar down with it.
+     */
+    function markSidebarBadge(itemId, value) {
+        if (value === null || value === undefined || value === '' || value === false) {
+            delete sidebarBadges[itemId];
+        } else {
+            sidebarBadges[itemId] = String(value);
+        }
+        if (plantAuthUser) {
+            renderSidebar(plantAuthUser.permissions, plantAuthUser.roles);
+        }
+    }
+
     function renderSidebar(permissions, roles) {
         var sidebar = document.getElementById('librarySidebar');
         if (!sidebar) return;
@@ -180,17 +385,18 @@
         document.body.classList.add('has-sidebar');
 
         var linksHTML = items.map(function (item) {
-            // Only plain page links can be "active" (the #scan link never is)
-            var isActive = item.href.indexOf('#') === -1 && item.href === currentPage;
+            var isActive = item.href === currentPage;
             var cls = ['sidebar-item', item.className || '', isActive ? 'active' : '']
                 .filter(Boolean).join(' ');
-            var onclick = '';
-            if (item.id === 'scan') onclick = 'onclick="handleScanClick(event)"';
-            else if (item.href === '#') onclick = 'onclick="handleRestrictedClick(event, \'' + item.id + '\')"';
+            var badge = sidebarBadges[item.id];
+            var badgeHtml = badge
+                ? '<span class="sidebar-badge">' + escapeText(badge) + '</span>'
+                : '';
             return '<a href="' + item.href + '" class="' + cls + '" title="' + item.label + '"' +
-                   (isActive ? ' aria-current="page"' : '') + ' ' + onclick + '>' +
+                   (isActive ? ' aria-current="page"' : '') + '>' +
                    '<span class="icon material-symbols-outlined">' + item.icon + '</span>' +
-                   '<span class="nav-link-text">' + item.label + '</span></a>';
+                   '<span class="nav-link-text">' + item.label + '</span>' +
+                   badgeHtml + '</a>';
         }).join('');
 
         sidebar.innerHTML =
@@ -224,36 +430,49 @@
         updateThemeSwitch();
     }
 
-    async function fetchAuth() {
-        try {
-            var response = await fetch('/api/auth/me', { credentials: 'include' });
-            if (response.ok) {
-                var data = await response.json();
-                sessionStorage.setItem('username', data.username);
-                sessionStorage.setItem('roles', JSON.stringify(data.roles || []));
-                sessionStorage.setItem('permissions', JSON.stringify(data.permissions || []));
-                return { permissions: data.permissions || [], roles: data.roles || [] };
-            }
-        } catch (err) {
-            console.error('Failed to fetch auth:', err);
-        }
-        return { permissions: [], roles: [] };
+    async function ensureSidebar() {
+        var user = await plantAuthReady;
+
+        renderAuthLinks(user); // bug fix preventing the sign in/sign out in nav header from rendering and confuse user
+        renderSidebar(user ? user.permissions : [], user ? user.roles : []);
+        await loadDiscoveryBadge();
     }
 
-    async function ensureSidebar() {
-        var cached = getCachedAuth();
-        if (cached.permissions.length > 0 || cached.roles.length > 0) {
-            renderSidebar(cached.permissions, cached.roles);
-        } else {
-            var auth = await fetchAuth();
-            renderSidebar(auth.permissions, auth.roles);
+    /**
+     * The DISCOVERIES dot.
+     *
+     * Counts UNCLAIMED, not pending: the item is named after the queue rather than
+     * after the reports, and a count of claims somebody is already working on
+     * would be a badge that never goes away.
+     *
+     * A failure here clears the dot rather than leaving the previous value up, so
+     * a revoked permission or a dead endpoint cannot leave a stale number on a
+     * page that is otherwise working.
+     */
+    async function loadDiscoveryBadge() {
+        var auth = plantAuthUser;
+        if (!auth) return;
+        // Show badge for anyone with record_plant permission (includes admins)
+        if (auth.permissions.indexOf('record_plant') === -1) return;
+        try {
+            var response = await fetch('/api/discoveries/count', { credentials: 'include' });
+            if (!response.ok) {
+                markSidebarBadge('discoveries', null);
+                return;
+            }
+            var data = await response.json();
+            markSidebarBadge('discoveries', data.unclaimed > 0 ? data.unclaimed : null);
+        } catch (err) {
+            console.error('Failed to load discovery badge:', err);
+            markSidebarBadge('discoveries', null);
         }
     }
 
     function clearSidebarCache() {
-        sessionStorage.removeItem('username');
-        sessionStorage.removeItem('roles');
-        sessionStorage.removeItem('permissions');
+        clearSessionUser();
+        plantAuthUser = null;
+        renderSidebar([], []);
+        renderAuthLinks(null);
     }
 
     function showRestrictedModal() {
@@ -268,37 +487,19 @@
         // Must run before the first await.
         event.preventDefault();
 
-        var loggedIn;
-        if (typeof window.checkAuth === 'function') {
-            loggedIn = !!(await window.checkAuth());
-        } else {
-            var cached = getCachedAuth();
-            loggedIn = cached.permissions.length > 0 || cached.roles.length > 0;
-        }
+        // The shared answer: the ONE /api/auth/me fetch on the page, and the ONE
+// renderer of the header. The single awaitable for a page's own gate is
+// window.plantAuth.ready; nothing else should fetch the current user.
+var loggedIn = !!(await plantAuthReady);
         if (!loggedIn) showRestrictedModal();
     }
 
-    /* Scan Plant lives only in the sidebar. On the library page it opens the
-       scan modal through the hidden #scanPlantBtn that scan.js listens to;
-       from any other page the link goes to library.html#scan, which opens it. */
-    function handleScanClick(event) {
-        var trigger = document.getElementById('scanPlantBtn');
-        if (trigger) {
-            event.preventDefault();
-            trigger.click();
-        }
-    }
-
-    window.addEventListener('load', function () {
-        if (window.location.hash !== '#scan') return;
-        var trigger = document.getElementById('scanPlantBtn');
-        if (!trigger) return;
-        trigger.click();
-        history.replaceState(null, '', window.location.pathname + window.location.search);
-    });
+    /* handleRestrictedClick stays: auth-script.js stubs it, and a future
+       restricted link may still need it. But no sidebar item uses an onclick
+       any more — SCAN PLANT and RECORD PLANTS are ordinary page links. */
 
     /* ---------------------------------------------------------
-       2. Mobile drawer
+       3. Mobile drawer
        --------------------------------------------------------- */
     function setDrawer(open) {
         var sidebar = document.getElementById('librarySidebar');
@@ -316,7 +517,7 @@
     function closePublicSidebar() { setDrawer(false); }
 
     /* ---------------------------------------------------------
-       3. Wire up the page
+       4. Wire up the page
        --------------------------------------------------------- */
     document.addEventListener('DOMContentLoaded', async function () {
         document.body.insertAdjacentHTML('beforeend',
@@ -407,13 +608,22 @@
         if (desktopQuery.addEventListener) desktopQuery.addEventListener('change', onBreakpoint);
         else if (desktopQuery.addListener) desktopQuery.addListener(onBreakpoint);
 
+        // The header render is the ONE thing here that could not run while
+        // <head> parsed: .auth-links does not exist yet.
+
         await ensureSidebar();
     });
 
     window.ensureSidebar = ensureSidebar;
     window.clearSidebarCache = clearSidebarCache;
     window.handleRestrictedClick = handleRestrictedClick;
-    window.handleScanClick = handleScanClick;
+    // Exported so capture-plant.html and record.html can show the same "Sign in
+    // to unlock" popup for a guest instead of leaving it unreachable dead code.
+    window.showRestrictedModal = showRestrictedModal;
+    window.markSidebarBadge = markSidebarBadge;
+    // Exported so discoveries-script.js can refresh the dot after a claim or a
+    // vote without a full page reload, using the SAME function that built it.
+    window.loadDiscoveryBadge = loadDiscoveryBadge;
     window.PublicSidebar = {
         setCollapsed: setCollapsed,
         setTheme: function (theme) { setTheme(theme, true); },

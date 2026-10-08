@@ -13,6 +13,210 @@
     <link rel="stylesheet" href="/css/admin/admin-plants.css">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="/css/admin/admin-theme.css">
+
+    <style>
+        /* ---------- Topbar ---------- */
+        .plants-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+            backdrop-filter: blur(8px);
+        }
+        .plants-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            color: inherit;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            opacity: 0.75;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        .plants-tab:hover { opacity: 1; background: rgba(128, 128, 128, 0.12); }
+        .plants-tab.active {
+            opacity: 1;
+            background: rgba(76, 175, 80, 0.15);
+            border-color: #4CAF50;
+        }
+        .plants-tab-badge {
+            min-width: 20px;
+            padding: 1px 6px;
+            border-radius: 999px;
+            background: #e57373;
+            color: #fff;
+            font-size: 11px;
+            text-align: center;
+        }
+        /* Keeps a section's heading from hiding under the sticky bar */
+        #pendingRequestsSection,
+        #inventorySection,
+        #discoveryQueue,
+        #approvalModesSection { scroll-margin-top: 70px; }
+
+        /* ---------- Collapsible sections ---------- */
+        .collapse-summary {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 4px 0;
+            cursor: pointer;
+            list-style: none;
+            user-select: none;
+        }
+        .collapse-summary::-webkit-details-marker { display: none; }
+        .collapse-summary h2 {
+            margin: 0;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.05rem;
+        }
+        .collapse-summary:focus-visible { outline: 2px solid #4CAF50; outline-offset: 4px; border-radius: 6px; }
+        .collapse-chevron {
+            width: 9px;
+            height: 9px;
+            margin-right: 6px;
+            opacity: 0.6;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: rotate(45deg);
+            transition: transform 0.2s;
+        }
+        .collapse[open] > .collapse-summary .collapse-chevron { transform: rotate(-135deg); }
+        .collapse[open] > .collapse-summary {
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+        }
+        .collapse-body { padding-top: 12px; }
+        .collapse-summary:hover .collapse-chevron { opacity: 1; }
+        .collapse-summary:hover h2 { opacity: 0.85; }
+
+        /* ---------- Approval modes (compact) ---------- */
+        .approval-modes .admin-subtitle { font-size: 13px; margin: 0; opacity: 0.75; }
+        .approval-auto-count {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 9px;
+            border-radius: 999px;
+            background: rgba(230, 120, 60, 0.16);
+            color: #c2561b;
+        }
+        .approval-mode-list { display: grid; gap: 8px; margin-top: 12px; }
+        .approval-mode-row {
+            padding: 10px 14px;
+            border: 1px solid rgba(128, 128, 128, 0.22);
+            border-radius: 12px;
+            background: rgba(128, 128, 128, 0.04);
+            transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+        }
+        .approval-mode-row:hover { border-color: rgba(128, 128, 128, 0.4); }
+        .approval-mode-row.is-auto {
+            border-color: rgba(230, 120, 60, 0.55);
+            background: rgba(230, 120, 60, 0.06);
+            box-shadow: 0 1px 6px rgba(230, 120, 60, 0.12);
+        }
+        .approval-mode-main { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+        .approval-mode-text { flex: 1; min-width: 0; }
+        .approval-mode-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .approval-mode-label { font-weight: 600; font-size: 14px; }
+        .mode-pill {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(128, 128, 128, 0.16);
+        }
+        .approval-mode-row.is-auto .mode-pill { background: rgba(230, 120, 60, 0.2); color: #c2561b; }
+        .approval-mode-detail { font-size: 12px; opacity: 0.68; margin: 2px 0 0; line-height: 1.4; }
+        .approval-mode-note {
+            font-size: 11.5px;
+            opacity: 0.7;
+            margin: 6px 0 0;
+            padding-left: 8px;
+            border-left: 2px solid rgba(128, 128, 128, 0.3);
+        }
+        /* Describes what happens WHEN the switch is on. */
+        .approval-mode-warning {
+            display: none;
+            margin: 8px 0 0;
+            padding: 8px 10px;
+            font-size: 12px;
+            line-height: 1.45;
+            border-left: 3px solid #e6a23c;
+            background: rgba(230, 162, 60, 0.1);
+            border-radius: 0 8px 8px 0;
+        }
+        .approval-mode-row.is-auto .approval-mode-warning { display: block; }
+
+        .switch { position: relative; width: 38px; height: 22px; flex-shrink: 0; }
+        .switch input {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            opacity: 0;
+            cursor: pointer;
+            z-index: 1;
+        }
+        .switch-track {
+            position: absolute;
+            inset: 0;
+            border-radius: 999px;
+            background: rgba(128, 128, 128, 0.35);
+            transition: background 0.2s;
+        }
+        .switch-track::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s;
+        }
+        .switch input:checked + .switch-track { background: #e6783c; }
+        .switch input:checked + .switch-track::after { transform: translateX(16px); }
+        .switch input:focus-visible + .switch-track { outline: 2px solid #4CAF50; outline-offset: 2px; }
+
+        .approval-modes-note { font-size: 12px; opacity: 0.8; margin: 10px 0 0; }
+        .approval-rails { margin-top: 10px; font-size: 12px; opacity: 0.8; }
+        .approval-rails summary { cursor: pointer; font-weight: 600; width: fit-content; }
+        .approval-rails ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.5; }
+        .approval-rails p { margin: 6px 0 0; }
+
+        /* On the queue row: the decision came from the rule set, not a person. */
+        .request-mode-badge {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 7px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            border: 1px solid #e6a23c;
+            background: rgba(230, 162, 60, 0.16);
+            color: #b97a17;
+            vertical-align: middle;
+        }
+    </style>
 </head>
 <body>
 
@@ -20,7 +224,7 @@
         <div class="admin-header-top">
             <div class="admin-logo">
                 <img src="/resource/logo.png" alt="Plantellect Logo">
-                <span>Admin Dashboard</span>
+                <span>Plants</span>
             </div>
             <button class="admin-hamburger" aria-label="Open sidebar">☰</button>
         </div>
@@ -76,65 +280,162 @@
             <h1>Plants</h1>
             <p class="admin-subtitle">Review upload requests and manage the plant inventory</p>
 
+            <!-- Topbar: each tab opens (if collapsed) and scrolls to its section -->
+            <nav class="plants-topbar" id="plantsTopbar" aria-label="Plants sections">
+                <a href="#approvalModesSection" class="plants-tab active" data-target="approvalModesSection">Approval modes</a>
+                <a href="#pendingRequestsSection" class="plants-tab" data-target="pendingRequestsSection">
+                    Request Pending
+                    <span class="plants-tab-badge" id="plantsTabBadgePending" hidden>0</span>
+                </a>
+                <a href="#inventorySection" class="plants-tab" data-target="inventorySection">Inventory</a>
+                <a href="#discoveryQueue" class="plants-tab" data-target="discoveryQueue">
+                    Discoveries
+                    <span class="plants-tab-badge" id="plantsTabBadgeDiscoveries" hidden>0</span>
+                </a>
+            </nav>
+
             <div class="plants-container">
 
+                <!-- APPROVAL MODES (top of the page: it decides what the Approve
+                     button below is still needed for). Rows are BUILT FROM
+                     /admin/api/approval-modes, never hardcoded. All sections
+                     start collapsed (no `open` attribute on <details>). -->
+                <section class="admin-section approval-modes" id="approvalModesSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Approval modes
+                                <span class="approval-auto-count" id="approvalModesAutoBadge" hidden>0 automatic</span>
+                            </h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">All types start as <strong>manual</strong>. Automatic means a fixed rule approves submissions, recorded as &ldquo;System&rdquo;.</p>
+                            <div id="approvalModesList" class="approval-mode-list">
+                                <p>Loading approval modes&hellip;</p>
+                            </div>
+                            <div id="approvalModesRails"></div>
+                            <p class="approval-modes-note" id="approvalModesNotice" hidden></p>
+                        </div>
+                    </details>
+                </section>
+
                 <!-- Pending plant upload requests -->
-                <section class="admin-section">
-                    <h2>
-                        Pending Plant Requests
-                        <span class="section-count-badge" id="plantRequestsSectionCount" hidden>0</span>
-                    </h2>
-                    <div class="pending-requests-list" id="plantRequestsList">
-                        <p>Loading...</p>
-                    </div>
+                <section class="admin-section" id="pendingRequestsSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Pending Plant Requests
+                                <span class="section-count-badge" id="plantRequestsSectionCount" hidden>0</span>
+                            </h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <div class="pending-requests-list" id="plantRequestsList">
+                                <p>Loading...</p>
+                            </div>
+                        </div>
+                    </details>
                 </section>
 
                 <!-- Plants inventory -->
-                <section class="admin-section plants-inventory-section">
-                    <h2>Plants Inventory</h2>
+                <section class="admin-section plants-inventory-section" id="inventorySection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Plants Inventory</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
 
-                    <div class="plants-filters">
-                        <div class="plants-search">
-                            <span class="search-icon">🔍</span>
-                            <input
-                                type="text"
-                                id="plantSearch"
-                                placeholder="Search by plant name..."
-                                aria-label="Search plants by name"
-                            >
+                            <div class="plants-filters">
+                                <div class="plants-search">
+                                    <span class="search-icon">🔍</span>
+                                    <input
+                                        type="text"
+                                        id="plantSearch"
+                                        placeholder="Search by plant name..."
+                                        aria-label="Search plants by name"
+                                    >
+                                </div>
+                                <select id="plantTypeFilter" class="plants-filter-select" aria-label="Filter by plant type">
+                                    <!-- Options are populated from plant_types so the dropdown can't drift from the database. -->
+                                    <option value="all">All Types</option>
+                                </select>
+                                <label class="plants-taxonomy-toggle">
+                                    <input type="checkbox" id="taxonomyGapFilter">
+                                    Needs taxonomy
+                                </label>
+                            </div>
+
+                            <!-- The gap is visible on purpose, and so is the fact that nothing
+                                 here can close it: taxonomy is written once at approval and a
+                                 submission is immutable afterwards. -->
+                            <p class="plants-taxonomy-note" id="taxonomyGapNote" hidden></p>
+
+                            <div class="plants-table-wrapper">
+                                <table class="plants-table">
+                                    <thead>
+                                        <tr>
+                                            <th></th>
+                                            <th>Name</th>
+                                            <th>Type</th>
+                                            <th>Reviewed By</th>
+                                            <th>Recorded By</th>
+                                            <th>Date Uploaded</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="plantsTableBody">
+                                        <!-- Rows injected by JS -->
+                                    </tbody>
+                                </table>
+                                <div id="plantsEmptyState" class="plants-empty-state" hidden>
+                                    <p>No plants match your search.</p>
+                                </div>
+                            </div>
+
+                            <div class="pagination-container">
+                                <div class="pagination-info" id="plantsPaginationInfo"></div>
+                                <div class="pagination-controls" id="plantsPaginationControls"></div>
+                            </div>
                         </div>
-                        <select id="plantTypeFilter" class="plants-filter-select" aria-label="Filter by plant type">
-                            <!-- Type options are populated from plant_types, so the
-                                 dropdown cannot drift from the database. -->
-                            <option value="all">All Types</option>
-                        </select>
-                    </div>
+                    </details>
+                </section>
 
-                    <div class="plants-table-wrapper">
-                        <table class="plants-table">
-                            <thead>
-                                <tr>
-                                    <th></th>
-                                    <th>Name</th>
-                                    <th>Type</th>
-                                    <th>Reviewed By</th>
-                                    <th>Recorded By</th>
-                                    <th>Date Uploaded</th>
-                                </tr>
-                            </thead>
-                            <tbody id="plantsTableBody">
-                                <!-- Rows injected by JS -->
-                            </tbody>
-                        </table>
-                        <div id="plantsEmptyState" class="plants-empty-state" hidden>
-                            <p>No plants match your search.</p>
+                <!-- DISCOVERY REPORTS : its own section and endpoint. A report is
+                     NOT a plant request, so it must never be mixed into the pending list. -->
+                <section class="discovery-queue" id="discoveryQueue">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Discovery reports
+                                <span class="section-badge" id="discoveryQueueBadge" hidden>0</span>
+                            </h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+
+                            <!-- Chips live in the body so clicking them never toggles the section -->
+                            <div class="discovery-queue-head">
+                                <div class="discovery-status-tabs" role="group" aria-label="Report status">
+                                    <button type="button" class="chip active" data-discovery-status="pending">Open</button>
+                                    <button type="button" class="chip" data-discovery-status="rejected">Rejected</button>
+                                    <button type="button" class="chip" data-discovery-status="approved">Added</button>
+                                    <button type="button" class="chip" data-discovery-status="denied">Not added</button>
+                                    <button type="button" class="chip" data-discovery-status="cancelled">Withdrawn</button>
+                                    <button type="button" class="chip" data-discovery-status="">All</button>
+                                </div>
+                            </div>
+
+                            <p class="admin-subtitle" id="discoveryQuorumNote"></p>
+                            <p id="discoveryNotice" class="admin-notice" hidden></p>
+
+                            <div id="discoveryList" class="pending-request-list">
+                                <p>Loading discovery reports…</p>
+                            </div>
+
+                            <div class="pagination-container">
+                                <div class="pagination-info" id="discoveryPaginationInfo"></div>
+                                <div class="pagination-controls" id="discoveryPaginationControls"></div>
+                            </div>
                         </div>
-                    </div>
-
-                    <div class="pagination-container">
-                        <div class="pagination-info" id="plantsPaginationInfo"></div>
-                        <div class="pagination-controls" id="plantsPaginationControls"></div>
-                    </div>
+                    </details>
                 </section>
 
             </div>
@@ -156,6 +457,7 @@
         let plantSearch = '';
         let plantTypeFilterValue = 'all';
         let plantsPage = 1;
+        let taxonomyGapOnly = false;
         let expandedPlantId = null;
         // Labels and icons come from plant_types so the filter, the badges and
         // the dropdown can never disagree with the database.
@@ -272,6 +574,7 @@
                             <h3>${escapeHtml(r.plantName)}
                                 <span class="request-type-badge ${typeBadgeClass(r.type)}">${escapeHtml(labelForType(r.type))}</span>
                                 <span class="request-kind-badge">${r.requestType === 'plant_addition' ? 'New plant' : 'Contribution'}</span>
+                                ${approvalModeBadge(r.approvalMode)}
                             </h3>
                             <p>Submitted by: <strong>${escapeHtml(r.submittedByName || r.submittedBy)}</strong></p>
                             <p class="request-date">Requested: ${formatDate(r.requestedAt)}</p>
@@ -323,6 +626,164 @@
         }
 
         // -----------------------------------------------------------------
+        // Approval modes
+        // -----------------------------------------------------------------
+        /**
+         * AUTO vs the reviewer's name, decided from the value the SERVER sent.
+         * `approvalMode` arrives in the same MySQL row as the request, written in
+         * the same transaction as the decision, so a Mongo audit outage can't make
+         * a decided request look undecided. A pending row is 'manual' by definition.
+         */
+        function approvalModeBadge(mode) {
+            if (mode !== 'auto') return '';
+            return '<span class="request-mode-badge" title="Approved automatically by the rule set; no human reviewed it.">AUTO</span>';
+        }
+
+        /**
+         * Confirmation copy for a switch that publishes content. Enabling auto for
+         * new-plant submissions also covers records made FROM a discovery report,
+         * and an approved photo is ML training data from that moment on. Un-publishing
+         * text is possible later; un-training a photo is not. Say so BEFORE the click.
+         */
+        function confirmAutoEnable(mode) {
+            const lines = [
+                'Turn ON automatic approval for ' + mode.label + '?',
+                '',
+                mode.detail,
+                '',
+                'Every submission of this type will then be approved by a fixed rule, ' +
+                'with no human reading it. Decisions are recorded against the machine ' +
+                'account "System", not against you.'
+            ];
+            if (mode.warning) {
+                lines.push('', mode.warning);
+            }
+            lines.push('', 'A discovery report is never auto-decided, and a submitter\'s first ' +
+                'submission is always reviewed by hand.');
+            return confirm(lines.join('\n'));
+        }
+
+        function renderApprovalModes(payload) {
+            const list = document.getElementById('approvalModesList');
+            const rails = document.getElementById('approvalModesRails');
+            const modes = payload.modes || [];
+
+            // "N automatic" badge in the header, visible even when the section is collapsed
+            const autoCount = modes.filter(m => m.auto).length;
+            const autoBadge = document.getElementById('approvalModesAutoBadge');
+            autoBadge.textContent = autoCount + ' automatic';
+            autoBadge.hidden = autoCount === 0;
+
+            if (modes.length === 0) {
+                list.innerHTML = '<p>No approval switches are configured.</p>';
+                return;
+            }
+
+            list.innerHTML = modes.map(m => `
+                <div class="approval-mode-row ${m.auto ? 'is-auto' : ''}" data-request-type="${escapeHtml(m.requestType)}" title="${escapeHtml(m.metaKey)}">
+                    <div class="approval-mode-main">
+                        <div class="approval-mode-text">
+                            <div class="approval-mode-head">
+                                <span class="approval-mode-label">${escapeHtml(m.label)}</span>
+                                <span class="mode-pill">${m.auto ? 'Automatic' : 'Manual'}</span>
+                            </div>
+                            <p class="approval-mode-detail">${escapeHtml(m.detail)}</p>
+                            ${m.note ? `<p class="approval-mode-note">${escapeHtml(m.note)}</p>` : ''}
+                        </div>
+                        <label class="switch" title="Automatic approval">
+                            <input type="checkbox" class="approval-mode-input"
+                                   aria-label="Automatic approval for ${escapeHtml(m.label)}"
+                                   data-request-type="${escapeHtml(m.requestType)}"
+                                   ${m.auto ? 'checked' : ''}>
+                            <span class="switch-track"></span>
+                        </label>
+                    </div>
+                    ${m.warning ? `<p class="approval-mode-warning">${escapeHtml(m.warning)}</p>` : ''}
+                </div>
+            `).join('');
+
+            list.querySelectorAll('.approval-mode-input').forEach(input => {
+                input.addEventListener('change', () => handleApprovalModeToggle(input));
+            });
+
+            const railList = (payload.rules && payload.rules.rails) || [];
+            rails.innerHTML = railList.length > 0
+                ? '<details class="approval-rails"><summary>Always-on safeguards</summary><ul>' +
+                    railList.map(r => '<li>' + escapeHtml(r) + '</li>').join('') +
+                  '</ul><p>' + escapeHtml((payload.rules && payload.rules.neverDenies) || '') + '</p></details>'
+                : '';
+        }
+
+        async function handleApprovalModeToggle(input) {
+            const requestType = input.dataset.requestType;
+            const enabled = input.checked;
+            const notice = document.getElementById('approvalModesNotice');
+            const row = input.closest('.approval-mode-row');
+            const known = (approvalModesState.modes || []).find(m => m.requestType === requestType);
+
+            // Confirm BEFORE the request, and restore the checkbox if the admin
+            // cancels: a checkbox that says one thing while the server says another
+            // is the whole failure mode a settings panel has.
+            if (enabled && known && !confirmAutoEnable(known)) {
+                input.checked = false;
+                return;
+            }
+
+            notice.hidden = true;
+            try {
+                const response = await fetch('/admin/api/approval-modes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ requestType, enabled })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    input.checked = !enabled;
+                    notice.textContent = 'Error: ' + (data.error || 'Failed to change the approval mode');
+                    notice.hidden = false;
+                    return;
+                }
+                notice.textContent = data.message;
+                notice.hidden = false;
+                await loadApprovalModes();
+            } catch (err) {
+                console.error('Approval mode toggle error:', err);
+                input.checked = !enabled;
+                notice.textContent = 'Error: ' + err.message;
+                notice.hidden = false;
+            } finally {
+                if (row) {
+                    row.classList.toggle('is-auto', input.checked);
+                    const pill = row.querySelector('.mode-pill');
+                    if (pill) pill.textContent = input.checked ? 'Automatic' : 'Manual';
+                }
+            }
+        }
+
+        /** Held so the confirm dialog can describe the switch being flipped. */
+        let approvalModesState = { modes: [] };
+
+        async function loadApprovalModes() {
+            const list = document.getElementById('approvalModesList');
+            try {
+                const response = await fetch('/admin/api/approval-modes', { credentials: 'include' });
+                if (response.status === 401) {
+                    window.location.href = '/auth.html';
+                    return;
+                }
+                if (!response.ok) throw new Error('Failed to load approval modes');
+                approvalModesState = await response.json();
+                renderApprovalModes(approvalModesState);
+            } catch (err) {
+                console.error('Load approval modes error:', err);
+                // Its own failure, its own message: it must not blank the queue or
+                // claim the switches are off when it simply could not read them.
+                list.innerHTML = '<p>Approval modes could not be loaded.</p>';
+            }
+        }
+
+        // -----------------------------------------------------------------
         // Plants inventory (server-side search, filter and pagination)
         // -----------------------------------------------------------------
         function formatRange(min, max, note, unit) {
@@ -356,6 +817,10 @@
                     const isExpanded = expandedPlantId === p.id;
                     const parts = p.parts || {};
                     const desc = p.description || {};
+                    const missing = p.missingTaxonomyLevels || [];
+                    const gapBadge = missing.length
+                        ? `<span class="taxonomy-gap-badge" title="Missing taxonomy: ${escapeHtml(missing.join(', '))}">Needs taxonomy</span>`
+                        : '';
                     const row = `
                         <tr class="plant-row" data-id="${escapeHtml(p.id)}">
                             <td>
@@ -365,7 +830,7 @@
                                     </svg>
                                 </button>
                             </td>
-                            <td class="plant-name-cell" data-label="Name">${escapeHtml(p.name)}</td>
+                            <td class="plant-name-cell" data-label="Name">${escapeHtml(p.name)} ${gapBadge}</td>
                             <td data-label="Type"><span class="${typeBadgeClass(p.type)}">${escapeHtml(labelForType(p.type, p.typeLabel))}</span></td>
                             <td data-label="Reviewed By">${escapeHtml(p.reviewedBy || '—')}</td>
                             <td data-label="Recorded By">${escapeHtml(p.recordedBy || '—')}</td>
@@ -480,6 +945,12 @@
             loadPlants();
         });
 
+        document.getElementById('taxonomyGapFilter').addEventListener('change', (e) => {
+            taxonomyGapOnly = e.target.checked;
+            plantsPage = 1;
+            loadPlants();
+        });
+
         // ---------------------------------------------------------
         // Data loading. Search, type filter and pagination are all
         // server-side, so only the current page of rows is held here.
@@ -509,10 +980,36 @@
             }
         }
 
+        /**
+         * Reads the gap count off the SAME response the table came from, so the
+         * note and the filtered table can never disagree, and says plainly that
+         * there is no tool here to fix it.
+         */
+        function renderTaxonomyGapNote(data) {
+            const note = document.getElementById('taxonomyGapNote');
+            if (!note) return;
+            const total = data.taxonomyGapTotal || 0;
+            note.hidden = false;
+            note.innerHTML = total === 0
+                ? 'Every plant has a full taxonomy record.'
+                : `<strong>${total}</strong> plant${total === 1 ? '' : 's'} ${total === 1 ? 'is' : 'are'} missing ` +
+                  'a taxonomy level (class, order, family, genus or species). ' +
+                  'Those levels are recorded as <code>Unspecified</code> when a botanist leaves them blank, ' +
+                  'rather than guessed. ' +
+                  '<em>There is no way to correct them from here:</em> a plant record is written once at ' +
+                  'approval and a submission cannot be edited afterwards, so this list is a to-do with no tool. ' +
+                  'Correcting one needs either an admin-side taxonomy editor or a future &ldquo;edit my ' +
+                  'submission&rdquo; feature.';
+        }
+
         async function loadPlants() {
             const params = new URLSearchParams();
             if (plantSearch.trim()) params.set('search', plantSearch.trim());
             if (plantTypeFilterValue !== 'all') params.set('type', plantTypeFilterValue);
+            // ?taxonomyGap=1 means any of class / order / family / genus / species
+            // is 'Unspecified'. kingdom and phylum are excluded deliberately: they
+            // default correctly, so including them would match every row.
+            if (taxonomyGapOnly) params.set('taxonomyGap', '1');
             params.set('page', String(plantsPage));
 
             try {
@@ -524,6 +1021,7 @@
                 if (!response.ok) throw new Error('Failed to load plants');
                 lastPlantsResponse = await response.json();
                 renderPlantsTable(lastPlantsResponse);
+                renderTaxonomyGapNote(lastPlantsResponse);
             } catch (err) {
                 console.error('Load plants error:', err);
                 document.getElementById('plantsTableBody').innerHTML = '';
@@ -575,6 +1073,52 @@
             await loadPlantTypes();
             loadPlantRequests();
             loadPlants();
+            loadApprovalModes();
+            // The discovery queue starts itself: its init function is declared
+            // inside admin-discoveries.js's IIFE, so no load order made it
+            // reachable from here and the old call resolved to a ReferenceError.
+        })();
+    </script>
+
+    <!-- Discovery reports : its own module, because the discovery row
+         shape has no requestType field and sharing a renderer would mean one
+         queue rendering the other's half-truths. -->
+    <script src="/javascript/admin-discoveries.js"></script>
+
+    <!-- Plants topbar: each tab opens its section if collapsed, then scrolls to it -->
+    <script>
+        (function () {
+            const tabs = document.querySelectorAll('.plants-tab');
+
+            function setActive(id) {
+                tabs.forEach(t => t.classList.toggle('active', t.dataset.target === id));
+            }
+
+            function openSection(id) {
+                const section = document.getElementById(id);
+                const details = section && section.querySelector('details');
+                if (details) details.open = true;
+                return section;
+            }
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const id = tab.dataset.target;
+                    openSection(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    history.replaceState(null, '', '#' + id);
+                    setActive(id);
+                });
+            });
+
+            // Opening the page with a #hash (e.g. /admin/plants#discoveryQueue) jumps to that section
+            window.addEventListener('load', function () {
+                const id = location.hash.slice(1);
+                if (id && document.querySelector('.plants-tab[data-target="' + id + '"]')) {
+                    setActive(id);
+                    openSection(id).scrollIntoView();
+                }
+            });
         })();
     </script>
 

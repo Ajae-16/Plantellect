@@ -227,3 +227,293 @@ html[data-theme="light"] .nav-container--dark nav a.active,
 html[data-theme="light"] .nav-container--dark nav a:hover {
     color: #ffffff; /* change to any color you want */
 }
+/* =========================================================
+   Scan page (capture-plant.html) and record page (record.html)
+   Dark overrides live here because this is the only place public
+   dark rules live.
+   ========================================================= */
+
+html[data-theme="dark"] .capture-header h1 { color: var(--dk-accent); }
+
+html[data-theme="dark"] .scan-back-link,
+html[data-theme="dark"] .scan-record-link { color: var(--dk-accent); }
+
+html[data-theme="dark"] .scan-gate,
+html[data-theme="dark"] .scan-message,
+html[data-theme="dark"] .scan-deep-link {
+    background-color: var(--dk-surface);
+    color: var(--dk-text);
+    border: 1px solid var(--dk-border);
+}
+
+html[data-theme="dark"] .scan-message.error {
+    background-color: rgba(169, 68, 66, 0.25);
+    color: #f0b4b2;
+}
+
+html[data-theme="dark"] .scan-upload-area {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .scan-upload-area:hover,
+html[data-theme="dark"] .scan-upload-area:focus-visible,
+html[data-theme="dark"] .scan-upload-area.drag-over {
+    background-color: var(--dk-hover);
+}
+
+html[data-theme="dark"] .scan-upload-icon { color: var(--dk-accent); }
+
+html[data-theme="dark"] .scan-upload-hint { color: var(--dk-text-muted); }
+
+html[data-theme="dark"] .scan-btn-primary {
+    background-color: var(--dk-accent);
+    border-color: var(--dk-accent);
+    color: var(--color-dark-jungle-green);
+}
+
+html[data-theme="dark"] .scan-btn-secondary {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .scan-preview img { border-color: var(--dk-border); }
+
+html[data-theme="dark"] .scan-results {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .scan-result-header,
+html[data-theme="dark"] .scan-loading { color: var(--dk-text-muted); }
+
+html[data-theme="dark"] .scan-prediction-item {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .scan-prediction-rank,
+html[data-theme="dark"] .scan-prediction-name { color: var(--dk-accent); }
+
+html[data-theme="dark"] .scan-prediction-sci { color: var(--dk-text-muted); }
+
+html[data-theme="dark"] .scan-prediction-bar { background-color: var(--dk-hover); }
+
+html[data-theme="dark"] .scan-prediction-fill { background-color: var(--dk-accent); }
+
+/* ---- record page ---- */
+
+html[data-theme="dark"] .record-tabs {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .record-tab {
+    color: var(--dk-text-muted);
+    border-color: transparent;
+}
+
+html[data-theme="dark"] .record-tab[aria-selected="true"] {
+    background-color: var(--dk-surface-2);
+    color: var(--dk-accent);
+    border-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .record-panel,
+html[data-theme="dark"] .record-card,
+html[data-theme="dark"] .record-submission {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .record-submission { border-left-color: var(--dk-border); }
+
+html[data-theme="dark"] .record-section-title,
+html[data-theme="dark"] .record-submission h3 { color: var(--dk-accent); }
+
+html[data-theme="dark"] .record-field label,
+html[data-theme="dark"] .record-muted { color: var(--dk-text-muted); }
+
+html[data-theme="dark"] .record-field input,
+html[data-theme="dark"] .record-field select,
+html[data-theme="dark"] .record-field textarea {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .record-field input:focus,
+html[data-theme="dark"] .record-field select:focus,
+html[data-theme="dark"] .record-field textarea:focus {
+    border-color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .record-notice {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .record-notice.error {
+    background-color: rgba(169, 68, 66, 0.25);
+    color: #f0b4b2;
+}
+
+html[data-theme="dark"] .record-notice.success {
+    background-color: rgba(0, 191, 99, 0.18);
+    color: #a6f0c8;
+}
+
+html[data-theme="dark"] .record-submission-image {
+    border-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .record-badge { color: var(--color-dark-jungle-green); }
+
+/* ---- discoveries page ---- */
+
+html[data-theme="dark"] .discoveries-container h1,
+html[data-theme="dark"] .discovery-reporter { color: var(--dk-accent); }
+
+html[data-theme="dark"] .discoveries-muted,
+html[data-theme="dark"] .discovery-id,
+html[data-theme="dark"] .discovery-label { color: var(--dk-text-muted); }
+
+html[data-theme="dark"] .discoveries-quorum,
+html[data-theme="dark"] .discoveries-notice,
+html[data-theme="dark"] .discovery-disqualify {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .discoveries-notice.warning {
+    background-color: rgba(201, 148, 62, 0.2);
+    color: #f0d3a3;
+}
+
+html[data-theme="dark"] .discovery-card {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .discovery-note,
+html[data-theme="dark"] .discovery-predictions li { color: var(--dk-text); }
+
+html[data-theme="dark"] .discovery-pred-common { color: var(--dk-text-muted); }
+
+html[data-theme="dark"] .discovery-pred-conf { color: var(--dk-accent); }
+
+html[data-theme="dark"] .discovery-actions { border-top-color: var(--dk-border); }
+
+html[data-theme="dark"] .discovery-disqualify select {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .discovery-photos a { border-color: var(--dk-border); }
+
+/* The status flags carry meaning, so their colours are tinted for the dark
+   surface rather than left at their light-background values, which read as
+   washed-out there. */
+html[data-theme="dark"] .flag-claimed {
+    background-color: rgba(76, 133, 190, 0.25);
+    color: #b9d6f2;
+}
+
+html[data-theme="dark"] .flag-resolved {
+    background-color: rgba(0, 191, 99, 0.18);
+    color: #a6f0c8;
+}
+
+html[data-theme="dark"] .flag-recording {
+    background-color: rgba(140, 116, 200, 0.25);
+    color: #d5c9ee;
+}
+
+html[data-theme="dark"] .flag-notaplant {
+    background-color: rgba(169, 68, 66, 0.28);
+    color: #f0b4b2;
+}
+
+/* ---------- Sidebar item badge: dark variant ---------- */
+html[data-theme="dark"] .sidebar-badge {
+    background-color: var(--color-rust);
+    color: var(--color-white);
+}
+
+/* ---- discovery report card on the scan page  ---- */
+html[data-theme="dark"] .scan-discovery-card {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .scan-discovery-card h2 { color: var(--dk-accent); }
+
+html[data-theme="dark"] .scan-discovery-card label,
+html[data-theme="dark"] .scan-hint { color: var(--dk-text-muted); }
+
+html[data-theme="dark"] .scan-discovery-card textarea,
+html[data-theme="dark"] .scan-discovery-card input[type="text"],
+html[data-theme="dark"] .scan-discovery-card input[type="file"] {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] #discoveryReportResult {
+    background-color: var(--dk-surface-2);
+    color: var(--dk-text);
+}
+
+/* ---- My reports on the profile page  ---- */
+html[data-theme="dark"] .profile-reports h2,
+html[data-theme="dark"] .report-card h3 { color: var(--dk-accent); }
+
+html[data-theme="dark"] .profile-muted,
+html[data-theme="dark"] .report-when { color: var(--dk-text-muted); }
+
+html[data-theme="dark"] .profile-notice {
+    background-color: rgba(201, 148, 62, 0.2);
+    color: #f0d3a3;
+}
+
+html[data-theme="dark"] .report-card {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    border-left-width: 4px;
+    border-left-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .report-note { color: var(--dk-text); }
+
+html[data-theme="dark"] .report-photo { border-color: var(--dk-border); }
+
+html[data-theme="dark"] .report-added { border-left-color: #3fbf7a; }
+html[data-theme="dark"] .report-waiting { border-left-color: var(--dk-accent); }
+html[data-theme="dark"] .report-recording { border-left-color: #9d86e0; }
+html[data-theme="dark"] .report-not_recorded,
+html[data-theme="dark"] .report-not_added,
+html[data-theme="dark"] .report-not_a_plant { border-left-color: var(--color-rust); }
+
+html[data-theme="dark"] .profile-btn-secondary {
+    border-color: var(--dk-accent);
+    color: var(--dk-accent);
+}
+
+/* ---- discovery banner on the record page --- */
+html[data-theme="dark"] .record-discovery-banner {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .record-discovery-title { color: var(--dk-accent); }
+
+html[data-theme="dark"] .record-discovery-note { color: var(--dk-text); }
+
+html[data-theme="dark"] .record-discovery-photos img { border-color: var(--dk-border); }

@@ -4,9 +4,16 @@ const { mysqlPool, getPermissionsVersion, loadAccountPermissions, getSessionGuar
  * API callers get a JSON 401; browser page loads are redirected to sign in.
  * Without this a fetch() follows the redirect, receives 200 HTML, and
  * response.json() throws a confusing parse error.
+ *
+ * originalUrl is what matters here, not req.path: inside a router mounted at
+ * '/api/plants', req.path is '/mine', so checking req.path alone made every
+ * /api route answer a redirect and no mounted API ever answered 401.
  */
 function wantsJson(req) {
-    return req.path.startsWith('/api') || req.originalUrl.startsWith('/admin/api');
+    return req.originalUrl.startsWith('/api') ||
+        req.originalUrl.startsWith('/admin/api') ||
+        req.path.startsWith('/api') ||
+        req.path.startsWith('/admin/api');
 }
 
 function unauthorized(req, res, message) {

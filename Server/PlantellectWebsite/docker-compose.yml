@@ -43,7 +43,7 @@ services:
     volumes:
       - ./ml/model:/app/model
     environment:
-      - MODEL_PATH=/app/model/main/best_model.keras
+      - MODEL_PATH=/app/model/main/plantellect_model.keras
       - CLASSES_PATH=/app/model/main/classes.json
       - TF_CPP_MIN_LOG_LEVEL=2
     deploy:

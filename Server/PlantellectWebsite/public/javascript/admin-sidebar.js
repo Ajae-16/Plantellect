@@ -9,6 +9,7 @@
      - Dark / light mode (a separate "Appearance" switch is added
        at the bottom of the sidebar, apart from the nav links)
      - Desktop collapsible icon rail (manual toggle only)
+     - Desktop sidebar height (header edge to bottom of screen)
      - Mobile off-canvas drawer
      - Sidebar notification badges (window.loadNavBadges)
    ========================================================= */
@@ -93,7 +94,7 @@
           Pass already-known counts to skip a fetch:
             loadNavBadges({ dashboard: 3 })
             loadNavBadges({ plants: 2 })
-            loadNavBadges()            // fetches both
+            loadNavBadges()            // fetches all
        --------------------------------------------------------- */
     async function fetchCount(url, key) {
         try {
@@ -125,13 +126,48 @@
         var plantCount = ('plants' in known)
             ? known.plants
             : await fetchCount('/admin/api/plant-requests', 'requests');
+        // the discovery queue has its own endpoint and its own badge,
+        // because it is NOT part of the plant review queue — a report is closed
+        // by its record's approval, so folding it into the plants count would
+        // double-count the same work and promise an admin a queue item that
+        // resolves itself.
+        var discoveryCount = ('discoveries' in known)
+            ? known.discoveries
+            : await fetchTotal('/admin/api/discovery-reports', 'requests');
 
+        // A caller that cannot supply a count omits the key entirely rather than
+        // passing undefined, so `'discoveries' in known` means the number is real.
         applyBadge('navBadgeDashboard', dashCount);
         applyBadge('navBadgePlants', plantCount);
+        // The Discoveries link moved out of the sidebar into the Plants topbar,
+        // so its badge lives there now. Pages without these ids simply skip them.
+        applyBadge('plantsTabBadgePending', plantCount);
+        applyBadge('plantsTabBadgeDiscoveries', discoveryCount);
 
         var hamburger = document.querySelector('.admin-hamburger');
         if (hamburger) {
-            hamburger.classList.toggle('has-notifications', (dashCount + plantCount) > 0);
+            hamburger.classList.toggle(
+                'has-notifications',
+                (dashCount + plantCount + discoveryCount) > 0
+            );
+        }
+    }
+
+    /**
+     * Counts `data.total`, for endpoints that paginate. fetchCount above counts
+     * `(data[key] || []).length`, which reads 0 for any page of a paginated
+     * list — so a discovery queue with 30 reports on page one and none shown
+     * would badge as empty. Two count helpers, because the two response shapes
+     * genuinely differ.
+     */
+    async function fetchTotal(url, key) {
+        try {
+            var response = await fetch(url, { credentials: 'include' });
+            if (!response.ok) return 0;
+            var data = await response.json();
+            return data.total || 0;
+        } catch (err) {
+            return 0;
         }
     }
 
@@ -224,6 +260,8 @@
         function onKeydown(e) {
             if (e.key === 'Escape') closeDrawer();
         }
+
+        sizeSidebar();
     }
 
     if (document.readyState === 'loading') {
@@ -231,6 +269,41 @@
     } else {
         init();
     }
+
+    /* ---------------------------------------------------------
+       5b. Desktop sidebar height
+           Runs from the header's bottom edge (or the top of the screen
+           once the header has scrolled away) down to the bottom of the
+           screen, so Sign out and the Appearance switch always sit at
+           the very bottom with no gap.
+       --------------------------------------------------------- */
+    var sizeQueued = false;
+
+    function sizeSidebar() {
+        sizeQueued = false;
+        var sidebar = document.getElementById('adminSidebar');
+        var header = document.querySelector('.admin-header');
+        if (!sidebar) return;
+
+        if (!desktop.matches) {
+            sidebar.style.height = '';      // mobile drawer uses its own CSS
+            return;
+        }
+        var top = header ? Math.max(0, header.getBoundingClientRect().bottom) : 0;
+        sidebar.style.height = (window.innerHeight - top) + 'px';
+    }
+
+    function queueSizeSidebar() {
+        if (sizeQueued) return;
+        sizeQueued = true;
+        window.requestAnimationFrame(sizeSidebar);
+    }
+
+    // Capture phase, so it also fires if the page scrolls inside a container
+    document.addEventListener('scroll', queueSizeSidebar, true);
+    window.addEventListener('resize', queueSizeSidebar);
+    window.addEventListener('load', queueSizeSidebar);
+    document.addEventListener('DOMContentLoaded', queueSizeSidebar);
 
     /* ---------------------------------------------------------
        6. Public API

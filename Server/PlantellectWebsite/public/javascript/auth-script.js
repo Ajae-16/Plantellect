@@ -135,7 +135,9 @@ async function handleLogin(event) {
         const data = await response.json();
 
         if (response.ok) {
-            sessionStorage.setItem('username', data.username);
+            // No session cache write here: sidebar.js is the one writer of those
+            // three keys, and it owns the next page's fetch of /api/auth/me. This
+            // used to write `username` and then clear it on the next line.
             if (typeof clearSidebarCache === 'function') {
                 clearSidebarCache();
             }
@@ -233,7 +235,7 @@ async function handleRegister(event) {
         const data = await response.json();
 
         if (response.ok) {
-            sessionStorage.setItem('username', data.username);
+            // Same as login: the session cache belongs to sidebar.js alone.
             if (typeof clearSidebarCache === 'function') {
                 clearSidebarCache();
             }

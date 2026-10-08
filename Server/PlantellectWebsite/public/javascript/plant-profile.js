@@ -125,8 +125,53 @@ async function loadPlantProfile() {
         if (contributorInfo) contributorInfo.style.display = 'none';
     }
 
+    //  Text, not a link: the reporter is usually a plain `user` and has
+    // no public profile page, so a link would 404. A plant with no discovery
+    // report leaves the whole row hidden rather than showing an empty label.
+    const reportedByRow = document.getElementById('reportedByRow');
+    const reportedByText = document.getElementById('reportedByText');
+    if (reportedByRow && reportedByText) {
+        if (plant.reportedBy) {
+            // The API returns the reporter's DISPLAY name, already resolved
+            // server-side. Escaped anyway: a profile's first name is user input.
+            reportedByText.textContent = plant.reportedBy;
+            reportedByRow.hidden = false;
+        } else {
+            reportedByRow.hidden = true;
+        }
+    }
+
     const badge = document.getElementById('confidenceBadge');
     if (badge) badge.hidden = true;
+
+    await showContributeLink(plantId);
+}
+
+/**
+ * Shows the Contribute button only when the session holds record_plant, and
+ * points it straight at this plant's contribute tab.
+ */
+async function showContributeLink(plantId) {
+    const link = document.getElementById('contributeLink');
+    if (!link) return;
+
+    // plant-profile.html has its own shell: no sidebar.js, no shared nav, no
+    // .auth-links. auth.js's checkAuth therefore falls back to its own fetch
+    // here — the ONE page allowed to do that, and only because there is no
+    // authority to delegate to. It cannot have the stale-header symptom this
+    // exists to prevent, since it renders no header.
+    let user = null;
+    try {
+        if (typeof window.checkAuth === 'function') user = await window.checkAuth();
+    } catch (err) {
+        user = null;
+    }
+    if (!user || !(user.permissions || []).includes('record_plant')) {
+        link.hidden = true;
+        return;
+    }
+    link.href = `/record.html?tab=contribute&plantId=${encodeURIComponent(plantId)}`;
+    link.hidden = false;
 }
 
 document.addEventListener('DOMContentLoaded', loadPlantProfile);

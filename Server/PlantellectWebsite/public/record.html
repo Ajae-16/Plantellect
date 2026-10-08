@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Record Plants</title>
+
+    <!-- Theme + collapsed state + sidebar logic: load here, NO defer, so there is no flash -->
+    <script src="javascript/sidebar.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="css/public/record.css">
+    <!-- Must be LAST -->
+    <link rel="stylesheet" href="css/public/public-theme.css">
+</head>
+<body>
+
+    <header>
+        <!-- nav-container--dark: dark text, because there is no photo behind the header here -->
+        <div class="nav-container nav-container--dark">
+            <button class="nav-hamburger" aria-label="Open sidebar" aria-expanded="false" aria-controls="librarySidebar">&#9776;</button>
+            <nav>
+                <a href="home.html">HOME</a>
+                <a href="library.html">PLANT LIBRARY</a>
+                <a href="about.html">ABOUT</a>
+            </nav>
+            <div class="auth-links">
+                <a href="auth.html#login">SIGN IN</a>
+                <a href="auth.html#register">SIGN UP</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="library-container record-container">
+
+        <div class="record-header">
+            <a href="library.html" class="scan-back-link">&larr; Back to library</a>
+            <h1>Record Plants</h1>
+            <p class="record-muted">Submit a species, add to one already recorded, or track what you have sent.</p>
+        </div>
+
+        <!-- Shown instead of every form when the session has no record_plant. There
+             is no self-service upgrade: botanist status is granted at
+             registration with a certificate. -->
+        <p id="recordGate" class="record-notice" hidden></p>
+
+        <!--  ?from=<requestId> is how discoveries.html hands a report to
+             a botanist. It is a BANNER, not a redirect: the record form is the
+             page's own subject, and a bare ?from= with no ?tab= must land on
+             "new plant" because that is what recording one means. The id is
+             echoed into the photo list so the botanist can see what the reporter
+             sent without a second trip back to the queue. -->
+        <div id="discoveryBanner" class="record-discovery-banner" hidden>
+            <div>
+                <p class="record-discovery-title">Working a discovery report</p>
+                <p class="record-muted" id="discoveryBannerMeta"></p>
+                <ul class="record-discovery-photos" id="discoveryPhotoList"></ul>
+            </div>
+            <a class="btn record-btn-secondary" href="discoveries.html">Back to the queue</a>
+        </div>
+
+        <div id="recordUi" hidden>
+
+            <!-- Tabs are query-param based (?tab=), never a hash: a #contribute or
+                 #scan hash has no consumer and would be a trap for the next reader. -->
+            <div class="record-tabs" role="tablist" aria-label="Record sections">
+                <button type="button" class="record-tab" id="tab-new" role="tab"
+                        data-tab="new" aria-controls="panel-new" aria-selected="true">NEW PLANT</button>
+                <button type="button" class="record-tab" id="tab-contribute" role="tab"
+                        data-tab="contribute" aria-controls="panel-contribute" aria-selected="false">ADD TO EXISTING</button>
+                <button type="button" class="record-tab" id="tab-mine" role="tab"
+                        data-tab="mine" aria-controls="panel-mine" aria-selected="false">MY SUBMISSIONS</button>
+            </div>
+
+            <p id="recordNotice" class="record-notice" hidden></p>
+
+            <!-- ---------------- NEW PLANT ---------------- -->
+            <section id="panel-new" class="record-panel" role="tabpanel" aria-labelledby="tab-new">
+                <form id="newPlantForm" class="record-card" novalidate>
+
+                    <h2 class="record-section-title">Record a brand-new species</h2>
+                    <p class="record-muted">
+                        Text first. Photos come after an admin approves the plant, from the
+                        &ldquo;Add photos&rdquo; action in My Submissions.
+                    </p>
+
+                    <!-- A scan -> record handoff shows the prediction as a HINT only.
+                         The prediction is the reason the botanist is being asked, so
+                         it is not trustworthy input and must not fill the form. -->
+                    <p id="newPlantHint" class="record-hint" hidden></p>
+
+                    <div class="record-grid">
+                        <div class="record-field">
+                            <label for="newCommonName">Common name *</label>
+                            <input type="text" id="newCommonName" name="commonName" required autocomplete="off">
+                        </div>
+                        <div class="record-field">
+                            <label for="newScientificName">Scientific name *</label>
+                            <input type="text" id="newScientificName" name="scientificName" required
+                                   autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="record-field">
+                            <label for="newTypeId">Type *</label>
+                            <select id="newTypeId" name="typeId" required>
+                                <option value="">Loading types…</option>
+                            </select>
+                        </div>
+                        <div class="record-field">
+                            <label for="newQuantity">Quantity on record</label>
+                            <input type="number" id="newQuantity" name="quantity" min="0" step="1">
+                        </div>
+                    </div>
+
+                    <!-- Shown when GET /api/plants?search= finds the name already. -->
+                    <p id="newDuplicateWarning" class="record-notice warning" hidden></p>
+
+                    <details class="record-details">
+                        <summary>Taxonomy (optional)</summary>
+                        <p class="record-muted">
+                            Left blank, a level is recorded as <strong>Unspecified</strong> rather than
+                            guessed &mdash; a plausible wrong value reads as a fact nobody will correct.
+                        </p>
+                        <div class="record-grid">
+                            <div class="record-field"><label for="newKingdom">Kingdom</label>
+                                <input type="text" id="newKingdom" name="kingdom" autocomplete="off"></div>
+                            <div class="record-field"><label for="newPhylum">Phylum</label>
+                                <input type="text" id="newPhylum" name="phylum" autocomplete="off"></div>
+                            <div class="record-field"><label for="newPlantClass">Class</label>
+                                <input type="text" id="newPlantClass" name="plantClass" autocomplete="off"></div>
+                            <div class="record-field"><label for="newOrder">Order</label>
+                                <input type="text" id="newOrder" name="order" autocomplete="off"></div>
+                            <div class="record-field"><label for="newFamily">Family</label>
+                                <input type="text" id="newFamily" name="family" autocomplete="off"></div>
+                            <div class="record-field"><label for="newGenus">Genus</label>
+                                <input type="text" id="newGenus" name="genus" autocomplete="off"></div>
+                            <div class="record-field"><label for="newSpecies">Species (epithet)</label>
+                                <input type="text" id="newSpecies" name="species" autocomplete="off"></div>
+                        </div>
+                    </details>
+
+                    <details class="record-details">
+                        <summary>Measurements (optional)</summary>
+                        <div class="record-grid">
+                            <div class="record-field"><label for="newHeightMinCm">Height min (cm)</label>
+                                <input type="number" id="newHeightMinCm" name="heightMinCm" step="0.01"></div>
+                            <div class="record-field"><label for="newHeightMaxCm">Height max (cm)</label>
+                                <input type="number" id="newHeightMaxCm" name="heightMaxCm" step="0.01"></div>
+                            <div class="record-field"><label for="newHeightNote">Height note</label>
+                                <input type="text" id="newHeightNote" name="heightNote"></div>
+                            <div class="record-field"><label for="newWidthMinCm">Width min (cm)</label>
+                                <input type="number" id="newWidthMinCm" name="widthMinCm" step="0.01"></div>
+                            <div class="record-field"><label for="newWidthMaxCm">Width max (cm)</label>
+                                <input type="number" id="newWidthMaxCm" name="widthMaxCm" step="0.01"></div>
+                            <div class="record-field"><label for="newWidthNote">Width note</label>
+                                <input type="text" id="newWidthNote" name="widthNote"></div>
+                            <div class="record-field"><label for="newColor">Color</label>
+                                <input type="text" id="newColor" name="color"></div>
+                            <div class="record-field"><label for="newShape">Shape</label>
+                                <input type="text" id="newShape" name="shape"></div>
+                            <div class="record-field"><label for="newTexture">Texture</label>
+                                <input type="text" id="newTexture" name="texture"></div>
+                        </div>
+                    </details>
+
+                    <details class="record-details" open>
+                        <summary>Description (optional, but names alone are not publishable)</summary>
+                        <div class="record-field">
+                            <label for="newUses">Uses</label>
+                            <textarea id="newUses" name="uses" rows="3"></textarea>
+                        </div>
+                        <div class="record-field">
+                            <label for="newBenefits">Benefits</label>
+                            <textarea id="newBenefits" name="benefits" rows="3"></textarea>
+                        </div>
+                        <div class="record-field">
+                            <label for="newHarmful">Harmful / caution</label>
+                            <textarea id="newHarmful" name="harmful" rows="3"></textarea>
+                        </div>
+                    </details>
+
+                    <button type="submit" class="btn record-submit" id="newPlantSubmit">Submit for review</button>
+                </form>
+            </section>
+
+            <!-- ---------------- ADD TO EXISTING ---------------- -->
+            <section id="panel-contribute" class="record-panel" role="tabpanel" aria-labelledby="tab-contribute" hidden>
+                <form id="contributeForm" class="record-card" novalidate>
+
+                    <h2 class="record-section-title">Add to a plant already in the library</h2>
+
+                    <div class="record-field">
+                        <label for="contributeSearch">Find a plant</label>
+                        <input type="text" id="contributeSearch" autocomplete="off"
+                               placeholder="Type a common or scientific name…">
+                        <div id="contributeResults" class="record-picker" hidden></div>
+                        <input type="hidden" id="contributePlantId">
+                        <p id="contributeSelected" class="record-muted" hidden></p>
+                    </div>
+
+                    <!-- The photo carried across from capture-plant.html. Without
+                         this the botanist holds the photo, cannot attach it, and can
+                         only upload it days later after approval. -->
+                    <div id="contributeCarriedPhoto" class="record-carried" hidden>
+                        <img id="contributeCarriedImg" alt="The photo you scanned">
+                        <div>
+                            <p id="contributeCarriedLabel">Use the photo you scanned</p>
+                            <button type="button" class="btn record-btn-secondary" id="contributeUseCarried">Use this photo</button>
+                            <button type="button" class="btn record-btn-secondary" id="contributeDropCarried">Discard it</button>
+                        </div>
+                    </div>
+
+                    <details class="record-details" open>
+                        <summary>Description and measurements</summary>
+                        <div class="record-field">
+                            <label for="contributeUses">Uses</label>
+                            <textarea id="contributeUses" name="uses" rows="3"></textarea>
+                        </div>
+                        <div class="record-field">
+                            <label for="contributeBenefits">Benefits</label>
+                            <textarea id="contributeBenefits" name="benefits" rows="3"></textarea>
+                        </div>
+                        <div class="record-field">
+                            <label for="contributeHarmful">Harmful / caution</label>
+                            <textarea id="contributeHarmful" name="harmful" rows="3"></textarea>
+                        </div>
+                        <div class="record-grid">
+                            <div class="record-field"><label for="contributeHeightMinCm">Height min (cm)</label>
+                                <input type="number" id="contributeHeightMinCm" step="0.01"></div>
+                            <div class="record-field"><label for="contributeHeightMaxCm">Height max (cm)</label>
+                                <input type="number" id="contributeHeightMaxCm" step="0.01"></div>
+                            <div class="record-field"><label for="contributeHeightNote">Height note</label>
+                                <input type="text" id="contributeHeightNote"></div>
+                            <div class="record-field"><label for="contributeWidthMinCm">Width min (cm)</label>
+                                <input type="number" id="contributeWidthMinCm" step="0.01"></div>
+                            <div class="record-field"><label for="contributeWidthMaxCm">Width max (cm)</label>
+                                <input type="number" id="contributeWidthMaxCm" step="0.01"></div>
+                            <div class="record-field"><label for="contributeWidthNote">Width note</label>
+                                <input type="text" id="contributeWidthNote"></div>
+                            <div class="record-field"><label for="contributeColor">Color</label>
+                                <input type="text" id="contributeColor"></div>
+                            <div class="record-field"><label for="contributeShape">Shape</label>
+                                <input type="text" id="contributeShape"></div>
+                            <div class="record-field"><label for="contributeTexture">Texture</label>
+                                <input type="text" id="contributeTexture"></div>
+                        </div>
+                    </details>
+
+                    <div class="record-field">
+                        <label for="contributeImages">Photos (optional)</label>
+                        <input type="file" id="contributeImages" name="images" multiple
+                               accept="image/jpeg,image/png,image/webp">
+                        <p class="record-muted" id="contributeFileHint"></p>
+                    </div>
+
+                    <button type="submit" class="btn record-submit" id="contributeSubmit">Submit contribution</button>
+                </form>
+            </section>
+
+            <!-- ---------------- MY SUBMISSIONS ---------------- -->
+            <section id="panel-mine" class="record-panel" role="tabpanel" aria-labelledby="tab-mine" hidden>
+                <div id="mineList" class="record-submissions">
+                    <p class="record-muted">Loading your submissions…</p>
+                </div>
+                <div id="minePagination" class="record-pagination" hidden>
+                    <button type="button" class="btn record-btn-secondary" id="minePrev">Previous</button>
+                    <span id="mineInfo" class="record-muted"></span>
+                    <button type="button" class="btn record-btn-secondary" id="mineNext">Next</button>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <div class="sidebar-scrim"></div>
+    <!-- Same sidebar as the other pages, at body level. Filled in by sidebar.js according to the signed-in role -->
+    <aside class="sidebar" id="librarySidebar" aria-label="Sidebar"></aside>
+
+    <script src="javascript/nav-toggle.js"></script>
+    <script src="javascript/logout.js"></script>
+    <script src="javascript/auth.js"></script>
+    <script src="javascript/photo-cache.js"></script>
+    <!-- ml-client.js before record-script.js: both pages depend on the load order,
+         and record-script.js uses the same photo/prediction handoff. -->
+    <script src="javascript/ml-client.js"></script>
+    <script src="javascript/record-script.js"></script>
+
+</body>
+</html>

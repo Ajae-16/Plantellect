@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "model": "ConvNeXtTiny",
+  "model_file": "plantellect_model.keras",
+  "height": 224,
+  "width": 224,
+  "channels": 3,
+  "color_mode": "rgb",
+  "resize": {
+    "method": "nearest",
+    "keep_aspect_ratio": false
+  },
+  "rescale": 1.0,
+  "mean": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "std": [
+    1.0,
+    1.0,
+    1.0
+  ]
+}

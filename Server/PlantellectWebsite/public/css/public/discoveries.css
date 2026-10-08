@@ -1,0 +1,424 @@
+@import '../core/variables.css';
+@import '../core/base.css';
+@import '../core/components.css';
+@import '../core/sidebar.css';
+
+/* =========================================================
+   discoveries.css
+   The botanist queue: cards, status flags, report photos and
+   the per-card action row.
+
+   Built on the same tokens record.css uses rather than a
+   card component, for the same reason record.css does: no card
+   component existed before this page and inventing one for a
+   single page is not a component.
+
+   Dark overrides live in public-theme.css, the only place
+   public dark rules belong.
+   ========================================================= */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: var(--font-primary);
+}
+
+body, html {
+    height: 100%;
+    width: 100%;
+    background-color: var(--color-library-green);
+    overflow-x: hidden;
+}
+
+.discoveries-container {
+    padding: 2rem 2rem 4rem;
+    max-width: 1000px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.discoveries-header h1 {
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    color: var(--color-dark-forest-green);
+}
+
+.discoveries-muted {
+    color: var(--color-seal-brown);
+    font-size: 0.9rem;
+}
+
+/* The quorum line. Not decoration: "1 of 5 botanists agree" only
+   means something if the electorate is named. */
+.discoveries-quorum {
+    padding: 0.75rem 1rem;
+    border-radius: var(--border-radius-md);
+    background-color: var(--color-timberwolf);
+    color: var(--color-dark-forest-green);
+    font-size: 0.88rem;
+}
+
+/* ---------------------------------------------------------- notices ------ */
+
+.discoveries-notice {
+    border-radius: var(--border-radius-md);
+    padding: 0.85rem 1rem;
+    font-size: 0.95rem;
+    background-color: var(--color-timberwolf);
+    color: var(--color-dark-forest-green);
+}
+
+.discoveries-notice.warning {
+    background-color: #fdf0d5;
+    color: var(--color-seal-brown);
+}
+
+/* ----------------------------------------------------------- cards ------- */
+
+.discovery-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.discovery-card {
+    background-color: var(--color-bg-light);
+    border: 1px solid var(--color-timberwolf);
+    border-radius: var(--border-radius-lg);
+    padding: 1.15rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.discovery-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.discovery-reporter {
+    font-size: 1.15rem;
+    color: var(--color-forest-green);
+}
+
+.discovery-id {
+    font-size: 0.75rem;
+    color: var(--color-seal-brown);
+    text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+    white-space: nowrap;
+}
+
+.discovery-note {
+    font-size: 0.95rem;
+    color: var(--color-dark-forest-green);
+    line-height: 1.5;
+}
+
+.discovery-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--color-seal-brown);
+    margin-bottom: 0.4rem;
+}
+
+/* ----------------------------------------------------------- flags ------- */
+
+.discovery-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.discovery-flag {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--border-radius-pill);
+}
+
+.flag-claimed {
+    background-color: #dbe9f5;
+    color: #1c4f72;
+}
+
+.flag-resolved {
+    background-color: #d9f2e3;
+    color: #16663c;
+}
+
+.flag-recording {
+    background-color: #e6e0f2;
+    color: #4b3a72;
+}
+
+.flag-notaplant {
+    background-color: #f7dedc;
+    color: var(--color-error);
+}
+
+/* ---------------------------------------------------------- photos ------- */
+
+.discovery-photos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.discovery-photos a {
+    display: block;
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    border: 1px solid var(--color-timberwolf);
+}
+
+.discovery-photos img {
+    display: block;
+    width: 140px;
+    height: 140px;
+    object-fit: cover;
+}
+
+/* ------------------------------------------------------- predictions ----- */
+
+.discovery-predictions ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.discovery-predictions li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    font-size: 0.85rem;
+    color: var(--color-dark-forest-green);
+}
+
+.discovery-pred-name {
+    font-style: italic;
+}
+
+.discovery-pred-common {
+    color: var(--color-seal-brown);
+}
+
+.discovery-pred-conf {
+    margin-left: auto;
+    font-weight: 700;
+    color: var(--color-forest-green);
+}
+
+/* --------------------------------------------------------- actions ------- */
+
+.discovery-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid var(--color-timberwolf);
+}
+
+.discovery-actions .btn {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.9rem;
+    border-radius: var(--border-radius-pill);
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.discoveries-btn {
+    background-color: var(--color-forest-green);
+    color: var(--color-white);
+}
+
+.discoveries-btn:hover:not(:disabled) {
+    background-color: var(--color-success);
+}
+
+.discoveries-btn-secondary {
+    background-color: transparent;
+    border-color: var(--color-forest-green);
+    color: var(--color-forest-green);
+}
+
+.discoveries-btn-secondary:hover:not(:disabled) {
+    background-color: rgba(46, 100, 23, 0.08);
+}
+
+/* For the two actions that are recovery, not progress: releasing someone else's
+   claim and reinstating a report. Present but never the primary action. */
+.discoveries-btn-quiet {
+    background-color: transparent;
+    border-color: var(--color-timberwolf);
+    color: var(--color-seal-brown);
+}
+
+.discoveries-btn-quiet:hover:not(:disabled) {
+    border-color: var(--color-seal-brown);
+}
+
+.discovery-actions .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* --------------------------------------------- the disqualify panel ------- */
+
+.discovery-disqualify {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--border-radius-md);
+    background-color: var(--color-timberwolf);
+}
+
+.discovery-disqualify .discovery-label {
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.discovery-disqualify select {
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--color-seal-brown);
+    background-color: var(--color-white);
+    color: var(--color-dark-forest-green);
+    font-family: var(--font-primary);
+}
+
+.discovery-disqualify .discovery-muted {
+    width: 100%;
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+/* ------------------------------------------------ the actions menu --------- */
+/* A verdict is an opinion about a photo, so both entries are visible on every
+   card and the disclosure is native <details>: keyboard reachable, and its open
+   state survives the refetch that follows every action without this file keeping
+   a copy of it. */
+
+.discovery-menu {
+    margin-top: 0.6rem;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-seal-brown);
+    background-color: var(--color-white);
+}
+
+.discovery-menu-summary {
+    cursor: pointer;
+    padding: 0.55rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-forest-green);
+    list-style: none;
+}
+
+.discovery-menu-summary::-webkit-details-marker {
+    display: none;
+}
+
+.discovery-menu-summary::before {
+    content: '\25B8';
+    display: inline-block;
+    margin-right: 0.5rem;
+    transition: transform 0.15s ease;
+}
+
+.discovery-menu[open] .discovery-menu-summary::before {
+    transform: rotate(90deg);
+}
+
+.discovery-menu-summary:hover,
+.discovery-menu-summary:focus-visible {
+    background-color: var(--color-timberwolf);
+}
+
+.discovery-menu-list {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--color-timberwolf);
+}
+
+.discovery-menu-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    width: 100%;
+    padding: 0.6rem 0.9rem;
+    border: 0;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--font-primary);
+    color: var(--color-dark-forest-green);
+}
+
+.discovery-menu-item + .discovery-menu-item {
+    border-top: 1px solid var(--color-timberwolf);
+}
+
+.discovery-menu-item:hover:not(:disabled) {
+    background-color: var(--color-timberwolf);
+}
+
+.discovery-menu-item:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.discovery-menu-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.discovery-menu-hint {
+    font-size: 0.8rem;
+    color: var(--color-forest-green);
+    opacity: 0.85;
+}
+
+/* -------------------------------------------------------- pagination ----- */
+
+.discoveries-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.discoveries-btn-secondary.btn {
+    background-color: transparent;
+    border-color: var(--color-forest-green);
+    color: var(--color-forest-green);
+}
+
+@media (max-width: 600px) {
+    .discoveries-container {
+        padding: 1.25rem 1rem 3rem;
+    }
+
+    .discovery-photos img {
+        width: 104px;
+        height: 104px;
+    }
+
+    .discovery-actions .btn {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+}

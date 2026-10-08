@@ -7,7 +7,8 @@ const {
     loadAccountPermissions,
     insertCertificate,
     insertRoleRequest,
-    recordConsent
+    recordConsent,
+    processNewRequest
 } = require('../config/mysql.js');
 const { logAuthEvent } = require('../mongoose-schemas/Authlog');
 const settings = require('../config/settings');
@@ -72,6 +73,8 @@ router.post('/register', uploadCertificate.single('certificate'), async (req, re
     }
 
     const conn = await mysqlPool.getConnection();
+    let roleRequestId = null;
+    let autoDecision = null;
     try {
         const [existing] = await conn.query(
             'SELECT accountId FROM accounts WHERE email = ? OR username = ?',
@@ -108,7 +111,7 @@ router.post('/register', uploadCertificate.single('certificate'), async (req, re
         await recordConsent(conn, accountId, CONSENT_TYPES, settings.terms.version);
 
         if (isPending) {
-            await insertRoleRequest(conn, accountId, 'botanist');
+            roleRequestId = await insertRoleRequest(conn, accountId, 'botanist');
             if (certFile) {
                 await insertCertificate(conn, accountId, certFile);
             }
@@ -117,6 +120,22 @@ router.post('/register', uploadCertificate.single('certificate'), async (req, re
         }
 
         await conn.commit();
+
+        // The automatic pass, AFTER the commit and AFTER the session is established.
+        //
+        // In that order deliberately: the session is created first so that if the
+        // role really was granted automatically, this response already reports the
+        // new permission set rather than a set that is one refresh out of date. And
+        // because the account row is committed, a failure here cannot un-register
+        // anybody — the registration stands as "pending review" with a reason.
+        if (roleRequestId) {
+            try {
+                autoDecision = await processNewRequest(roleRequestId, { triggeredBy: 'registration' });
+            } catch (err) {
+                console.error('Automatic role approval error:', err.message);
+                autoDecision = { autoDecided: false, reason: `Automatic approval could not run: ${err.message}` };
+            }
+        }
 
         const perms = await loadAccountPermissions(accountId);
         const version = await getPermissionsVersion();
@@ -140,7 +159,11 @@ router.post('/register', uploadCertificate.single('certificate'), async (req, re
             username,
             roles: perms.roles,
             permissions: perms.permissions,
-            pending: isPending
+            pending: isPending && perms.roles.length === 1,
+            // When the role really was granted by the rule set, say so rather than
+            // letting the client render "awaiting review" over a live permission.
+            autoApproved: autoDecision && autoDecision.autoDecided === true,
+            autoSkipReason: autoDecision && !autoDecision.autoDecided ? (autoDecision.reason || null) : null
         });
     } catch (err) {
         await conn.rollback();

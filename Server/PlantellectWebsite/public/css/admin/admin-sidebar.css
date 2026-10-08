@@ -2,6 +2,9 @@
 
 /* =========================================
    SIDEBAR (mobile: off-canvas drawer)
+   A fixed-height flex column: header, toggle, nav (scrolls on its own),
+   then the Appearance switch. Sign out is pinned to the bottom of the nav,
+   directly above the Appearance switch.
    ========================================= */
 
 .admin-sidebar {
@@ -16,8 +19,10 @@
     z-index: var(--z-index-drawer);
     transform: translateX(-100%);
     transition: transform var(--transition-normal) ease;
-    overflow-y: auto;
+    overflow: hidden;
     box-shadow: var(--box-shadow-modal);
+    display: flex;
+    flex-direction: column;
 }
 
 .admin-sidebar.open {
@@ -28,6 +33,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;
     padding: 18px 20px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
@@ -58,6 +64,7 @@
     display: none;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     width: 36px;
     height: 36px;
     margin: 12px 14px 0 auto;
@@ -69,10 +76,19 @@
     cursor: pointer;
 }
 
+/* The nav takes the remaining height and scrolls by itself if it overflows */
 .admin-sidebar nav {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     padding: 12px 0;
+}
+
+/* The Appearance switch (added by admin-sidebar.js) never shrinks */
+.admin-theme-switch {
+    flex-shrink: 0;
 }
 
 .admin-sidebar nav a {
@@ -156,8 +172,10 @@
     font-weight: 700;
 }
 
+/* Sign out: margin-top:auto pins it to the bottom of the nav, so it stays put
+   no matter how long the page is or how far you have scrolled. */
 .admin-sidebar nav a#adminLogoutLink {
-    margin-top: 12px;
+    margin-top: auto;
     border-top: 1px solid rgba(255, 255, 255, 0.15);
     color: var(--color-error-hover);
 }
@@ -242,14 +260,18 @@
 }
 
 /* =========================================
-   SIDEBAR (desktop: static column + collapsible icon rail)
+   SIDEBAR (desktop: sticky column + collapsible icon rail)
+   The sidebar sticks to the very top of the screen once the header has
+   scrolled away. Its height is set by admin-sidebar.js (header bottom
+   edge to the bottom of the screen); the calc() is only a fallback.
    ========================================= */
 
 @media (min-width: 768px) {
     .admin-sidebar {
-        position: static;
-        height: auto;
-        min-height: calc(100vh - 76px);
+        position: sticky;
+        top: 0;
+        align-self: flex-start;
+        height: calc(100vh - 76px);
         width: 240px;
         max-width: none;
         transform: none;
@@ -310,4 +332,4 @@
         padding: 0 4px;
         font-size: 10px;
     }
-}   
+}

@@ -1,0 +1,38 @@
+{
+  "0": {
+    "scientific": "Andrographis paniculata",
+    "trainImages": 23
+  },
+  "1": {
+    "scientific": "Basella alba",
+    "trainImages": 34
+  },
+  "2": {
+    "scientific": "Blumea balsamifera",
+    "trainImages": 36
+  },
+  "3": {
+    "scientific": "Graptophyllum pictum",
+    "trainImages": 26
+  },
+  "4": {
+    "scientific": "Hibiscus rosa-sinensis",
+    "trainImages": 36
+  },
+  "5": {
+    "scientific": "Jatropha curcas",
+    "trainImages": 77
+  },
+  "6": {
+    "scientific": "Origanum vulgare",
+    "trainImages": 62
+  },
+  "7": {
+    "scientific": "Solanum tuberosum",
+    "trainImages": 70
+  },
+  "8": {
+    "scientific": "Synsepalum dulcificum",
+    "trainImages": 34
+  }
+}

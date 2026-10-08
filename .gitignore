@@ -49,6 +49,8 @@ google-services.json
 #!.kilo/instruction.md
 #!.kilo/structure.md
 AGENTS.md
+.kilo
+
 
 # --- Node.js / Web server (if applicable) ---
 node_modules/
@@ -67,3 +69,9 @@ venv/
 # --- OS-specific ---
 .DS_Store
 Thumbs.db
+
+# --- others ---
+Pharmacy Database
+.vsls.json
+docs
+

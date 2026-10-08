@@ -219,6 +219,26 @@
             align-items: center;
             gap: 2px;
         }
+
+        /* Shown only when /api/auth/me includes record_plant. Styled here rather
+           than in a shared stylesheet because this page has no sidebar and no
+           shared theme — it keeps its own inline block on purpose. */
+        .contribute-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--accent-green);
+            background-color: var(--accent-green);
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .contribute-btn:hover { filter: brightness(0.92); }
+        .contribute-btn[hidden] { display: none; }
     </style>
 </head>
 <body>
@@ -271,17 +291,40 @@
             <div class="botanist-meta">
                 <span id="datasetSource"></span>
                 <div class="contributor-info">
+                    <!-- Revealed by plant-profile.js only for a session holding
+                         record_plant. Note this page keeps its own theme key
+                         (plantellect-theme), so following the link can flip the
+                         theme across the navigation. That is a known, accepted
+                         one-off: converting the key is not worth it for one
+                         jump, and it is not a bug. -->
+                    <a href="#" id="contributeLink" class="contribute-btn" hidden>
+                        <span class="material-symbols-outlined" style="font-size: 15px;">edit_note</span>
+                        Contribute
+                    </a>
                     <span>Reviewed by:</span>
                     <a href="#" id="reviewerLink"></a>
                     <span class="verified-badge">
                         <span class="material-symbols-outlined" style="font-size: 15px;">check_circle</span> Verified Botanist
                     </span>
                 </div>
+
+                <!--  reporter credit. Its OWN row rather than a third
+                     name in the reviewer line — "Reported by" and "Reviewed by"
+                     are different claims, and a `user` is credited here while
+                     never being a reviewer. Hidden when the plant had no
+                     discovery report, which is most plants. -->
+                <div class="contributor-info" id="reportedByRow" hidden>
+                    <span>Reported by:</span>
+                    <span id="reportedByText"></span>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- The profile is rendered from the API, so no static data bundle -->
+    <!-- The profile is rendered from the API, so no static data bundle.
+         auth.js is loaded for checkAuth / escapeHtml only: the Contribute button
+         is revealed from the session, and escapeHtml is used by renderList. -->
+    <script src="javascript/auth.js"></script>
     <script src="javascript/plant-profile.js"></script>
 
     <script>

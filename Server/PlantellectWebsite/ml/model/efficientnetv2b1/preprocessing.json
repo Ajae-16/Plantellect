@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "model": "EfficientNetV2B1",
+  "model_file": "plantellect_model.keras",
+  "height": 240,
+  "width": 240,
+  "channels": 3,
+  "color_mode": "rgb",
+  "resize": {
+    "method": "nearest",
+    "keep_aspect_ratio": false
+  },
+  "rescale": 1.0,
+  "mean": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "std": [
+    1.0,
+    1.0,
+    1.0
+  ]
+}

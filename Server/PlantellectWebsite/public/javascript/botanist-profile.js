@@ -45,6 +45,14 @@ function toggleTheme() {
 
 window.toggleTheme = toggleTheme;
 
+/**
+ * The verified-contributions grid, filtered to role = 'contributor'.
+ *
+ * The label is part of the claim: a species this botanist REPORTED is not one
+ * they verified, so rendering both under one heading would assert something
+ * false. The reported grid below is a separate grid over role = 'reporter' for
+ * the same reason — showing the distinction is better than hiding it.
+ */
 function renderContributions(contributions) {
     const grid = document.getElementById('contributionGrid');
     if (!grid) return;
@@ -55,11 +63,31 @@ function renderContributions(contributions) {
     }
 
     grid.innerHTML = contributions.map(function (c) {
-        const image = c.imageUrl
-            ? `<img src="${escapeHtml(c.imageUrl)}" alt="${escapeHtml(c.name)}">`
-            : '<div class="plant-card-placeholder" aria-hidden="true">🌿</div>';
-        const role = c.role === 'reviewer' ? 'Reviewed' : 'Contributed';
-        return `
+        return renderPlantCard(c, 'Contributed');
+    }).join('');
+}
+
+/** species this account flagged, over role = 'reporter'. */
+function renderReported(reported) {
+    const grid = document.getElementById('reportedGrid');
+    const section = document.getElementById('reportedSection');
+    if (!grid || !section) return;
+
+    if (!reported || reported.length === 0) {
+        section.hidden = true;
+        return;
+    }
+    section.hidden = false;
+    grid.innerHTML = reported.map(function (c) {
+        return renderPlantCard(c, 'Reported');
+    }).join('');
+}
+
+function renderPlantCard(c, role) {
+    const image = c.imageUrl
+        ? `<img src="${escapeHtml(c.imageUrl)}" alt="${escapeHtml(c.name)}">`
+        : '<div class="plant-card-placeholder" aria-hidden="true">🌿</div>';
+    return `
         <a href="plant-profile.html?plantId=${encodeURIComponent(c.id)}" class="plant-card">
             ${image}
             <div class="plant-card-content">
@@ -68,7 +96,6 @@ function renderContributions(contributions) {
                 <small>${role} · ${escapeHtml(c.typeLabel || c.type)}</small>
             </div>
         </a>`;
-    }).join('');
 }
 
 async function loadBotanistProfile() {
@@ -108,7 +135,14 @@ async function loadBotanistProfile() {
     // persisted yet, so show a dash rather than a stale number.
     document.getElementById('botanistAccuracy').textContent = '—';
 
+    // A reported species is credited, so the number counts it — and only it.
+    // It is deliberately NOT added into verifiedPlants: the two are different
+    // claims and the metrics row must not blur them.
+    const reportedCount = document.getElementById('botanistReportedCount');
+    if (reportedCount) reportedCount.textContent = profile.metrics.reportedPlants || 0;
+
     renderContributions(profile.contributions);
+    renderReported(profile.reported);
 }
 
 document.addEventListener('DOMContentLoaded', function () {

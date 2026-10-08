@@ -137,6 +137,10 @@ header nav a:hover {
     flex-shrink: 0;
 }
 
+.auth-link:not([data-ready]){
+    visibility: hidden;
+}
+
 .auth-links a {
     color: var(--color-white);
     text-decoration: none;

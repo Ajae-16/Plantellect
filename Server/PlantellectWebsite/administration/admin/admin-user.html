@@ -21,7 +21,7 @@
         <div class="admin-header-top">
             <div class="admin-logo">
                 <img src="/resource/logo.png" alt="Plantellect Logo">
-                <span>Admin Dashboard</span>
+                <span>Users and Roles</span>
             </div>
             <button class="admin-hamburger" aria-label="Open sidebar">☰</button>
         </div>
@@ -116,7 +116,7 @@
                             <span class="material-symbols-outlined">how_to_reg</span>
                         </span>
                         <span class="role-box-text">
-                            <span class="role-box-label">Active Users</span>
+                            <span class="role-box-label">All Users</span>
                             <span class="role-box-count" id="countActive">0</span>
                         </span>
                     </button>
@@ -127,17 +127,29 @@
                     <div class="role-detail-header">
                         <h2 id="roleDetailTitle">Administrators</h2>
                         <div class="users-filters">
+                            <!-- Two separate searches. Each one matches the START of the value. -->
                             <div class="users-search">
-                                <span class="search-icon material-symbols-outlined">search</span>
+                                <span class="search-icon material-symbols-outlined">person_search</span>
                                 <input
                                     type="text"
-                                    id="userSearch"
-                                    placeholder="Search by name or email..."
-                                    aria-label="Search users"
+                                    id="nameSearch"
+                                    placeholder="Name starts with..."
+                                    aria-label="Search by name"
+                                    autocomplete="off"
+                                >
+                            </div>
+                            <div class="users-search">
+                                <span class="search-icon material-symbols-outlined">mail</span>
+                                <input
+                                    type="text"
+                                    id="emailSearch"
+                                    placeholder="Email starts with..."
+                                    aria-label="Search by email"
+                                    autocomplete="off"
                                 >
                             </div>
                             <select id="statusFilter" class="filter-select" aria-label="Filter by status">
-                                <option value="all">Statuses</option>
+                                <option value="all">All Status</option>
                                 <option value="active">Active</option>
                                 <option value="inactive">Inactive</option>
                             </select>
@@ -193,7 +205,8 @@
         const PAGE_SIZE = 10;
         let currentPage = 1;
         let currentFilter = 'admin';
-        let currentSearch = '';
+        let currentName = '';
+        let currentEmail = '';
         let selectedStatus = 'all';
         let selectedRole = 'all';
         let viewerPermissions = [];
@@ -201,6 +214,8 @@
 
         const statusFilterEl = document.getElementById('statusFilter');
         const roleFilterEl = document.getElementById('roleFilter');
+        const nameSearchEl = document.getElementById('nameSearch');
+        const emailSearchEl = document.getElementById('emailSearch');
 
         const filterLabels = {
             admin: 'Administrators',
@@ -212,7 +227,9 @@
         /** Translates the active card plus the panel filters into API params. */
         function buildQuery() {
             const params = new URLSearchParams();
-            if (currentSearch.trim()) params.set('search', currentSearch.trim());
+            // Separate name / email searches. The server matches the START of each value.
+            if (currentName.trim()) params.set('name', currentName.trim());
+            if (currentEmail.trim()) params.set('email', currentEmail.trim());
             params.set('page', String(currentPage));
             if (currentFilter === 'active') {
                 // The active card filters on status, not on a role.
@@ -266,6 +283,13 @@
             wireRowActions();
         }
 
+        /** One icon-only action button. The tooltip and aria-label carry the meaning. */
+        function actionButton(cls, variant, icon, label, attrs) {
+            return '<button type="button" class="action-btn action-btn--' + variant + ' ' + cls + '"' +
+                ' title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '" ' + attrs + '>' +
+                '<span class="material-symbols-outlined">' + icon + '</span></button>';
+        }
+
         /**
          * Builds one row. The action buttons are assembled outside the row
          * template so the markup stays flat and easy to read.
@@ -274,18 +298,32 @@
             const notSelf = u.id !== currentAccountId;
             const isSuperadmin = u.role === 'superadmin';
             const privileged = u.role === 'admin' || isSuperadmin;
+            const id = escapeHtml(u.id);
 
-            const suspendLabel = u.status === 'active' ? 'Suspend' : 'Activate';
-            const suspendBtn = hasPermission('archive_user') && notSelf
-                ? '<button class="btn-toggle-status" data-id="' + escapeHtml(u.id) +
-                  '" data-status="' + escapeHtml(u.status) + '">' + suspendLabel + '</button>'
-                : '';
+            const viewBtn = actionButton('btn-view', 'view', 'visibility', 'View details', 'data-id="' + id + '"');
+
+            let suspendBtn = '';
+            if (hasPermission('archive_user') && notSelf) {
+                const isActive = u.status === 'active';
+                suspendBtn = actionButton(
+                    'btn-toggle-status',
+                    isActive ? 'danger' : 'success',
+                    isActive ? 'block' : 'check_circle',
+                    isActive ? 'Suspend account' : 'Activate account',
+                    'data-id="' + id + '" data-status="' + escapeHtml(u.status) + '"'
+                );
+            }
 
             let roleBtn = '';
             if (hasPermission('admin_promote') && notSelf) {
                 const label = isSuperadmin ? 'Revoke superadmin' : (privileged ? 'Revoke admin' : 'Make admin');
-                roleBtn = '<button class="btn-toggle-admin" data-id="' + escapeHtml(u.id) +
-                    '" data-role="' + escapeHtml(u.role) + '">' + label + '</button>';
+                roleBtn = actionButton(
+                    'btn-toggle-admin',
+                    privileged ? 'danger' : 'promote',
+                    privileged ? 'remove_moderator' : 'shield_person',
+                    label,
+                    'data-id="' + id + '" data-role="' + escapeHtml(u.role) + '"'
+                );
             }
 
             return '<tr>' +
@@ -293,10 +331,9 @@
                 '<td>' + escapeHtml(u.email) + '</td>' +
                 '<td><span class="badge badge-' + escapeHtml(u.role) + '">' + capitalize(u.role) + '</span></td>' +
                 '<td><span class="badge badge-' + escapeHtml(u.status) + '">' + capitalize(u.status) + '</span></td>' +
-                '<td class="user-actions">' +
-                    '<button class="btn-view" data-id="' + escapeHtml(u.id) + '">View</button>' +
-                    suspendBtn + roleBtn +
-                '</td>' +
+                '<td class="user-actions"><div class="action-group">' +
+                    viewBtn + suspendBtn + roleBtn +
+                '</div></td>' +
             '</tr>';
         }
 
@@ -411,8 +448,10 @@
                 box.classList.add('active-role');
                 currentFilter = box.dataset.role;
                 currentPage = 1;
-                currentSearch = '';
-                document.getElementById('userSearch').value = '';
+                currentName = '';
+                currentEmail = '';
+                nameSearchEl.value = '';
+                emailSearchEl.value = '';
 
                 selectedStatus = 'all';
                 selectedRole = 'all';
@@ -426,13 +465,22 @@
             });
         });
 
-        // Debounced so typing does not fire a request per keystroke.
+        // One shared debounce so typing does not fire a request per keystroke.
         let searchTimer = null;
-        document.getElementById('userSearch').addEventListener('input', (e) => {
-            currentSearch = e.target.value;
+        function scheduleSearch() {
             currentPage = 1;
             clearTimeout(searchTimer);
             searchTimer = setTimeout(loadUsers, 300);
+        }
+
+        nameSearchEl.addEventListener('input', (e) => {
+            currentName = e.target.value;
+            scheduleSearch();
+        });
+
+        emailSearchEl.addEventListener('input', (e) => {
+            currentEmail = e.target.value;
+            scheduleSearch();
         });
 
         // Status filter (all panels)

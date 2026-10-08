@@ -99,9 +99,8 @@ function initCarousel() {
     });
 }
 
+// The header's SIGN OUT / SIGN IN is rendered by sidebar.js on every page.
+// A page has no auth duty of its own; its only job here is the carousel.
 document.addEventListener('DOMContentLoaded', function () {
-    checkAuth().then(function (user) {
-        updateNavForAuthState(user);
-    });
     initCarousel();
 });

@@ -1,0 +1,26 @@
+{
+  "0": {
+    "scientific": "Basella alba",
+    "trainImages": 30
+  },
+  "1": {
+    "scientific": "Blumea balsamifera",
+    "trainImages": 35
+  },
+  "2": {
+    "scientific": "Hibiscus rosa-sinensis",
+    "trainImages": 35
+  },
+  "3": {
+    "scientific": "Jatropha curcas",
+    "trainImages": 89
+  },
+  "4": {
+    "scientific": "Origanum vulgare",
+    "trainImages": 30
+  },
+  "5": {
+    "scientific": "Synsepalum dulcificum",
+    "trainImages": 73
+  }
+}

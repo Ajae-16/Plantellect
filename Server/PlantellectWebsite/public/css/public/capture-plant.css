@@ -1,232 +1,478 @@
+@import '../core/variables.css';
+@import '../core/base.css';
+@import '../core/components.css';
+@import '../core/sidebar.css';
 
-.scan-plant-btn {
-    padding: 10px 24px;
-    background-color: var(--color-library-green, #2e7d32);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.2s, transform 0.1s;
-}
+/* =========================================================
+   capture-plant.css
+   The scan page, not a modal. This file was written for an
+   overlay that never rendered, so it is rebuilt as ordinary
+   document-flow sections on the shared card/button tokens.
 
-.scan-plant-btn:hover {
-    background-color: var(--color-library-green-dark, #1b5e20);
-    transform: translateY(-1px);
-}
+   The solid fills use the real palette tokens
+   (--color-spanish-green / --color-forest-green).
+   --color-library-green is #c6e78f, a PALE green, so the old
+   `var(--color-library-green, #2e7d32)` never used its fallback
+   and rendered pale-green buttons with white text.
 
-.scan-plant-btn:active {
-    transform: translateY(0);
-}
+   Dark overrides live in public-theme.css, the only place
+   public dark rules belong.
+   ========================================================= */
 
-/* Scan Modal */
-.scan-modal {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.7);
-    z-index: 1000;
-    align-items: center;
-    justify-content: center;
-}
-
-.scan-modal.active {
-    display: flex;
-}
-
-.scan-modal-content {
-    background-color: white;
-    border-radius: 12px;
-    padding: 24px;
-    max-width: 500px;
-    width: 90%;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-.scan-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-}
-
-.scan-modal-header h3 {
+* {
     margin: 0;
-    font-size: 20px;
-    color: var(--color-library-green, #2e7d32);
-}
-
-.scan-modal-close {
-    background: none;
-    border: none;
-    font-size: 28px;
-    cursor: pointer;
-    color: #666;
     padding: 0;
-    width: 32px;
-    height: 32px;
-    line-height: 1;
+    box-sizing: border-box;
+    font-family: var(--font-primary);
 }
 
-.scan-modal-close:hover {
-    color: #000;
+body, html {
+    height: 100%;
+    width: 100%;
+    background-color: var(--color-library-green);
+    overflow-x: hidden;
 }
 
-.scan-modal-body {
+.capture-container {
+    padding: 2rem 2rem 4rem;
+    max-width: 900px;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 1.25rem;
 }
 
+.capture-header h1 {
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    color: var(--color-dark-forest-green);
+}
+
+.capture-subtitle {
+    margin-top: 0.35rem;
+    font-size: 1rem;
+}
+
+/* Back control: above the scan UI so results cannot push it out of reach. */
+.scan-back-link {
+    display: inline-block;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+    color: var(--color-forest-green);
+    text-decoration: none;
+}
+
+.scan-back-link:hover {
+    text-decoration: underline;
+}
+
+.scan-gate,
+.scan-message,
+.scan-deep-link {
+    border-radius: var(--border-radius-md);
+    padding: 0.85rem 1rem;
+    font-size: 0.95rem;
+}
+
+.scan-gate {
+    background-color: var(--color-timberwolf);
+    color: var(--color-dark-forest-green);
+    font-weight: 600;
+}
+
+.scan-deep-link {
+    background-color: var(--color-bone);
+    color: var(--color-seal-brown);
+}
+
+.scan-message {
+    background-color: var(--color-timberwolf);
+    color: var(--color-dark-forest-green);
+}
+
+.scan-message.error {
+    background-color: #f7dedc;
+    color: var(--color-error);
+}
+
+/* ------------------------------------------------------- upload area ----- */
+
 .scan-upload-area {
-    border: 2px dashed #ccc;
-    border-radius: 8px;
-    padding: 40px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    border: 2px dashed var(--color-light-forest-green);
+    border-radius: var(--border-radius-lg);
+    background-color: var(--color-bg-light);
+    padding: 2.5rem 1.5rem;
     text-align: center;
     cursor: pointer;
-    transition: border-color 0.2s;
+    transition: border-color var(--transition-fast), background-color var(--transition-fast);
 }
 
 .scan-upload-area:hover,
+.scan-upload-area:focus-visible,
 .scan-upload-area.drag-over {
-    border-color: var(--color-library-green, #2e7d32);
+    border-color: var(--color-spanish-green);
+    background-color: var(--color-bone);
+    outline: none;
+}
+
+.scan-upload-icon {
+    font-size: 3rem;
+    color: var(--color-spanish-green);
 }
 
 .scan-upload-prompt p {
-    margin: 4px 0;
-    color: #666;
+    margin: 0.2rem 0;
 }
 
 .scan-upload-hint {
-    font-size: 12px !important;
-    color: #999 !important;
+    font-size: 0.8rem;
+    color: var(--color-reseda-green);
 }
 
+/* ----------------------------------------------------------- actions ------ */
+
+.scan-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+}
+
+.scan-btn-primary {
+    background-color: var(--color-spanish-green);
+    color: var(--color-white);
+    border: 1px solid var(--color-spanish-green);
+}
+
+.scan-btn-primary:hover:not(:disabled) {
+    background-color: var(--color-forest-green);
+    border-color: var(--color-forest-green);
+}
+
+.scan-btn-secondary {
+    background-color: var(--color-bg-light);
+    color: var(--color-dark-forest-green);
+    border: 1px solid var(--color-light-forest-green);
+}
+
+.scan-btn-secondary:hover {
+    background-color: var(--color-bone);
+}
+
+.scan-btn-primary:disabled,
+.scan-btn-secondary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* ----------------------------------------------------------- preview ------ */
+
 .scan-preview {
-    text-align: center;
+    display: flex;
+    justify-content: center;
 }
 
 .scan-preview img {
     max-width: 100%;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    max-height: 420px;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-light-forest-green);
+    box-shadow: var(--box-shadow-card);
 }
 
-.scan-actions {
-    display: flex;
-    gap: 10px;
-    justify-content: center;
+/* The preview lives inside the drop zone. Same element, same object URL, same
+   revoke — so the dashed border frames the photo the user just chose, and there
+   is no second blob to leak when the next file replaces it. */
+.scan-preview-inline {
+    width: 100%;
 }
 
-.scan-action-btn {
-    padding: 10px 20px;
-    border: 1px solid #ccc;
-    background-color: white;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: background-color 0.2s;
+.scan-preview-inline img {
+    width: 100%;
+    max-height: 320px;
+    object-fit: contain;
+    background-color: var(--color-white);
 }
 
-.scan-action-btn:hover {
-    background-color: #f0f0f0;
+/* Once a photo is chosen the prompt has gone, so the zone would otherwise be a
+   tall box around one image with a 3rem icon on top. Tighten the padding instead:
+   no :has() dependency, because the zone also has to look right before any file
+   is chosen. */
+.scan-upload-area:has(.scan-preview-inline:not([hidden])) {
+    padding: 1rem;
 }
 
-.scan-action-btn.primary {
-    background-color: var(--color-library-green, #2e7d32);
-    color: white;
-    border-color: var(--color-library-green, #2e7d32);
+.scan-upload-area:has(.scan-preview-inline:not([hidden])) .scan-upload-icon {
+    font-size: 1.75rem;
 }
 
-.scan-action-btn.primary:hover {
-    background-color: var(--color-library-green-dark, #1b5e20);
-}
-
-.scan-action-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
+/* ----------------------------------------------------------- results ------ */
 
 .scan-results {
-    margin-top: 8px;
+    background-color: var(--color-bg-light);
+    border: 1px solid var(--color-timberwolf);
+    border-radius: var(--border-radius-lg);
+    padding: 1.25rem;
 }
 
 .scan-result-header {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
-    margin-bottom: 12px;
-    font-size: 14px;
-    color: #666;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    color: var(--color-reseda-green);
 }
 
 .scan-predictions {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0.75rem;
 }
 
 .scan-prediction-item {
-    display: flex;
+    display: grid;
+    grid-template-columns: 2rem minmax(8rem, 1fr) minmax(4rem, 1fr) 3.5rem;
     align-items: center;
-    gap: 12px;
-    padding: 10px;
-    background-color: #f8f8f8;
-    border-radius: 8px;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background-color: var(--color-white);
+    border: 1px solid var(--color-timberwolf);
+    border-radius: var(--border-radius-md);
+}
+
+.scan-prediction-info {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    min-width: 0;
 }
 
 .scan-prediction-rank {
     font-weight: 700;
-    color: var(--color-library-green, #2e7d32);
-    min-width: 24px;
+    color: var(--color-spanish-green);
 }
 
 .scan-prediction-name {
     font-weight: 600;
-    flex: 1;
+    color: var(--color-dark-forest-green);
+    text-decoration: none;
+}
+
+a.scan-prediction-name:hover {
+    text-decoration: underline;
 }
 
 .scan-prediction-sci {
     font-style: italic;
-    font-size: 13px;
-    color: #888;
+    font-size: 0.8rem;
+    color: var(--color-reseda-green);
+    overflow-wrap: anywhere;
 }
 
 .scan-prediction-bar {
-    flex: 1;
     height: 8px;
-    background-color: #e0e0e0;
-    border-radius: 4px;
+    background-color: var(--color-timberwolf);
+    border-radius: var(--border-radius-pill);
     overflow: hidden;
-    min-width: 60px;
 }
 
 .scan-prediction-fill {
     height: 100%;
-    background-color: var(--color-library-green, #2e7d32);
-    border-radius: 4px;
-    transition: width 0.3s;
+    background-color: var(--color-spanish-green);
+    border-radius: var(--border-radius-pill);
 }
 
 .scan-prediction-conf {
     font-weight: 600;
-    min-width: 45px;
     text-align: right;
+}
+
+/* Spans the whole grid row: the action is secondary to the prediction itself. */
+.scan-record-link {
+    grid-column: 1 / -1;
+    justify-self: start;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-forest-green);
 }
 
 .scan-loading {
     text-align: center;
-    padding: 20px;
-    color: #666;
+    padding: 1.5rem;
+    color: var(--color-reseda-green);
 }
 
-.scan-error {
-    color: #d32f2f;
-    text-align: center;
-    padding: 16px;
+/* =========================================================
+   Camera overlay
+   The ONLY genuinely-modal piece left, because it only exists
+   while a MediaStream is live. Scoped to .scan-camera-overlay
+   so these overlay rules cannot leak onto the page sections
+   above — the old file styled a .scan-modal that was a
+   document-flow container, which shipped dead rules at best.
+   ========================================================= */
+
+.scan-camera-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-index-popup);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    background-color: var(--color-overlay-darker);
+}
+
+.scan-camera-video {
+    max-width: min(90vw, 560px);
+    border-radius: var(--border-radius-md);
+    background-color: var(--color-black);
+}
+
+@media (max-width: 600px) {
+    .capture-container {
+        padding: 1.25rem 1rem 3rem;
+    }
+
+    .scan-prediction-item {
+        grid-template-columns: 2rem 1fr 3rem;
+    }
+
+    .scan-prediction-bar {
+        grid-column: 1 / -1;
+    }
+}
+/* =========================================================
+   DISCOVERY REPORT 
+   The report card lives OUTSIDE .scan-ui in the markup: the
+   scan gate hides that block for any account without
+   scan_plant, and a plain `user` is exactly who most needs to
+   report an unidentified plant. Sharing the .scan-results
+   surface is deliberate — it is the same page and the same
+   reading rhythm.
+   ========================================================= */
+
+.scan-discovery-card {
+    background-color: var(--color-bg-light);
+    border: 1px solid var(--color-timberwolf);
+    border-radius: var(--border-radius-lg);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+/* The report card is a <details> so the scan page stays the page. The browser
+   hides everything but the summary through its own content slot, so the element
+   must NOT be forced to display:flex: a flex container makes the summary and the
+   form siblings of a box the UA is already hiding, which is how "collapsed" ends
+   up meaning "padded but still visible". Block, with the old gap expressed as
+   margins, keeps the card's own rhythm and the disclosure's own behaviour. */
+details.scan-discovery-card {
+    display: block;
+}
+
+details.scan-discovery-card > * + * {
+    margin-top: 0.6rem;
+}
+
+.scan-discovery-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    cursor: pointer;
+    list-style: none;
+    color: var(--color-forest-green);
+}
+
+.scan-discovery-summary::-webkit-details-marker {
+    display: none;
+}
+
+.scan-discovery-summary:hover,
+.scan-discovery-summary:focus-visible {
+    outline: none;
+    color: var(--color-spanish-green);
+}
+
+.scan-discovery-summary-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.scan-discovery-summary-title::before {
+    content: '\25B8';
+    display: inline-block;
+    margin-right: 0.5rem;
+    transition: transform 0.15s ease;
+}
+
+details[open] > .scan-discovery-summary .scan-discovery-summary-title::before {
+    transform: rotate(90deg);
+}
+
+.scan-discovery-summary-hint {
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--color-seal-brown);
+}
+
+/* On the summary line, so it is readable with the card collapsed. That is the
+   whole point: scan.js shows the card at the open-report cap instead of hiding it
+   precisely so the reason is visible. */
+.scan-discovery-quota {
+    margin-top: 0.35rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-timberwolf);
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--color-seal-brown);
+}
+
+.scan-discovery-card h2 {
+    font-size: 1.2rem;
+    color: var(--color-forest-green);
+}
+
+.scan-discovery-card label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-seal-brown);
+    margin-top: 0.35rem;
+}
+
+.scan-discovery-card textarea,
+.scan-discovery-card input[type="text"],
+.scan-discovery-card input[type="file"] {
+    width: 100%;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--color-timberwolf);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-white);
+    color: var(--color-dark-forest-green);
+    font-family: var(--font-primary);
+}
+
+.scan-discovery-card textarea {
+    resize: vertical;
+}
+
+.scan-discovery-card .scan-btn-primary {
+    align-self: flex-start;
+    margin-top: 0.5rem;
+}
+
+#discoveryReportResult {
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--border-radius-md);
+    background-color: var(--color-timberwolf);
+    color: var(--color-dark-forest-green);
 }

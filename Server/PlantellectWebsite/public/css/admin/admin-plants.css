@@ -451,3 +451,193 @@
 
 .plant-preview-caption { color: var(--color-forest-green, #2e6417); font-weight: 600; }
 .plant-preview-note { font-style: italic; }
+
+/* ---------- Taxonomy gap surface ----------
+   Visible on purpose, and paired with a note that says there is no way to fix a
+   gap from this page: a plant record is written once at approval. */
+
+.plants-taxonomy-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-seal-brown);
+    cursor: pointer;
+    user-select: none;
+}
+
+.plants-taxonomy-note {
+    margin: -10px 0 20px;
+    padding: 12px 16px;
+    border: 1px solid #e6c98f;
+    border-left: 4px solid var(--color-dark-amber);
+    border-radius: var(--border-radius-md);
+    background-color: #fdf6e6;
+    color: var(--color-seal-brown);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.plants-taxonomy-note code {
+    background-color: rgba(107, 68, 35, 0.12);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+.taxonomy-gap-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 8px;
+    border-radius: var(--border-radius-pill);
+    background-color: #fdf0d5;
+    color: var(--color-seal-brown);
+    border: 1px solid #e6c98f;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* =========================================================
+   ADMIN DISCOVERY QUEUE 
+   Its own block rather than a variant of the plant-request
+   card, because the row shape has no requestType: sharing a
+   renderer would mean one of the two queues rendering the
+   other's half-truths.
+   ========================================================= */
+
+.discovery-queue {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--admin-border, #d8d2c4);
+}
+
+.discovery-queue-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.discovery-queue-head h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.discovery-status-tabs {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.discovery-status-tabs .chip {
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--admin-border, #d8d2c4);
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: inherit;
+}
+
+.discovery-status-tabs .chip.active {
+    background-color: var(--color-forest-green);
+    border-color: var(--color-forest-green);
+    color: #fff;
+}
+
+.discovery-admin-card .plant-request-text {
+    flex: 1;
+}
+
+.discovery-admin-note {
+    margin: 0.4rem 0;
+    padding: 0.5rem 0.65rem;
+    border-left: 3px solid var(--admin-border, #d8d2c4);
+    background: rgba(0, 0, 0, 0.03);
+    font-size: 0.9rem;
+}
+
+.discovery-admin-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.45rem 0;
+}
+
+.discovery-admin-photos {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    margin: 0.45rem 0;
+}
+
+.discovery-admin-photos img {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--admin-border, #d8d2c4);
+}
+
+.discovery-admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.55rem;
+}
+
+.discovery-override {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.discovery-override select {
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--admin-border, #d8d2c4);
+    background: inherit;
+    color: inherit;
+}
+
+.discovery-votes {
+    margin-top: 0.55rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.04);
+    font-size: 0.85rem;
+}
+
+.discovery-voter-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.discovery-flag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.07);
+}
+
+.discovery-flag.flag-notaplant {
+    background: rgba(217, 83, 79, 0.18);
+    color: #a94440;
+}
+
+.discovery-flag.flag-approved {
+    background: rgba(46, 158, 91, 0.18);
+    color: #1c6b3f;
+}
+
+.discovery-flag.flag-denied {
+    background: rgba(201, 148, 62, 0.2);
+    color: #8a5f1c;
+}

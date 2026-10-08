@@ -12,6 +12,258 @@
     <link rel="stylesheet" href="/css/admin/admin-style.css">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="/css/admin/admin-theme.css">
+
+    <!-- Dashboard layout: topbar, statistics, collapsible access, role pill -->
+    <style>
+        .dashboard-title-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .role-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 999px;
+            border: 1px solid #4CAF50;
+            background: rgba(76, 175, 80, 0.15);
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* ---------- Topbar (same look as the Plants page) ---------- */
+        .dashboard-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+            backdrop-filter: blur(8px);
+        }
+        .dashboard-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            color: inherit;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            opacity: 0.75;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        .dashboard-tab:hover { opacity: 1; background: rgba(128, 128, 128, 0.12); }
+        .dashboard-tab.active {
+            opacity: 1;
+            background: rgba(76, 175, 80, 0.15);
+            border-color: #4CAF50;
+        }
+        .dashboard-tab-badge {
+            min-width: 20px;
+            padding: 1px 6px;
+            border-radius: 999px;
+            background: #e57373;
+            color: #fff;
+            font-size: 11px;
+            text-align: center;
+        }
+        /* Keeps a section's heading from hiding under the sticky bar */
+        #statsSection,
+        #roleRequestsSection,
+        #accessCard { scroll-margin-top: 70px; }
+
+        /* ---------- Top area: statistics (left) + access (right) ---------- */
+        .dashboard-top {
+            display: grid;
+            grid-template-columns: minmax(0, 1.8fr) minmax(260px, 1fr);
+            gap: 20px;
+            align-items: start;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .dashboard-top { grid-template-columns: 1fr; }
+        }
+
+        /* ---------- Statistics ---------- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px;
+        }
+
+        .stat-card {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(128, 128, 128, 0.25);
+            background: rgba(128, 128, 128, 0.08);
+        }
+
+        .stat-card .material-symbols-outlined {
+            font-size: 22px;
+            color: #4CAF50;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            opacity: 0.7;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .stat-hint {
+            font-size: 11px;
+            opacity: 0.55;
+        }
+
+        /* ---------- Collapsible access card ---------- */
+        .access-card {
+            border-radius: 12px;
+            border: 1px solid rgba(128, 128, 128, 0.25);
+            background: rgba(128, 128, 128, 0.08);
+            overflow: hidden;
+        }
+
+        /* ============================================================
+             SPECIES GAPS
+
+             Appended to a page that already carries document 1's taxonomy
+             count, so the styling is inline and additive: nothing existing
+             moved.
+
+             READ-ONLY on purpose. There is no Approve, no Record, no "add to
+             library" and no link to the library search on any row. The card
+             answers one question — "what should a botanist record next?" — and a
+             triage feed that also writes is a feed whose entries get approved by
+             clicking near them. Nothing in this project acts on it yet.
+             ============================================================ */
+        .gaps-card { margin-top: 26px; }
+        .gap-filters { display: flex; gap: 10px; margin: 12px 0 0; }
+        .gap-filters select {
+            padding: 7px 10px;
+            font-size: 14px;
+        }
+        .gap-list {
+            list-style: none;
+            padding: 0;
+            margin: 12px 0 0;
+            display: grid;
+            gap: 8px;
+        }
+        .gap-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border: 1px solid rgba(128, 128, 128, 0.24);
+            border-radius: 9px;
+        }
+        .gap-rank {
+            min-width: 26px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            font-size: 13px;
+            opacity: 0.55;
+        }
+        .gap-name { flex: 1; min-width: 0; }
+        .gap-scientific { font-weight: 600; }
+        .gap-common { font-size: 13px; opacity: 0.7; }
+        .gap-stats {
+            display: flex;
+            gap: 14px;
+            font-size: 13px;
+            text-align: right;
+            white-space: nowrap;
+        }
+        .gap-stat-value { font-weight: 700; font-variant-numeric: tabular-nums; }
+        .gap-stat-label { font-size: 11px; opacity: 0.6; display: block; }
+        /* The widest signal first, so the column an admin reads is the one the
+           API ranks on. */
+        .gap-stat-primary .gap-stat-value { color: var(--green-dark); }
+        .gap-empty, .gap-loading, .gap-error {
+            padding: 12px 0;
+            font-size: 14px;
+            opacity: 0.75;
+        }
+        /* Shown when the endpoint could not produce a trustworthy answer. */
+        .gap-error { opacity: 1; color: #b4553a; font-weight: 600; }
+        .gap-error-note { display: block; font-weight: 400; opacity: 0.85; margin-top: 4px; }
+
+        .access-toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 14px 16px;
+            background: none;
+            border: none;
+            color: inherit;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .access-toggle-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .access-count {
+            min-width: 22px;
+            padding: 1px 7px;
+            border-radius: 999px;
+            background: rgba(76, 175, 80, 0.25);
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .access-chevron { transition: transform 0.25s ease; }
+        .access-card.open .access-chevron { transform: rotate(180deg); }
+
+        .access-body {
+            padding: 0 16px 16px;
+        }
+
+        .perm-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .perm-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            background: rgba(128, 128, 128, 0.14);
+            font-size: 13px;
+        }
+
+        .perm-chip .material-symbols-outlined { font-size: 16px; }
+    </style>
 </head>
 <body>
 
@@ -72,21 +324,80 @@
         </aside>
 
         <main class="admin-main">
-            <h1>Welcome to the Admin Dashboard</h1>
+            <div class="dashboard-title-row">
+                <h1>Welcome to the Admin Dashboard</h1>
+                <span class="role-pill" title="Your role">
+                    <span class="material-symbols-outlined" style="font-size: 16px;">shield_person</span>
+                    <span id="adminRole">Loading...</span>
+                </span>
+            </div>
             <p class="admin-subtitle">Plantellect administrative control panel</p>
 
-            <div class="admin-cards">
-                <div class="admin-card">
-                    <h2>Your Role</h2>
-                    <p id="adminRole">Loading...</p>
+            <!-- Topbar: each tab scrolls to its section (Access also expands) -->
+            <nav class="dashboard-topbar" id="dashboardTopbar" aria-label="Dashboard sections">
+                <a href="#statsSection" class="dashboard-tab active" data-target="statsSection">Overview</a>
+                <a href="#roleRequestsSection" class="dashboard-tab" data-target="roleRequestsSection">
+                    Role Requests
+                    <span class="dashboard-tab-badge" id="dashTabBadgeRequests" hidden>0</span>
+                </a>
+                <a href="#accessCard" class="dashboard-tab" data-target="accessCard">Access</a>
+            </nav>
+
+            <!-- TOP AREA: statistics on the left, collapsible access on the right -->
+            <div class="dashboard-top">
+
+                <!-- Statistics (placeholders; fill them with setStat('users', 42)) -->
+                <section id="statsSection" aria-label="Statistics">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <span class="material-symbols-outlined">group</span>
+                            <span class="stat-label">Total Users</span>
+                            <span class="stat-value" data-stat="users">—</span>
+                            <span class="stat-hint">No data yet</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="material-symbols-outlined">biotech</span>
+                            <span class="stat-label">Botanists</span>
+                            <span class="stat-value" data-stat="botanists">—</span>
+                            <span class="stat-hint">No data yet</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="material-symbols-outlined">potted_plant</span>
+                            <span class="stat-label">Plants</span>
+                            <span class="stat-value" data-stat="plants">—</span>
+                            <span class="stat-hint">No data yet</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="material-symbols-outlined">pending_actions</span>
+                            <span class="stat-label">Pending Requests</span>
+                            <span class="stat-value" data-stat="pending">—</span>
+                            <span class="stat-hint">No data yet</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Collapsible access (closed by default) -->
+                <div class="access-card" id="accessCard">
+                    <button type="button" class="access-toggle" id="accessToggle"
+                            aria-expanded="false" aria-controls="accessBody">
+                        <span class="access-toggle-title">
+                            <span class="material-symbols-outlined">admin_panel_settings</span>
+                            Your Access
+                            <span class="access-count" id="accessCount">0</span>
+                        </span>
+                        <span class="material-symbols-outlined access-chevron">expand_more</span>
+                    </button>
+                    <div class="access-body" id="accessBody" hidden>
+                        <div class="perm-list" id="adminPermissions">
+                            <span class="perm-chip">Loading...</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="admin-card">
-                    <h2>Your Permissions</h2>
-                    <p id="adminPermissions">Loading...</p>
-                </div>
+
             </div>
 
-            <section class="admin-section">
+            <!-- Pending role requests: now full width, under the top area -->
+            <section class="admin-section" id="roleRequestsSection">
                 <h2>
                     Pending Role Requests
                     <span class="section-count-badge" id="roleRequestsSectionCount" hidden>0</span>
@@ -94,6 +405,44 @@
                 <div id="pendingRequestsList" class="pending-requests-list">
                     <p>Loading...</p>
                 </div>
+            </section>
+
+            <!-- ============================================================
+                 SPECIES GAPS 
+
+                 A section, not a topbar tab: this page has two tabs and both of
+                 them are lists of things to DO, while this is a reading panel.
+
+                 GATED ON view_logs server-side. The endpoint decides that, not
+                 this markup: the card simply shows nothing when the fetch is
+                 refused, so the page never has to know whether the viewer may see
+                 scan data.
+                 ============================================================ -->
+            <section class="admin-section gaps-card" id="speciesGapsCard">
+                <h2>Species People Scan That Are Missing
+                    <span class="section-count-badge" id="speciesGapsCount" hidden>0</span>
+                </h2>
+                <p class="admin-subtitle">
+                    Ranked by how many <strong>different accounts</strong> hit the species, not by
+                    scan volume: one person photographing the same leaf forty times is not a
+                    signal, twelve people each finding a species once is. Species that already
+                    have a discovery report are left out &mdash; they are already being worked on.
+                </p>
+                <div class="gap-filters">
+                    <label for="gapMonth">Month</label>
+                    <select id="gapMonth">
+                        <option value="">Current month</option>
+                    </select>
+                    <label for="gapLimit">Rows</label>
+                    <select id="gapLimit">
+                        <option value="10">10</option>
+                        <option value="25" selected>25</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+                <ul class="gap-list" id="speciesGapList">
+                    <li class="gap-loading">Loading species gaps&hellip;</li>
+                </ul>
             </section>
         </main>
     </div>
@@ -105,6 +454,106 @@
 
     <!-- Dashboard logic (sidebar, theme and badges live in admin-sidebar.js) -->
     <script>
+        // ---------------------------------------------------------
+        // Statistics: call setStat('users', 42) when you have real data
+        // ---------------------------------------------------------
+        function setStat(name, value) {
+            const el = document.querySelector('[data-stat="' + name + '"]');
+            if (!el) return;
+            el.textContent = value;
+            const hint = el.parentElement.querySelector('.stat-hint');
+            if (hint) hint.hidden = true;
+        }
+
+        // ---------------------------------------------------------
+        // Collapsible access card
+        // ---------------------------------------------------------
+        const accessCard = document.getElementById('accessCard');
+        const accessToggle = document.getElementById('accessToggle');
+        const accessBody = document.getElementById('accessBody');
+
+        function setAccessOpen(open) {
+            accessCard.classList.toggle('open', open);
+            accessToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            accessBody.hidden = !open;
+        }
+
+        accessToggle.addEventListener('click', function () {
+            setAccessOpen(!accessCard.classList.contains('open'));
+        });
+
+        // ---------------------------------------------------------
+        // Topbar: scroll to the section; the Access tab also expands it
+        // ---------------------------------------------------------
+        (function () {
+            const tabs = document.querySelectorAll('.dashboard-tab');
+
+            function setActive(id) {
+                tabs.forEach(function (t) {
+                    t.classList.toggle('active', t.dataset.target === id);
+                });
+            }
+
+            function goTo(id, smooth) {
+                if (id === 'accessCard') setAccessOpen(true);
+                document.getElementById(id).scrollIntoView({
+                    behavior: smooth ? 'smooth' : 'auto',
+                    block: 'start'
+                });
+                setActive(id);
+            }
+
+            tabs.forEach(function (tab) {
+                tab.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const id = tab.dataset.target;
+                    history.replaceState(null, '', '#' + id);
+                    goTo(id, true);
+                });
+            });
+
+            // Opening the page with a #hash (e.g. /admin/dashboard#accessCard) jumps there
+            window.addEventListener('load', function () {
+                const id = location.hash.slice(1);
+                if (id && document.querySelector('.dashboard-tab[data-target="' + id + '"]')) {
+                    goTo(id, false);
+                }
+            });
+        })();
+
+        // ---------------------------------------------------------
+        // Friendly names and icons for the raw permission keys.
+        // Anything not listed here falls back to a prettified version of its key.
+        // ---------------------------------------------------------
+        const PERMISSION_INFO = {
+            access_admin:  { label: 'Access admin panel', icon: 'admin_panel_settings' },
+            create_user:   { label: 'Manage users',       icon: 'person' },
+            manage_plant:  { label: 'Manage plants',      icon: 'potted_plant' },
+            view_logs:     { label: 'View logs',          icon: 'history_toggle_off' }
+        };
+
+        function prettifyPermission(key) {
+            const text = String(key).replace(/_/g, ' ');
+            return text.charAt(0).toUpperCase() + text.slice(1);
+        }
+
+        function renderPermissions(perms) {
+            const box = document.getElementById('adminPermissions');
+            document.getElementById('accessCount').textContent = (perms || []).length;
+
+            if (!perms || perms.length === 0) {
+                box.innerHTML = '<span class="perm-chip">No permissions</span>';
+                return;
+            }
+            box.innerHTML = perms.map(function (key) {
+                const info = PERMISSION_INFO[key] || { label: prettifyPermission(key), icon: 'check_circle' };
+                return '<span class="perm-chip" title="' + escapeHtml(key) + '">' +
+                    '<span class="material-symbols-outlined">' + info.icon + '</span>' +
+                    escapeHtml(info.label) +
+                '</span>';
+            }).join('');
+        }
+
         (async function () {
             const response = await fetch('/api/auth/me', { credentials: 'include' });
             if (!response.ok) {
@@ -115,10 +564,10 @@
 
             document.getElementById('adminUser').textContent = 'Logged in as ' + data.username;
             document.getElementById('adminRole').textContent = (data.roles || []).join(', ') || 'N/A';
-            document.getElementById('adminPermissions').textContent =
-                (data.permissions || []).join(', ') || 'N/A';
 
             const perms = data.permissions || [];
+            renderPermissions(perms);
+
             document.querySelectorAll('.admin-sidebar a[data-perm]').forEach(function (a) {
                 if (!perms.includes(a.getAttribute('data-perm'))) {
                     a.style.display = 'none';
@@ -134,6 +583,11 @@
             // Only the plant-requests count needs a fresh fetch here — the
             // role-requests count comes for free once loadPendingRequests
             // resolves, so loadNavBadges is triggered from there instead.
+            //
+            // The gap card is independent of that chain and starts now: it is a
+            // reading panel, not a queue, so it must not wait on (or fail with)
+            // the role-request fetch.
+            initSpeciesGaps();
         })();
 
         async function loadPendingRequests() {
@@ -197,15 +651,19 @@
         function renderPendingRequests(requests) {
             const container = document.getElementById('pendingRequestsList');
             const countBadge = document.getElementById('roleRequestsSectionCount');
+            const tabBadge = document.getElementById('dashTabBadgeRequests');
+            const count = requests ? requests.length : 0;
 
-            if (countBadge) {
-                if (requests && requests.length > 0) {
-                    countBadge.textContent = requests.length;
-                    countBadge.hidden = false;
+            // Keep the section badge and the topbar badge in sync
+            [countBadge, tabBadge].forEach(function (badge) {
+                if (!badge) return;
+                if (count > 0) {
+                    badge.textContent = count;
+                    badge.hidden = false;
                 } else {
-                    countBadge.hidden = true;
+                    badge.hidden = true;
                 }
-            }
+            });
 
             if (!requests || requests.length === 0) {
                 container.innerHTML = '<p>No pending requests</p>';
@@ -294,6 +752,160 @@
             const div = document.createElement('div');
             div.textContent = String(str == null ? '' : str);
             return div.innerHTML;
+        }
+
+        // ---------------------------------------------------------
+        // Species gaps 
+        //
+        // Uses this file's own escapeHtml at :746 — there is no second copy of it
+        // on this page, and no new stylesheet: the row reuses admin-style.css's
+        // existing card classes.
+        // ---------------------------------------------------------
+
+        /** "12 accounts" / "1 account", so a row never reads "1 accounts". */
+        function pluralAccounts(n) {
+            return n + (n === 1 ? ' account' : ' accounts');
+        }
+
+        function formatConfidence(value) {
+            if (typeof value !== 'number' || !isFinite(value)) return '—';
+            return (value * 100).toFixed(1) + '%';
+        }
+
+        function formatGapDay(value) {
+            if (!value) return '—';
+            const date = new Date(value);
+            if (isNaN(date.getTime())) return '—';
+            return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+
+        /**
+         * Renders the list, or the reason there isn't one.
+         *
+         * `degraded` is checked BEFORE `results.length`, and that order is the point:
+         * a degraded response carries an empty results array, so checking the length
+         * first would print "No gaps found" — telling an admin that nothing is
+         * missing when in fact the server could not find out. The two states look
+         * identical in the payload and must not look identical on screen.
+         */
+        function renderSpeciesGaps(payload) {
+            const list = document.getElementById('speciesGapList');
+            const countBadge = document.getElementById('speciesGapsCount');
+
+            if (payload.degraded) {
+                countBadge.hidden = true;
+                list.innerHTML = '<li class="gap-error">Species gaps are unavailable.' +
+                    '<span class="gap-error-note">' + escapeHtml(
+                        payload.error || 'The scan feed could not be read, so this list would be unfiltered.'
+                    ) + '</span></li>';
+                return;
+            }
+
+            const results = payload.results || [];
+            if (results.length === 0) {
+                countBadge.hidden = true;
+                list.innerHTML = '<li class="gap-empty">No missing species were scanned this month.</li>';
+                return;
+            }
+
+            countBadge.hidden = false;
+            countBadge.textContent = results.length;
+            list.innerHTML = results.map((gap, index) => `
+                <li class="gap-row">
+                    <span class="gap-rank">${index + 1}</span>
+                    <span class="gap-name">
+                        <span class="gap-scientific">${escapeHtml(gap.scientificName)}</span>
+                        ${gap.commonName ? '<br><span class="gap-common">' + escapeHtml(gap.commonName) + '</span>' : ''}
+                    </span>
+                    <span class="gap-stats">
+                        <span class="gap-stat-primary">
+                            <span class="gap-stat-value">${gap.accounts}</span>
+                            <span class="gap-stat-label">accounts</span>
+                        </span>
+                        <span>
+                            <span class="gap-stat-value">${gap.scanCount}</span>
+                            <span class="gap-stat-label">scans</span>
+                        </span>
+                        <span>
+                            <span class="gap-stat-value">${formatConfidence(gap.confidenceMax)}</span>
+                            <span class="gap-stat-label">peak conf.</span>
+                        </span>
+                        <span>
+                            <span class="gap-stat-value">${formatGapDay(gap.lastSeen)}</span>
+                            <span class="gap-stat-label">last seen</span>
+                        </span>
+                    </span>
+                </li>
+            `).join('');
+        }
+
+        /**
+         * Offers the months the endpoint will actually accept.
+         *
+         * Retention is at least a year (settings.ml.retentionDays), and a month
+         * older than that is a 400, not an empty list. So the options are built from
+         * the retention window instead of listing every month since 1970, which would
+         * be a menu of requests that are guaranteed to fail.
+         */
+        function populateGapMonths() {
+            const select = document.getElementById('gapMonth');
+            const now = new Date();
+            const months = Math.max(1, Math.ceil((settingsRetentionMonthsFallback()) / 1));
+            for (let back = 0; back < months; back++) {
+                const date = new Date(now.getFullYear(), now.getMonth() - back, 1);
+                const key = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = back === 0 ? key + ' (current)' : key;
+                select.appendChild(option);
+            }
+        }
+
+        function settingsRetentionMonthsFallback() {
+            // settings.js is server-side; the client only needs an approximate span.
+            // Thirteen months covers the one-year default plus the current one.
+            return 13;
+        }
+
+        async function loadSpeciesGaps() {
+            const list = document.getElementById('speciesGapList');
+            const month = document.getElementById('gapMonth').value;
+            const limit = document.getElementById('gapLimit').value;
+            const query = new URLSearchParams();
+            if (month) query.set('month', month);
+            query.set('limit', limit);
+
+            try {
+                const response = await fetch('/admin/api/ml/usage/gaps?' + query.toString(), {
+                    credentials: 'include'
+                });
+                if (response.status === 401) {
+                    window.location.href = '/auth.html';
+                    return;
+                }
+                if (response.status === 403) {
+                    // The card is gated on view_logs server-side. Saying nothing is
+                    // the right answer here: this viewer simply does not see scan data,
+                    // which is not an error condition on the dashboard.
+                    list.innerHTML = '';
+                    document.getElementById('speciesGapsCount').hidden = true;
+                    return;
+                }
+                if (!response.ok) throw new Error('Request failed with ' + response.status);
+                renderSpeciesGaps(await response.json());
+            } catch (err) {
+                console.error('Load species gaps error:', err);
+                list.innerHTML = '<li class="gap-error">Species gaps could not be loaded.' +
+                    '<span class="gap-error-note">' + escapeHtml(err.message) + '</span></li>';
+                document.getElementById('speciesGapsCount').hidden = true;
+            }
+        }
+
+        function initSpeciesGaps() {
+            populateGapMonths();
+            document.getElementById('gapMonth').addEventListener('change', loadSpeciesGaps);
+            document.getElementById('gapLimit').addEventListener('change', loadSpeciesGaps);
+            loadSpeciesGaps();
         }
     </script>
 

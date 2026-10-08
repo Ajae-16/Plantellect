@@ -594,3 +594,33 @@ body:not(.has-sidebar) .sidebar {
     transition-duration: var(--transition-normal);
     transition-timing-function: ease;
 }
+/* ---------- Item badge (e.g. the discovery red dot) ----------
+   Rendered by sidebar.js only when an item has been marked; margin-left:auto
+   keeps it against the far edge whatever the label length. The dark variant
+   lives in public/public-theme.css, the only place public dark rules live. */
+.sidebar-badge {
+    margin-left: auto;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--border-radius-pill);
+    background-color: var(--color-rust);
+    color: var(--color-white);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.sidebar-collapsed .sidebar-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+}
