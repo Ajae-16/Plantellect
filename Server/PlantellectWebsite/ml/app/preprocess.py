@@ -10,6 +10,7 @@ in memory at once. Nothing about image size, resize method or scaling is hardcod
 IMPORTANT: the current models (EfficientNet / ConvNeXtTiny) normalise INSIDE the network,
 so the output of preprocess_image() is raw 0-255 float32. Do not divide by 255.
 """
+
 import io
 import json
 import os
