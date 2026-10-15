@@ -18,16 +18,6 @@ const maxCertificatesSize = 20 // start with MB
 const plantImageDir = path.join(__dirname, '..', 'administration', 'botanist', 'plant-images');
 const maxPlantImageSize = 10 // MB
 
-/**
- * Reads an integer environment variable.
- *
- * Deliberately NOT `parseInt(raw) || fallback`. That idiom treats 0 as missing,
- * so a setting can never legitimately be zero — which makes the discovery
- * cooldown untestable and silently rewrites a deliberate "off" into a default.
- * Here only a missing, empty or non-numeric value falls back, and a negative one
- * is clamped to zero because every limit below is an "at most" count and a
- * negative cap has no meaning.
- */
 function numberSetting(name, fallback) {
     const raw = process.env[name];
     if (raw === undefined || raw === null || String(raw).trim() === '') return fallback;
