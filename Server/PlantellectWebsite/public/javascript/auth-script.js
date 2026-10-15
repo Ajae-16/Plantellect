@@ -3,6 +3,13 @@ let usernameValid = false;
 let passwordValid = false;
 let passwordsMatch = false;
 
+// Terms state lives at file level so handleRegister can reach it too
+let hasScrolledToBottom = false;
+
+/* ------------------------------------------------------------------ */
+/* Panel switching                                                     */
+/* ------------------------------------------------------------------ */
+
 function switchToRegister(event) {
     if (event) event.preventDefault();
     const container = document.getElementById('authContainer');
@@ -35,6 +42,7 @@ function selectRole(role) {
         } else {
             certBlock.style.display = 'none';
             certInput.required = false;
+            clearCertificate(); // a plain user has no certificate, drop any preview
         }
     }
 }
@@ -50,6 +58,10 @@ function togglePasswordVisibility(inputId, iconId) {
         toggleIcon.style.opacity = '0.6';
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* Validation                                                          */
+/* ------------------------------------------------------------------ */
 
 function validatePassword(password) {
     const checks = {
@@ -84,6 +96,10 @@ function validateUsername(username) {
     return Object.values(checks).every(v => v);
 }
 
+/* ------------------------------------------------------------------ */
+/* Modals                                                              */
+/* ------------------------------------------------------------------ */
+
 function redirectToHome() {
     window.location.href = 'home.html';
 }
@@ -112,6 +128,160 @@ function showGuestModal() {
 function closeGuestModal() {
     document.getElementById('guestModal').style.display = 'none';
 }
+
+/* ------------------------------------------------------------------ */
+/* Terms & Conditions: unlock after reading                            */
+/* ------------------------------------------------------------------ */
+
+function unlockConsentControls() {
+    if (hasScrolledToBottom) return;
+    hasScrolledToBottom = true;
+
+    const checkbox1 = document.getElementById('agreeTerms');
+    const checkbox2 = document.getElementById('agreeInfo');
+    const labelBox1 = document.getElementById('labelBox1');
+    const labelBox2 = document.getElementById('labelBox2');
+    const closeBtn = document.getElementById('closeTermsBtn');
+    const progress = document.getElementById('termsProgress');
+    const hint = document.getElementById('termsHint');
+
+    // Removing `disabled` also removes the greyed-out look (CSS keys off it)
+    if (checkbox1) checkbox1.disabled = false;
+    if (checkbox2) checkbox2.disabled = false;
+    if (labelBox1) { labelBox1.style.cursor = ''; labelBox1.style.color = ''; }
+    if (labelBox2) { labelBox2.style.cursor = ''; labelBox2.style.color = ''; }
+
+    if (closeBtn) {
+        closeBtn.disabled = false;
+        closeBtn.style.opacity = '';
+    }
+    if (progress) progress.textContent = 'You can now close this window.';
+    if (hint) hint.textContent = 'Thanks for reading. Tick both boxes to continue.';
+}
+
+function updateTermsProgress() {
+    // A hidden modal measures 0 height, which would look like "nothing left to
+    // scroll", so never unlock while the modal is closed.
+    const modal = document.getElementById('termsModal');
+    if (!modal || modal.style.display === 'none' || modal.style.display === '') return;
+
+    const scrollBox = document.getElementById('termsScrollBox');
+    const progress = document.getElementById('termsProgress');
+    if (!scrollBox || hasScrolledToBottom) return;
+
+    const max = scrollBox.scrollHeight - scrollBox.clientHeight;
+    const pct = max <= 0 ? 100 : Math.min(100, Math.round(scrollBox.scrollTop / max * 100));
+    if (progress) progress.textContent = 'Scroll to the end to continue (' + pct + '%)';
+
+    if (max <= 5 || scrollBox.scrollHeight - scrollBox.scrollTop <= scrollBox.clientHeight + 5) {
+        unlockConsentControls();
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Certificate preview                                                 */
+/* ------------------------------------------------------------------ */
+
+const CERT_MAX_BYTES = 5 * 1024 * 1024; // keep in sync with the server upload limit
+let certObjectUrl = null;
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function clearCertificate() {
+    const input = document.getElementById('registerCertificate');
+    const label = document.querySelector('label[for="registerCertificate"]');
+    const preview = document.getElementById('certificatePreview');
+    const thumb = document.getElementById('certificateThumb');
+
+    if (certObjectUrl) {
+        URL.revokeObjectURL(certObjectUrl);
+        certObjectUrl = null;
+    }
+    if (input) input.value = '';
+    if (thumb) thumb.removeAttribute('src');
+    if (preview) preview.classList.remove('visible', 'is-pdf');
+    if (label) label.textContent = 'Upload Certificate';
+}
+
+function handleCertificateChange() {
+    const input = document.getElementById('registerCertificate');
+    const label = document.querySelector('label[for="registerCertificate"]');
+    const preview = document.getElementById('certificatePreview');
+    const thumb = document.getElementById('certificateThumb');
+    const nameEl = document.getElementById('certificateName');
+    const sizeEl = document.getElementById('certificateSize');
+
+    const file = input.files && input.files[0];
+
+    // Reset the preview but keep the chosen file
+    if (certObjectUrl) {
+        URL.revokeObjectURL(certObjectUrl);
+        certObjectUrl = null;
+    }
+    if (thumb) thumb.removeAttribute('src');
+    if (preview) preview.classList.remove('visible', 'is-pdf');
+
+    if (!file) {
+        if (label) label.textContent = 'Upload Certificate';
+        return;
+    }
+
+    if (file.size > CERT_MAX_BYTES) {
+        showError('That file is larger than 5 MB. Please choose a smaller one.');
+        clearCertificate();
+        return;
+    }
+
+    nameEl.textContent = file.name;
+    nameEl.title = file.name;
+    sizeEl.textContent = formatFileSize(file.size);
+    label.textContent = 'Change certificate';
+
+    if (/^image\//.test(file.type)) {
+        certObjectUrl = URL.createObjectURL(file);
+        thumb.src = certObjectUrl;
+    } else {
+        preview.classList.add('is-pdf'); // PDF: show the icon instead of a thumbnail
+    }
+    preview.classList.add('visible');
+}
+
+function initCertificatePreview() {
+    const input = document.getElementById('registerCertificate');
+    const removeBtn = document.getElementById('certificateRemove');
+    const thumb = document.getElementById('certificateThumb');
+    const lightbox = document.getElementById('certificateLightbox');
+
+    if (!input) return;
+
+    input.addEventListener('change', handleCertificateChange);
+
+    if (removeBtn) {
+        removeBtn.addEventListener('click', clearCertificate);
+    }
+
+    if (thumb && lightbox) {
+        thumb.addEventListener('click', function () {
+            if (!thumb.src) return;
+            lightbox.querySelector('img').src = thumb.src;
+            lightbox.classList.add('visible');
+        });
+        lightbox.addEventListener('click', function () {
+            lightbox.classList.remove('visible');
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') lightbox.classList.remove('visible');
+        });
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Login / register                                                    */
+/* ------------------------------------------------------------------ */
 
 async function handleLogin(event) {
     event.preventDefault();
@@ -160,7 +330,7 @@ async function handleRegister(event) {
     const firstName = document.getElementById('registerFirstName').value.trim();
     const lastName = document.getElementById('registerLastName').value.trim();
     const certFile = document.getElementById('registerCertificate').files[0];
-    
+
     const checkbox1 = document.getElementById('agreeTerms');
     const checkbox2 = document.getElementById('agreeInfo');
 
@@ -187,26 +357,23 @@ async function handleRegister(event) {
 
     const termsChecked = checkbox1 && checkbox1.checked;
     const infoChecked = checkbox2 && checkbox2.checked;
-    
+
     if (!termsChecked && !infoChecked) {
-        // Neither checked - prompt to read terms
+        // Neither checked - open the terms so they can be read first
         const modal = document.getElementById('termsModal');
         if (modal) {
             modal.style.display = 'flex';
-            const scrollBox = document.getElementById('termsScrollBox');
-            if (scrollBox && scrollBox.scrollHeight <= scrollBox.clientHeight + 5) {
-                unlockConsentControls();
-            }
+            requestAnimationFrame(updateTermsProgress);
         }
         showError('Please read the Terms & Conditions and check both agreement boxes');
         return;
     }
-    
+
     if (!termsChecked) {
         showError('You must agree to the Terms & Conditions');
         return;
     }
-    
+
     if (!infoChecked) {
         showError('You must agree to the Information Usage');
         return;
@@ -261,6 +428,10 @@ function handleGuestContinue() {
     redirectToHome();
 }
 
+/* ------------------------------------------------------------------ */
+/* Page init                                                           */
+/* ------------------------------------------------------------------ */
+
 function initAuthPage() {
     const hash = window.location.hash;
     if (hash === '#register') {
@@ -293,59 +464,27 @@ function initAuthPage() {
         guestContinueBtn.addEventListener('click', handleGuestContinue);
     }
 
-    // Terms & Conditions Modal Interactivity Logic
+    // Terms & Conditions modal
     const openModalBtn = document.getElementById('openTermsModal');
     const modal = document.getElementById('termsModal');
     const scrollBox = document.getElementById('termsScrollBox');
     const closeBtn = document.getElementById('closeTermsBtn');
-    
+
     const checkbox1 = document.getElementById('agreeTerms');
     const checkbox2 = document.getElementById('agreeInfo');
-    const labelBox1 = document.getElementById('labelBox1');
-    const labelBox2 = document.getElementById('labelBox2');
-
-    let hasScrolledToBottom = false;
 
     if (openModalBtn && modal) {
         openModalBtn.addEventListener('click', function(e) {
             e.preventDefault();
             modal.style.display = 'flex';
-            if (scrollBox && checkbox1 && checkbox2) {
-                if (scrollBox.scrollHeight <= scrollBox.clientHeight + 5) {
-                    unlockConsentControls();
-                }
-            }
+            // Wait a frame so the box has its real size, then check if it
+            // needs scrolling at all (short content unlocks immediately)
+            requestAnimationFrame(updateTermsProgress);
         });
     }
 
-    function unlockConsentControls() {
-        if (!hasScrolledToBottom) {
-            hasScrolledToBottom = true;
-            
-            checkbox1.disabled = false;
-            checkbox2.disabled = false;
-            if (labelBox1) {
-                labelBox1.style.cursor = 'pointer';
-                labelBox1.style.color = '#fff';
-            }
-            if (labelBox2) {
-                labelBox2.style.cursor = 'pointer';
-                labelBox2.style.color = '#fff';
-            }
-
-            if (closeBtn) {
-                closeBtn.disabled = false;
-                closeBtn.style.opacity = '1';
-            }
-        }
-    }
-
-    if (scrollBox && checkbox1 && checkbox2) {
-        scrollBox.addEventListener('scroll', function() {
-            if (scrollBox.scrollHeight - scrollBox.scrollTop <= scrollBox.clientHeight + 5) {
-                unlockConsentControls();
-            }
-        });
+    if (scrollBox) {
+        scrollBox.addEventListener('scroll', updateTermsProgress, { passive: true });
     }
 
     if (closeBtn && modal) {
@@ -365,18 +504,21 @@ function initAuthPage() {
         checkbox2.addEventListener('change', updateSignupButtonState);
     }
 
+    // Certificate upload preview
+    initCertificatePreview();
+
     const registerPassword = document.getElementById('registerPassword');
     const confirmPassword = document.getElementById('registerConfirmPassword');
 
     if (registerPassword) {
         registerPassword.addEventListener('input', function() {
             passwordValid = validatePassword(this.value);
-            
+
             const confirmVal = confirmPassword ? confirmPassword.value : '';
             const matchItem = document.getElementById('req-match');
-            
+
             passwordsMatch = (this.value === confirmVal) && (confirmVal.length > 0) && passwordValid;
-            
+
             if (matchItem) {
                 matchItem.classList.toggle('valid', passwordsMatch);
             }
@@ -396,9 +538,9 @@ function initAuthPage() {
         confirmPassword.addEventListener('input', function() {
             const password = registerPassword ? registerPassword.value : '';
             const matchItem = document.getElementById('req-match');
-            
+
             passwordsMatch = (this.value === password) && (this.value.length > 0) && passwordValid;
-            
+
             if (matchItem) {
                 matchItem.classList.toggle('valid', passwordsMatch);
             }

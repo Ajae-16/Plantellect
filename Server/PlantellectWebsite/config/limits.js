@@ -23,11 +23,6 @@ const SETTINGS_DEFAULTS = {
     mlRequest: {
         maxTopK: settings.ml.maxTopK
     },
-    mlConfidence: {
-        // This will be populated by seed, but provide safe fallbacks
-        efficientnetv2b1: { mode: 'off', acceptThreshold: 0.70, uncertainThreshold: 0.35, marginThreshold: 0.15 },
-        convnexttiny: { mode: 'off', acceptThreshold: 0.70, uncertainThreshold: 0.35, marginThreshold: 0.15 }
-    },
     mlActiveModel: {
         modelId: settings.ml.defaultModel || 'efficientnetv2b1'
     }
@@ -122,10 +117,6 @@ const ML_REQUEST_SCHEMA = {
     maxTopK: { type: 'number', min: 1, max: 100 }
 };
 
-const ML_CONFIDENCE_SCHEMA = {
-    // Per-model validation happens dynamically
-};
-
 const ML_ACTIVE_MODEL_SCHEMA = {
     modelId: { type: 'string' }
 };
@@ -188,6 +179,17 @@ async function getRoleName(conn, roleId) {
  * Returns the validated value (never 0/NaN for numeric fields)
  */
 async function resolveSetting(conn, key, roleId = null) {
+    // Handle mlConfidence first - delegate to ml-confidence.resolveConfig per model
+    if (key === 'mlConfidence') {
+        const { resolveConfig } = require('./ml-confidence');
+        const sysVal = await getSystemSettingValue(conn, key);
+        const out = { ...(SETTINGS_DEFAULTS.mlConfidence || {}) };
+        if (sysVal && typeof sysVal === 'object' && !Array.isArray(sysVal)) {
+            for (const [id, cfg] of Object.entries(sysVal)) out[id] = resolveConfig(cfg);
+        }
+        return out;
+    }
+
     // If roleId provided, check role_limits first
     if (roleId) {
         const roleName = await getRoleName(conn, roleId);
@@ -207,7 +209,6 @@ async function resolveSetting(conn, key, roleId = null) {
         let schema;
         if (key === 'discoveries') schema = DISCOVERIES_SCHEMA;
         else if (key === 'mlRequest') schema = ML_REQUEST_SCHEMA;
-        else if (key === 'mlConfidence') schema = ML_CONFIDENCE_SCHEMA;
         else if (key === 'mlActiveModel') schema = ML_ACTIVE_MODEL_SCHEMA;
 
         if (schema) {

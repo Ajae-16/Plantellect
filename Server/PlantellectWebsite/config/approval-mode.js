@@ -130,7 +130,7 @@ const SYSTEM_ROLE_NAME = 'system';
  * role_000005" rather than a literal string. A machine actor that cannot be
  * created on a populated database is not a machine actor.
  */
-const PREFERRED_SYSTEM_ACCOUNT_ID = 'acc_000010';
+const PREFERRED_SYSTEM_ACCOUNT_ID = 'acc_000002';
 const SYSTEM_USERNAME = 'system';
 const SYSTEM_EMAIL = 'system@plantellect.local';
 

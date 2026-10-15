@@ -7,16 +7,21 @@ const { requirePermission } = require('../middleware/authMiddleware');
 const { resolveScientificNames, consumeScanQuota, scanWindowRetryAfterSeconds, getSystemSetting } = require('../config/mysql.js');
 const { handleUploadError } = require('../config/upload');
 const { logMlScan } = require('../mongoose-schemas/Mlscan.js');
-const { evaluate } = require('../config/ml-confidence');
+const { evaluate, isSpecies } = require('../config/ml-confidence');
 const settings = require('../config/settings');
 const router = express.Router();
 
 const ML_SERVICE_URL = settings.ml.serviceUrl;
 
 // A margin needs a runner-up, so the service is always asked for at least this
-// many predictions even when the client asked for fewer. The client still gets
-// exactly the number it asked for back.
+// many predictions even when the client asked for fewer. With non_plant and
+// other_plant both possible, 3 guarantees a species rival even when they rank 1 and 2.
 const MIN_TOP_K_FOR_VERDICT = 3;
+// non_plant and other_plant can occupy this many slots of the list. They are removed
+// before the client sees it, so the service is asked for that many EXTRA predictions and
+// the client still gets as many species as it asked for. (FastAPI accepts top_k up to 50.)
+const NON_SPECIES_SLOTS = 2;
+const FASTAPI_MAX_TOP_K = 50;
 // In enforce mode, an 'uncertain' scan shows this many "possible matches".
 const UNCERTAIN_SHOW = 3;
 // system_settings['mlConfidence'] is read per scan but not inside a transaction
@@ -83,11 +88,38 @@ const upload = multer({
     }
 });
 
-/** Clamps top_k into 1..settings.ml.maxTopK instead of forwarding it raw. */
-function clampTopK(raw) {
+let maxTopKCache = { at: 0, value: null };
+
+/**
+ * The most predictions one scan may ask for: system_settings['mlRequest'].maxTopK (the admin
+ * "ML Request" field), else settings.ml.maxTopK (ML_MAX_TOP_K in .env). Same rules as the other
+ * reads: short cache, fails OPEN to the last good value, and an unusable row falls back to settings.js.
+ */
+async function getMaxTopK() {
+    if (Date.now() - maxTopKCache.at > ML_CONFIDENCE_TTL_MS) {
+        try {
+            let value = await getSystemSetting('mlRequest');
+            if (typeof value === 'string') value = JSON.parse(value);
+            const n = value ? Number(value.maxTopK) : NaN;
+            maxTopKCache = { at: Date.now(), value: Number.isInteger(n) && n >= 1 && n <= 100 ? n : null };
+        } catch (err) {
+            console.error('mlRequest read failed (using last good value):', err.message);
+            maxTopKCache.at = Date.now(); // back off for one TTL
+        }
+    }
+    return maxTopKCache.value || settings.ml.maxTopK;
+}
+
+/**
+ * Clamps top_k into 1..max instead of forwarding it raw. The ceiling is also kept under what
+ * FastAPI accepts minus the slots non_plant / other_plant can take, so the client always gets
+ * exactly the number of species it asked for.
+ */
+function clampTopK(raw, max) {
+    const ceiling = Math.max(1, Math.min(max, FASTAPI_MAX_TOP_K - NON_SPECIES_SLOTS));
     const parsed = parseInt(raw, 10);
-    if (!Number.isFinite(parsed)) return Math.min(5, settings.ml.maxTopK);
-    return Math.min(Math.max(parsed, 1), settings.ml.maxTopK);
+    if (!Number.isFinite(parsed)) return Math.min(5, ceiling);
+    return Math.min(Math.max(parsed, 1), ceiling);
 }
 
 /**
@@ -159,8 +191,8 @@ router.post('/predict', requirePermission('scan_plant'), upload.single('image'),
         console.error('Scan quota check failed (serving unenforced):', err.message);
     }
 
-    const topK = clampTopK(req.body.top_k);            // what the client gets back
-    const fetchK = Math.max(topK, MIN_TOP_K_FOR_VERDICT); // what the service is asked for
+    const topK = clampTopK(req.body.top_k, await getMaxTopK()); // what the client gets back
+    const fetchK = Math.min(Math.max(topK + NON_SPECIES_SLOTS, MIN_TOP_K_FOR_VERDICT), FASTAPI_MAX_TOP_K); // what the service is asked for
     const logBase = {
         accountId: req.session.accountId,
         topK,
@@ -203,9 +235,10 @@ router.post('/predict', requirePermission('scan_plant'), upload.single('image'),
             console.error(`ML model '${candidates[i]}' unavailable, trying '${candidates[i + 1] || 'service default'}'`);
         }
 
-        // Decide from the FULL prediction list, then trim to what was asked for,
-        // so the logged predictions and the gap signal are exactly what they were
-        // before this change. Never throws: a verdict problem must not fail a scan.
+        // Decide from the FULL prediction list. The list is trimmed to topK only for the
+        // LOG (so the logged predictions and the gap signal keep their old size) and
+        // filtered to species only for the CLIENT, further down. Never throws: a verdict
+        // problem must not fail a scan.
         const modelId = (raw && raw.model_id) || '';
         let verdict = null;
         if (response.ok && raw && Array.isArray(raw.predictions)) {
@@ -214,7 +247,6 @@ router.post('/predict', requirePermission('scan_plant'), upload.single('image'),
             } catch (err) {
                 console.error('Confidence evaluation failed (serving unchanged):', err.message);
             }
-            raw.predictions = raw.predictions.slice(0, topK);
             raw.top_k = topK;
         }
 
@@ -236,23 +268,41 @@ router.post('/predict', requirePermission('scan_plant'), upload.single('image'),
                 top2: verdict.top2,
                 margin: verdict.margin,
                 applied: verdict.apply,
-                thresholds: verdict.thresholds
+                thresholds: verdict.thresholds,
+                reason: verdict.reason,
+                topKind: verdict.topKind
             },
+            // The real top-K as the model ranked it, non-species classes included (kind says which).
             predictions: Array.isArray(data && data.predictions)
-                ? data.predictions.map((p) => ({
+                ? data.predictions.slice(0, topK).map((p) => ({
                     scientificName: p.scientific_name || '',
-                    commonName: p.common_name || '',
+                    commonName: p.commonName || p.common_name || '',   // attachPlantLinks sets commonName
                     confidence: typeof p.confidence === 'number' ? p.confidence : 0,
                     plantId: p.plantId || null,
-                    rank: p.rank ?? null
+                    rank: p.rank ?? null,
+                    kind: p.kind || 'species'
                 }))
                 : []
         });
+
+        // What the client sees: never a non_plant / other_plant class as if it were a species,
+        // in any mode, and as many species as were asked for. top_kind tells the UI what the
+        // model's best guess was. Done AFTER logging so the log keeps the real list.
+        if (data && Array.isArray(data.predictions)) {
+            data.top_kind = (data.predictions[0] && data.predictions[0].kind) || 'species';
+            data.predictions = data.predictions.filter(isSpecies).slice(0, topK);
+            data.predictions.forEach((p, i) => { p.rank = i + 1; });
+        }
+        // FastAPI errors carry { detail }; ml-client.js reads { error }.
+        if (!response.ok && data && data.detail && !data.error) {
+            data.error = typeof data.detail === 'string' ? data.detail : 'Prediction failed';
+        }
 
         // Only 'enforce' changes what the client sees. Done AFTER logging so the
         // log keeps the real predictions even when they are withheld here.
         if (verdict && verdict.apply && data) {
             data.outcome = verdict.outcome;
+            data.reason = verdict.reason;
             if (verdict.outcome === 'unrecognized') {
                 data.predictions = [];
             } else if (verdict.outcome === 'uncertain') {

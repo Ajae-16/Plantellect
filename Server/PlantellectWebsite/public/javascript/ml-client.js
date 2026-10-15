@@ -8,7 +8,16 @@
  * Predict plant species from an image file.
  * @param {File} imageFile - Image file object (from file input or canvas capture)
  * @param {number} topK - Number of top predictions to return (default: 5)
- * @returns {Promise<Object>} Prediction results with predictions array, inference_ms, model_version
+ * @returns {Promise<Object>} Prediction results:
+ *   predictions[]  species only (never non_plant / other_plant), best first; each has
+ *                  scientific_name, confidence, rank, and plantId / commonName / imageUrl when
+ *                  the plant is in the library
+ *   top_kind       'species' | 'non_plant' | 'other_plant' - what the model's best guess was
+ *   outcome        'identified' | 'uncertain' | 'unrecognized' - ONLY present in enforce mode
+ *   reason         'species' | 'non_plant' | 'other_plant' | 'low_confidence' | 'close_call'
+ *                  - only present together with outcome
+ *   inference_ms, model_id, model_version
+ * Switch on `outcome` first. Without it (mlConfidence off or log mode) show `predictions` as before.
  */
 async function predictPlant(imageFile, topK = 5) {
     const formData = new FormData();

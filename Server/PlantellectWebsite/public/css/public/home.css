@@ -4,7 +4,7 @@
 @import '../core/sidebar.css';
 
 /* =========================================
-   HOME ONLY: cucumber leaf background
+   HOME + ABOUT: cucumber leaf background
    ========================================= */
 
 .background-image {
@@ -13,20 +13,26 @@
     background-position: center;
 }
 
-/* 100vw ignores the docked sidebar and overflows sideways */
+/* 100vw ignores the docked sidebar and overflows sideways.
+   The top bar is sticky and already takes its own height in the page, so the
+   hero is exactly one screen minus the bar (it used to add the header height
+   as a margin on top of that, which left a double gap and a needless scroll). */
 .hero-container {
     width: 100%;
+    margin-top: 0;
+    min-height: calc(100dvh - var(--topbar-height, 56px));
 }
 
-/* No logo is rendered in this header, so drop the 170px logo gap from the nav */
-@media (min-width: 1024px) {
-    nav {
-        padding-left: 0;
-    }
-}
+/* (The old `nav { padding-left: 0 }` block was removed: it never won against
+   `header nav` in base.css, and the top bar in base.css now handles the
+   logo gap itself.) */
 
 /* Keep the hero text inside the space beside the sidebar */
 @media (min-width: 1024px) {
+    .hero-container {
+        min-height: calc(100vh - var(--topbar-height, 56px));
+    }
+
     .hero-content {
         left: clamp(24px, 6vw, var(--spacing-hero-content-left));
         right: 24px;
@@ -201,13 +207,19 @@
 
 /* =========================================
    SLIDER
+   .slider-wrapper  = the framed box (border, background, drag target)
+   .slider-viewport = clips the moving track and fades its left/right edges
+   .slider-track    = the row of cards that home.js moves
    ========================================= */
 
 .slider-wrapper {
+    --pc-w: 230px;
+    --pc-h: 310px;
+
     width: 100%;
     max-width: 100%;
     height: auto;
-    min-height: 400px;
+    min-height: 420px;
     display: flex;
     align-items: stretch;
     padding: 0;
@@ -220,40 +232,96 @@
     overflow: hidden;
     cursor: grab;
     user-select: none;
-}
-
-.slider-track {
-    display: flex;
-    gap: 16px;
-    width: max-content;
-    padding: 16px;
-    will-change: transform;
-    transform: translateX(0);
+    touch-action: pan-y;   /* horizontal drags move the slider, vertical ones still scroll the page */
 }
 
 .slider-wrapper.dragging {
     cursor: grabbing;
 }
 
-@media (max-width: 479px) {
-    .slider-wrapper {
-        min-height: 320px;
-    }
+/* Explicit cursors on every layer, so the pointer is always the same visible
+   hand over a card (photo, placeholder artwork, gradient, chips, text) */
+.slider-track .plant-card,
+.slider-track .plant-card * {
+    cursor: pointer;
+}
 
-    .slider-track {
-        gap: 10px;
-        padding: 10px;
-    }
+.slider-wrapper.dragging,
+.slider-wrapper.dragging .plant-card,
+.slider-wrapper.dragging .plant-card * {
+    cursor: grabbing !important;
+}
+
+.slider-wrapper .slider-pause,
+.slider-wrapper .slider-pause * {
+    cursor: pointer;
+}
+
+.slider-wrapper.is-empty,
+.slider-wrapper.is-empty * {
+    cursor: default;
+}
+
+/* ----- Scroll reveal: the whole box rises and fades in -----
+   home.js adds .reveal (hidden state) and then .is-visible (shown state),
+   so with JavaScript off the box simply stays visible. */
+.slider-wrapper.reveal {
+    opacity: 0;
+    transform: translateY(70px) scale(0.96);
+    transition: opacity 0.9s ease,
+                transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.slider-wrapper.reveal.is-visible {
+    opacity: 1;
+    transform: none;   /* "none", not translateY(0): leaves no stacking context behind */
+}
+
+/* the label and pause button follow a beat later */
+.slider-wrapper.reveal .slider-label,
+.slider-wrapper.reveal .slider-pause {
+    opacity: 0;
+    transition: opacity 0.6s ease 0.5s, transform 0.2s ease, background 0.2s ease;
+}
+
+.slider-wrapper.reveal.is-visible .slider-label,
+.slider-wrapper.reveal.is-visible .slider-pause {
+    opacity: 1;
+}
+
+.slider-viewport {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%);
+}
+
+.slider-track {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 16px;
+    width: max-content;
+    padding: 16px 48px;   /* 48px = the faded edge, so the first/last card end clear of it */
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
 }
 
 @media (min-width: 480px) {
     .slider-wrapper {
-        min-height: 450px;
+        --pc-w: 250px;
+        --pc-h: 330px;
+        min-height: 440px;
     }
 }
 
 @media (min-width: 768px) {
     .slider-wrapper {
+        --pc-w: 260px;
+        --pc-h: 350px;
         max-width: 1150px;
         height: 500px;
         min-height: 500px;
@@ -264,12 +332,582 @@
 
     .slider-track {
         gap: 20px;
-        padding: 0;
+        padding: 0 48px;
     }
 }
 
-@media (min-width: 1024px) {
-    .slider-wrapper {
-        height: 500px;
+/* Label (top-left) and pause button (bottom-right) */
+.slider-label {
+    position: absolute;
+    top: 14px;
+    left: 18px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(46, 100, 23, 0.1);
+    color: var(--color-forest-green);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    pointer-events: none;
+}
+
+.slider-label .material-symbols-outlined {
+    font-size: 16px;
+}
+
+.slider-pause {
+    position: absolute;
+    right: 14px;
+    top: 14px;   /* top-right: the theme button is fixed to the bottom-right of the screen */
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--color-forest-green);
+    color: #ffffff;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.slider-pause:hover {
+    background: var(--color-success);
+    transform: scale(1.08);
+}
+
+.slider-pause:focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 2px;
+}
+
+.slider-pause .material-symbols-outlined {
+    font-size: 22px;
+}
+
+/* Phones: slightly smaller, tucked into the corner */
+@media (max-width: 479px) {
+    .slider-pause {
+        top: 10px;
+        right: 10px;
+        width: 34px;
+        height: 34px;
+    }
+
+    .slider-pause .material-symbols-outlined {
+        font-size: 20px;
+    }
+
+    .slider-label {
+        top: 10px;
+        left: 12px;
+    }
+}
+
+html[data-theme="dark"] .slider-label {
+    background: rgba(198, 231, 143, 0.12);
+    color: var(--color-library-green);
+}
+
+.slider-wrapper.is-empty {
+    cursor: default;
+}
+
+/* =========================================
+   LATEST PLANT CARDS
+   Full-photo cards: the name sits on a gradient at the bottom; on hover the
+   card tilts toward the cursor, the photo zooms and the description opens.
+   The .slider-track prefix gives these rules priority over the global
+   .plant-card rules in components.css (padding, centered text, max-width).
+   ========================================= */
+
+.slider-track .plant-card {
+    /* colours of the placeholder artwork, per plant type */
+    --ph-a: #8fd16a;
+    --ph-b: #2e7d32;
+
+    position: relative;
+    display: block;
+    flex: 0 0 auto;
+    width: var(--pc-w);
+    height: var(--pc-h);
+    max-width: none;
+    padding: 0;
+    overflow: hidden;
+    isolation: isolate;
+    border: 0;
+    border-radius: 20px;
+    background: var(--ph-b);
+    color: #ffffff;
+    text-align: left;
+    text-decoration: none;   /* cards are links to the plant profile */
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(20, 50, 15, 0.22);
+    transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(var(--lift, 0px));
+    transition: transform 0.2s ease-out, box-shadow 0.3s ease;
+    /* "backwards", not "both": once it ends, hover and tilt can move the card */
+    animation: pcIn 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+.slider-track .plant-card[data-type="herbal"]            { --ph-a: #8fd16a; --ph-b: #2e7d32; }
+.slider-track .plant-card[data-type="flower"]            { --ph-a: #f7a8c4; --ph-b: #b0476f; }
+.slider-track .plant-card[data-type="non-herbal-flower"] { --ph-a: #6fcfc0; --ph-b: #1f6b6a; }
+
+.slider-track .plant-card:focus-visible {
+    outline: 3px solid var(--color-cyan);
+    outline-offset: 3px;
+}
+
+.slider-track .plant-card:hover {
+    --lift: -8px;
+    box-shadow: 0 18px 34px rgba(20, 50, 15, 0.36);
+}
+
+/* ----- Photo layer ----- */
+
+.pc-media {
+    position: absolute;
+    inset: 0;
+    transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.slider-track .plant-card:hover .pc-media {
+    transform: scale(1.07);
+}
+
+.pc-media img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;                              /* fades in over the artwork once loaded */
+    transition: opacity 0.6s ease;
+    pointer-events: none;
+    -webkit-user-drag: none;
+    animation: pcKen 16s ease-in-out infinite alternate;
+}
+
+.pc-media.has-img img {
+    opacity: 1;
+}
+
+/* ----- Placeholder artwork ----- */
+
+.pc-ph {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background:
+        radial-gradient(rgba(255, 255, 255, 0.16) 1.4px, transparent 1.7px) 0 0 / 18px 18px,
+        radial-gradient(120% 90% at 25% 15%, var(--ph-a), var(--ph-b));
+}
+
+/* soft glow behind the plant */
+.pc-ph::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 36%;
+    width: 72%;
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.42), transparent 65%);
+    animation: pcBreath 4s ease-in-out infinite;
+}
+
+.ph-art {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 8%;
+    height: 56%;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+/* ground shadow under the plant */
+.ph-art::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    width: 34%;
+    height: 10px;
+    border-radius: 50%;
+    background: radial-gradient(rgba(0, 0, 0, 0.3), transparent 70%);
+}
+
+.ph-svg {
+    height: 100%;
+    width: auto;
+    color: rgba(255, 255, 255, 0.92);
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.22));
+    transform-origin: 50% 94%;
+    animation: pcSway 4.5s ease-in-out infinite;
+}
+
+/* small leaves drifting upward */
+.ph-bit {
+    position: absolute;
+    bottom: -12%;
+    left: var(--x, 50%);
+    width: var(--s, 8px);
+    height: var(--s, 8px);
+    background: rgba(255, 255, 255, 0.55);
+    border-radius: 0 100% 0 100%;
+    opacity: 0;
+    animation: pcFloat var(--t, 9s) linear infinite;
+    animation-delay: var(--d, 0s);
+}
+
+/* once a photo covers the artwork, stop animating what nobody can see */
+.pc-media.has-img .pc-ph,
+.pc-media.has-img .pc-ph *,
+.pc-media.has-img .pc-ph::before {
+    animation-play-state: paused !important;
+}
+
+/* ----- Light sheen that follows the cursor ----- */
+
+.pc-shine {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    opacity: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.28), transparent 55%);
+    transition: opacity 0.3s ease;
+}
+
+.slider-track .plant-card:hover .pc-shine {
+    opacity: 1;
+}
+
+/* ----- Chips ----- */
+
+.pc-type,
+.pc-new {
+    position: absolute;
+    top: 12px;
+    z-index: 4;
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+}
+
+.pc-type {
+    left: 12px;
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--ph-b);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+.pc-new {
+    right: 12px;
+    background: #e6783c;
+    color: #ffffff;
+    text-transform: uppercase;
+    animation: pcPulse 2s ease-in-out infinite;
+}
+
+/* ----- Name + description ----- */
+
+.pc-info {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    padding: 64px 16px 16px;
+    background: linear-gradient(to top, rgba(8, 22, 8, 0.94) 0%, rgba(8, 22, 8, 0.78) 45%, rgba(8, 22, 8, 0) 100%);
+}
+
+.slider-track .plant-card h3 {
+    margin: 0;
+    color: #ffffff;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1.25;
+    text-align: left;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.pc-bar {
+    display: block;
+    width: 28px;
+    height: 3px;
+    margin: 8px 0 6px;
+    border-radius: 3px;
+    background: var(--color-library-green, #c6e78f);
+    transition: width 0.35s ease;
+}
+
+.slider-track .plant-card:hover .pc-bar {
+    width: 64px;
+}
+
+.slider-track .plant-card .pc-sci {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 13px;
+    font-style: italic;
+    text-align: left;
+}
+
+/* the description slides open on hover (grid rows animate 0fr -> 1fr) */
+.pc-more {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.4s ease;
+}
+
+.pc-more > div {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.slider-track .plant-card .pc-text {
+    margin: 8px 0 0;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: left;
+    opacity: 0;
+    transition: opacity 0.3s ease 0.05s;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.slider-track .plant-card:hover .pc-more {
+    grid-template-rows: 1fr;
+}
+
+.slider-track .plant-card:hover .pc-text {
+    opacity: 1;
+}
+
+/* touch screens have no hover: always show a short description */
+@media (hover: none) {
+    .pc-more {
+        grid-template-rows: 1fr;
+    }
+
+    .slider-track .plant-card .pc-text {
+        opacity: 1;
+        -webkit-line-clamp: 2;
+    }
+}
+
+/* ----- Loading skeleton (same artwork + a shimmer sweep) ----- */
+
+.slider-track .plant-card.is-skeleton {
+    pointer-events: none;
+    animation: none;
+    box-shadow: 0 4px 12px rgba(20, 50, 15, 0.16);
+}
+
+.slider-track .plant-card.is-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%);
+    background-size: 250% 100%;
+    animation: pcShimmer 1.5s linear infinite;
+}
+
+.sk-line {
+    display: block;
+    height: 12px;
+    margin-top: 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.28);
+}
+
+.sk-title {
+    width: 70%;
+    height: 16px;
+    margin-top: 0;
+}
+
+.sk-short {
+    width: 45%;
+}
+
+/* ----- Empty / error message ----- */
+
+.plant-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: min(420px, 80vw);
+    padding: 40px 20px;
+    text-align: center;
+    color: #44544a;
+}
+
+html[data-theme="dark"] .plant-empty {
+    color: var(--color-timberwolf);
+}
+
+.plant-empty-icon { font-size: 40px; }
+.plant-empty p { margin: 0; font-size: 15px; }
+
+.plant-retry {
+    padding: 8px 20px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--color-forest-green, #2e6417);
+    color: #ffffff;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.plant-retry:hover {
+    transform: translateY(-2px);
+    opacity: 0.9;
+}
+
+/* ----- Animations ----- */
+
+@keyframes pcIn {
+    from { opacity: 0; transform: translateY(24px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes pcKen {
+    from { transform: scale(1); }
+    to   { transform: scale(1.09) translate(-1.5%, -1%); }
+}
+
+@keyframes pcSway {
+    0%, 100% { transform: rotate(-3deg); }
+    50%      { transform: rotate(3deg); }
+}
+
+@keyframes pcBreath {
+    0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(0.92); }
+    50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.08); }
+}
+
+@keyframes pcFloat {
+    0%   { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 0; }
+    10%  { opacity: 0.8; }
+    90%  { opacity: 0.6; }
+    100% { transform: translate3d(var(--dx, 20px), -420px, 0) rotate(300deg); opacity: 0; }
+}
+
+@keyframes pcPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(230, 120, 60, 0.55); }
+    50%      { box-shadow: 0 0 0 7px rgba(230, 120, 60, 0); }
+}
+
+@keyframes pcShimmer {
+    from { background-position: 150% 0; }
+    to   { background-position: -150% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .slider-track .plant-card,
+    .pc-media,
+    .pc-media img,
+    .pc-ph::before,
+    .ph-svg,
+    .ph-bit,
+    .pc-new,
+    .pc-bar,
+    .pc-more,
+    .slider-track .plant-card.is-skeleton::after {
+        animation: none;
+        transition: none;
+    }
+
+    /* scroll reveal: show the box right away, no movement */
+    .slider-wrapper.reveal,
+    .slider-wrapper.reveal .slider-label,
+    .slider-wrapper.reveal .slider-pause {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+}
+
+
+/* =========================================
+   MANUAL SCROLL ARROWS (created by home.js)
+   Hidden on touch screens: swiping already scrolls there.
+   ========================================= */
+.slider-arrow {
+    position: absolute;
+    top: 50%;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    margin-top: -21px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--color-forest-green);
+    color: #ffffff;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+    transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+}
+
+.slider-arrow-prev { left: 12px; }
+.slider-arrow-next { right: 12px; }
+
+.slider-arrow[hidden] { display: none; }
+
+.slider-arrow:hover {
+    background: var(--color-success);
+    transform: scale(1.08);
+}
+
+.slider-arrow:focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 2px;
+}
+
+.slider-arrow.is-off {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.slider-arrow .material-symbols-outlined {
+    font-size: 26px;
+}
+
+@media (hover: none) {
+    .slider-arrow {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .slider-arrow {
+        transition: none;
     }
 }

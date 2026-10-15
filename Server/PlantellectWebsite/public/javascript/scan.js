@@ -331,16 +331,75 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    // ------------------------------------------------------- server verdict ----
+    // routes/ml.js answers with `outcome` and `reason` once mlConfidence is in
+    // 'enforce' mode. In 'off' and 'log' mode neither field is present and this
+    // page behaves exactly as it did before.
+    const NON_SPECIES_KINDS = ['non_plant', 'other_plant'];
+
+    // "non plant" / "other plant" are classes of the model, never species names.
+    function speciesOnly(predictions) {
+        return (predictions || []).filter((p) => !NON_SPECIES_KINDS.includes(p && p.kind));
+    }
+
+    // ------------------------------------------------- picture and profile link ----
+    // The server attaches plantId (and imageUrl, when the plant has a hero photo)
+    // only for species that exist in the library. Same URL shape the library grid
+    // and the plant profile already use, so the image route needs no change.
+    function profileHref(pred) {
+        return pred && pred.plantId
+            ? `/plant-profile.html?plantId=${encodeURIComponent(pred.plantId)}`
+            : '';
+    }
+
+    function thumbHtml(pred, label) {
+        const url = pred && typeof pred.imageUrl === 'string' && pred.imageUrl.startsWith('/api/plants/')
+            ? pred.imageUrl
+            : '';
+        return url
+            ? `<img class="scan-prediction-img" src="${escapeHtml(url)}" alt="${escapeHtml(label)}" loading="lazy" decoding="async">`
+            : '<span class="scan-prediction-img scan-prediction-img--empty" aria-hidden="true">\u{1F33F}</span>';
+    }
+
+    function verdictMessage(result, firstPrediction) {
+        switch (result && result.outcome) {
+            case 'uncertain': {
+                const name = firstPrediction
+                    ? (firstPrediction.commonName || firstPrediction.scientific_name)
+                    : '';
+                return name
+                    ? `Possible ${name}. Take another photo to be sure.`
+                    : 'Not sure what this is. Take another photo.';
+            }
+            case 'unrecognized':
+                if (result.reason === 'non_plant') {
+                    return 'No plant detected. Point the camera at a leaf or plant and try again.';
+                }
+                if (result.reason === 'other_plant') {
+                    return 'Plant detected, but this species is not supported yet. ' +
+                        'If you know what it is, you can report it below.';
+                }
+                return 'Could not recognise this photo. Try a clearer photo of a leaf.';
+            default:
+                return null; // 'identified', or no verdict at all: show the list as before
+        }
+    }
+
     function renderResults(result) {
         lastScanResult = result;
-        const predictions = (result && result.predictions) || [];
+        // Defence in depth: the server already withholds non-species classes, but one
+        // must never render as a species or get a "Record this plant" link.
+        const predictions = speciesOnly(result && result.predictions);
         let html = '<div class="scan-result-header">' +
             `<span>Inference: ${escapeHtml(result.inference_ms)}ms</span>` +
             `<span>Model: ${escapeHtml(result.model_version)}</span>` +
             '</div>';
 
+        const verdict = verdictMessage(result, predictions[0]);
+        if (verdict) html += `<p class="scan-verdict">${escapeHtml(verdict)}</p>`;
+
         if (predictions.length === 0) {
-            html += '<p class="scan-loading">No predictions returned.</p>';
+            if (!verdict) html += '<p class="scan-loading">No predictions returned.</p>';
             scanResults.innerHTML = html;
             return;
         }
@@ -348,17 +407,24 @@ document.addEventListener('DOMContentLoaded', function () {
         html += '<div class="scan-predictions">';
         predictions.forEach((pred, index) => {
             const confidencePct = ((pred.confidence || 0) * 100).toFixed(1);
-            // The server attaches plantId when the species is in the library.
-            // Link to the profile only then; never drop a prediction for it.
-            const nameHtml = pred.plantId
-                ? `<a class="scan-prediction-name" href="/plant-profile.html?plantId=${encodeURIComponent(pred.plantId)}">${escapeHtml(pred.commonName || pred.scientific_name)}</a>`
-                : `<span class="scan-prediction-name">${escapeHtml(pred.commonName || pred.scientific_name)}</span>`;
-            html += '<div class="scan-prediction-item">' +
+            const label = pred.commonName || pred.scientific_name;
+            const href = profileHref(pred);
+
+            // Picture + names are ONE link to the profile when the species is in the
+            // library. The record link stays outside it: a link inside a link is invalid.
+            const inner = thumbHtml(pred, label) +
                 '<div class="scan-prediction-info">' +
                     `<span class="scan-prediction-rank">#${index + 1}</span>` +
-                    nameHtml +
+                    `<span class="scan-prediction-name">${escapeHtml(label)}</span>` +
                     `<span class="scan-prediction-sci">${escapeHtml(pred.scientific_name)}</span>` +
-                '</div>' +
+                    (href ? '' : '<span class="scan-prediction-note">Not in the library yet</span>') +
+                '</div>';
+            const main = href
+                ? `<a class="scan-prediction-link" href="${href}" title="Open the ${escapeHtml(label)} profile">${inner}</a>`
+                : `<div class="scan-prediction-link">${inner}</div>`;
+
+            html += '<div class="scan-prediction-item">' +
+                main +
                 '<div class="scan-prediction-bar">' +
                     `<div class="scan-prediction-fill" style="width: ${confidencePct}%"></div>` +
                 '</div>' +
@@ -368,6 +434,17 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         html += '</div>';
         scanResults.innerHTML = html;
+
+        // A photo that fails to load (deleted, still processing) falls back to the leaf icon.
+        scanResults.querySelectorAll('img.scan-prediction-img').forEach(function (img) {
+            img.addEventListener('error', function () {
+                const placeholder = document.createElement('span');
+                placeholder.className = 'scan-prediction-img scan-prediction-img--empty';
+                placeholder.setAttribute('aria-hidden', 'true');
+                placeholder.textContent = '\u{1F33F}';
+                img.replaceWith(placeholder);
+            }, { once: true });
+        });
 
         scanResults.querySelectorAll('[data-record-species]').forEach(function (link) {
             link.addEventListener('click', function () {
@@ -386,7 +463,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const params = new URLSearchParams({
             tab: 'new',
             scientificName: pred.scientific_name || '',
-            commonName: pred.common_name || ''
+            commonName: pred.commonName || pred.common_name || ''
         });
         return '<a class="scan-record-link" href="record.html?' + params.toString() + '" ' +
             'data-record-species="' + escapeHtml(pred.scientific_name || '') + '">Record this plant</a>';
@@ -519,7 +596,12 @@ document.addEventListener('DOMContentLoaded', function () {
             const body = new FormData();
             body.append('note', note);
             body.append('location', location);
-            const predictions = (lastScanResult && lastScanResult.predictions) || [];
+            // Species guesses only. When the server withheld the list (outcome
+            // 'unrecognized') it sends them as hint_predictions, so the botanist still
+            // sees what the model almost thought. They stay a hint, never an answer.
+            const predictions = speciesOnly(
+                lastScanResult && (lastScanResult.hint_predictions || lastScanResult.predictions)
+            );
             if (predictions.length > 0) {
                 body.append('predictions', JSON.stringify(predictions));
             }
@@ -560,4 +642,3 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
-

@@ -6,11 +6,20 @@
      - mobile (<768px): off-canvas drawer
      - desktop (>=768px): docked full-height column that collapses to an icon rail
    Page content is pushed over by body.has-sidebar (added by sidebar.js).
+
+   The sidebar and the top bar (see base.css) are one frame:
+     - same colour (--sb-bg)
+     - the sidebar's header strip is exactly --topbar-height tall and its
+       divider line sits where the top bar's bottom border is, so the
+       line runs unbroken from the sidebar into the top bar.
    ========================================================= */
 
 :root {
     --sidebar-width: 240px;
     --sidebar-width-collapsed: 68px;
+
+    /* Shared with the top bar in base.css */
+    --topbar-height: 56px;
 
     /* Spacing that scales with the screen height / width */
     --sidebar-item-pad-y: clamp(10px, 1.9vh, 14px);
@@ -40,6 +49,7 @@
     --sb-logout:             #ffd6d3;
     --sb-logout-hover-bg:    rgba(0, 0, 0, 0.18);
     --sb-shadow:             0 8px 24px rgba(0, 0, 0, 0.25);
+    --sb-gradient:           linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(0, 0, 0, 0.22) 100%);
 }
 
 /* ----- Sidebar colors: DARK mode ----- */
@@ -69,6 +79,11 @@ body.drawer-open {
 /* Guests (and the moment before sidebar.js renders) get no sidebar at all */
 body:not(.has-sidebar) .sidebar {
     display: none;
+}
+
+/* ...so they also get no hamburger: it would open nothing. */
+body:not(.has-sidebar) .nav-hamburger {
+    display: none !important;
 }
 
 /* =========================================
@@ -121,7 +136,8 @@ body:not(.has-sidebar) .sidebar {
     height: 100dvh;
     display: flex;
     flex-direction: column;
-    background: var(--sb-bg);
+    background-color: var(--sb-bg);
+    background-image: var(--sb-gradient);
     color: var(--sb-text);
     padding: 64px 0 0;
     transform: translateX(-100%);
@@ -198,7 +214,7 @@ body:not(.has-sidebar) .sidebar {
     flex-shrink: 0;
     background: var(--sb-toggle-bg);
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     color: var(--sb-text);
     cursor: pointer;
 }
@@ -207,7 +223,7 @@ body:not(.has-sidebar) .sidebar {
     display: flex;
     flex-direction: column;
     flex: 1 0 auto;
-    gap: 2px;
+    gap: 3px;
     padding: var(--sidebar-group-gap) 0;
     /* reset the global header `nav` rules from base.css, just in case */
     min-width: 0;
@@ -220,13 +236,15 @@ body:not(.has-sidebar) .sidebar {
     display: flex;
     align-items: center;
     gap: var(--sidebar-item-gap);
-    padding: var(--sidebar-item-pad-y) var(--sidebar-item-pad-x);
+    margin: 0 12px;
+    padding: var(--sidebar-item-pad-y) 14px;
     color: var(--sb-text);
     text-decoration: none;
     font-size: var(--sidebar-item-font);
     font-weight: 500;
     letter-spacing: 0.3px;
-    border-left: 3px solid transparent;
+    border: none;
+    border-radius: 12px;
 }
 
 .sidebar-item .icon,
@@ -252,18 +270,42 @@ body:not(.has-sidebar) .sidebar {
 .sidebar-item.active {
     background-color: var(--sb-active-bg);
     color: var(--sb-active-text);
-    border-left-color: var(--sb-active-border);
-    font-weight: 700;
+    font-weight: 600;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-.sidebar-item.profile-link {
-    margin-top: var(--sidebar-group-gap);
-    border-top: 1px solid var(--sb-border);
+/* current page: filled icon in the accent colour */
+.sidebar-item.active .material-symbols-outlined,
+.sidebar-item.active .icon {
+    color: var(--sb-active-border);
+    font-variation-settings: 'FILL' 1;
+}
+
+.sidebar-item:focus-visible,
+.sidebar-logout-link:focus-visible,
+.sidebar-toggle:focus-visible {
+    outline: 2px solid var(--sb-active-border);
+    outline-offset: -2px;
+}
+
+/* groups are separated by a thin line in the gap above them */
+.sidebar-item.profile-link,
+.sidebar-logout-link {
+    margin-top: 18px;
+}
+
+.sidebar-item.profile-link::before,
+.sidebar-logout-link::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    top: -9px;
+    height: 1px;
+    background: var(--sb-border);
 }
 
 .sidebar-logout-link {
-    margin-top: var(--sidebar-group-gap);
-    border-top: 1px solid var(--sb-border);
     color: var(--sb-logout);
 }
 
@@ -401,45 +443,30 @@ body:not(.has-sidebar) .sidebar {
 }
 
 /* =========================================
-   HOVER FLOAT (same as admin)
+   HOVER MOTION
+   Pills only change background (no lift): calm, and nothing is clipped
+   by the sidebar edge.
    ========================================= */
 
 .sidebar-item,
 .sidebar-logout-link,
 .nav-hamburger,
 .sidebar-toggle {
-    transition: transform var(--transition-fast) ease,
-                box-shadow var(--transition-fast) ease,
-                background-color var(--transition-fast),
+    transition: background-color var(--transition-fast),
                 background var(--transition-fast),
                 color var(--transition-fast),
                 border-color var(--transition-fast);
 }
 
-.sidebar-item:hover,
-.sidebar-logout-link:hover,
-.nav-hamburger:hover,
 .sidebar-toggle:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25);
-}
-
-.sidebar-item:active,
-.sidebar-logout-link:active {
-    transform: translateY(-1px);
+    background: var(--sb-active-bg);
+    color: var(--sb-text-hover);
 }
 
 @media (prefers-reduced-motion: reduce) {
     .sidebar,
     .sidebar-scrim {
         transition: none;
-    }
-
-    .sidebar-item:hover,
-    .sidebar-logout-link:hover,
-    .nav-hamburger:hover,
-    .sidebar-toggle:hover {
-        transform: none;
     }
 }
 
@@ -453,11 +480,56 @@ body:not(.has-sidebar) .sidebar {
         max-width: none;
         padding-top: 0;
         transform: none;
-        box-shadow: none;
-        border-right: 1px solid var(--sb-border);
+        box-shadow: 1px 0 0 var(--sb-border), 8px 0 30px rgba(0, 0, 0, 0.10);
         overflow-x: hidden;
         z-index: var(--z-index-header);
         transition: width var(--transition-normal) ease;
+
+        /* Layer 1: divider line at the exact height of the top bar's bottom
+           border, so the two read as one frame. Layer 2: the soft gradient. */
+        background-image: linear-gradient(var(--sb-border), var(--sb-border)), var(--sb-gradient);
+        background-repeat: no-repeat;
+        background-size: 100% 1px, 100% 100%;
+        background-position: 0 calc(var(--topbar-height) - 1px), 0 0;
+    }
+
+    /* Brand in the strip beside the collapse toggle (pure CSS, no markup) */
+    .sidebar::before {
+        content: 'eco';
+        position: absolute;
+        top: calc((var(--topbar-height) - 26px) / 2);
+        left: 20px;
+        font-family: 'Material Symbols Outlined';
+        font-size: 26px;
+        font-style: normal;
+        font-feature-settings: 'liga';
+        font-variation-settings: 'FILL' 1;
+        letter-spacing: normal;
+        line-height: 1;
+        text-transform: none;
+        white-space: nowrap;
+        color: var(--sb-active-border);
+        pointer-events: none;
+    }
+
+    .sidebar::after {
+        content: 'Plantellect';
+        position: absolute;
+        top: 0;
+        left: 54px;
+        height: var(--topbar-height);
+        display: flex;
+        align-items: center;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        color: var(--sb-text-hover);
+        pointer-events: none;
+    }
+
+    html.sidebar-collapsed .sidebar::before,
+    html.sidebar-collapsed .sidebar::after {
+        display: none;
     }
 
     .sidebar-header,
@@ -466,8 +538,10 @@ body:not(.has-sidebar) .sidebar {
         display: none !important;
     }
 
+    /* The toggle sits centred in a strip exactly as tall as the top bar */
     .sidebar-toggle {
         display: flex;
+        margin: calc((var(--topbar-height) - 36px) / 2) 14px calc((var(--topbar-height) - 36px) / 2) auto;
     }
 
     /* Push page content beside the docked sidebar */
@@ -486,7 +560,7 @@ body:not(.has-sidebar) .sidebar {
     }
 
     html.sidebar-collapsed .sidebar-toggle {
-        margin: 12px auto 0;
+        margin: calc((var(--topbar-height) - 36px) / 2) auto;
     }
 
     html.sidebar-collapsed .sidebar-toggle .toggle-glyph {
@@ -496,8 +570,9 @@ body:not(.has-sidebar) .sidebar {
     html.sidebar-collapsed .sidebar-item,
     html.sidebar-collapsed .sidebar-logout-link {
         justify-content: center;
-        /* right padding balances the 3px active border so icons stay centred */
-        padding: var(--sidebar-item-pad-y) 3px var(--sidebar-item-pad-y) 0;
+        margin-left: 10px;
+        margin-right: 10px;
+        padding: var(--sidebar-item-pad-y) 0;
         gap: 0;
     }
 
@@ -541,10 +616,6 @@ body:not(.has-sidebar) .sidebar {
     :root {
         --sidebar-item-pad-y: 8px;
         --sidebar-group-gap: 6px;
-    }
-
-    .sidebar-toggle {
-        margin-top: 8px;
     }
 
     .sidebar-theme-label {

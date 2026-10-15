@@ -30,7 +30,8 @@ const mlScanSchema = new mongoose.Schema(
                 // Null means "the library has no such species". Unreliable when
                 // linksResolved is false — see below.
                 plantId: { type: String, default: null },
-                rank: { type: Number, default: null }
+                rank: { type: Number, default: null },
+                kind: { type: String, default: 'species' }
             }],
             default: []
         },
@@ -56,6 +57,17 @@ const mlScanSchema = new mongoose.Schema(
          * false so every existing document reads as unreported.
          */
         reported: { type: Boolean, default: false },
+        verdict: {
+            mode: { type: String, enum: ['off', 'log', 'enforce'] },
+            outcome: { type: String, enum: ['identified', 'uncertain', 'unrecognized'] },
+            top1: { type: Number },
+            top2: { type: Number },
+            margin: { type: Number },
+            applied: { type: Boolean },
+            thresholds: { type: Object },
+            reason: { type: String },
+            topKind: { type: String }
+        },
         ip: { type: String, default: '' },
         userAgent: { type: String, default: '' },
         // Mongo's TTL index (expireAfterSeconds: 0) collects the document once
@@ -85,6 +97,7 @@ async function logMlScan(data) {
             inferenceMs: data.inferenceMs ?? null,
             predictions: Array.isArray(data.predictions) ? data.predictions : [],
             linksResolved: Boolean(data.linksResolved),
+            ...(data.verdict ? { verdict: data.verdict } : {}),
             ip: data.ip || '',
             userAgent: data.userAgent || '',
             expiresAt: new Date(Date.now() + settings.ml.retentionDays * 24 * 60 * 60 * 1000)

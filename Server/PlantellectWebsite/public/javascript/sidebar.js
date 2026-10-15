@@ -33,6 +33,19 @@
     var desktopQuery = window.matchMedia('(min-width: 768px)');
     var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
+    /* While html.sb-init is present, base.css switches every transition off.
+       Without this, each page load animated the sidebar width / body padding
+       from the "no sidebar" state to the real one, which is the flicker when
+       changing pages. It is removed (finishInit) after the first real render,
+       and by a timeout in case anything throws. */
+    rootEl.classList.add('sb-init');
+    function finishInit() {
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () { rootEl.classList.remove('sb-init'); });
+        });
+    }
+    setTimeout(function () { rootEl.classList.remove('sb-init'); }, 3000);
+
     function readStore(key) {
         try { return localStorage.getItem(key); } catch (e) { return null; }
     }
@@ -212,7 +225,7 @@
                     } else if (retryResult.state === 'anonymous') {
                         plantAuthUser = null;
                         clearSessionUser();
-                    }else {
+                    } else {
                         var cached = readSessionUser();
                         if (cached.username || cached.roles.length) {
                             plantAuthUser = {
@@ -233,11 +246,12 @@
     });
 
     /**
-     * The header's SIGN OUT (username) / SIGN IN + SIGN UP, from session state.
+     * The header's username (ADMIN link for admins) / SIGN IN + SIGN UP, from
+     * session state.
      *
-     * The username is escaped: it comes from an accounts row, and the sign-out
-     * link carries a click handler, so it is the one piece of account data that
-     * reaches an href-bearing element.
+     * Sign out is NOT in the top bar any more: it lives in the sidebar
+     * (.sidebar-logout-link). Only the username is shown here, as a link to the
+     * profile page. The username is escaped: it comes from an accounts row.
      */
     function renderAuthLinks(user) {
         var authLinks = document.querySelector('.auth-links');
@@ -252,16 +266,14 @@
         var roles = user.roles || [];
         var isAdmin = roles.indexOf('admin') !== -1 || roles.indexOf('superadmin') !== -1;
         var adminLink = isAdmin ? '<a href="/admin/dashboard">ADMIN</a>' : '';
+        var name = user.username || '';
+        // data-initial feeds the round avatar that base.css shows on small
+        // screens, where the full name does not fit in the top bar.
         authLinks.innerHTML = adminLink +
-            '<a href="#" id="navLogoutLink">SIGN OUT (' + escapeText(user.username) + ')</a>';
-
-        var logoutLink = document.getElementById('navLogoutLink');
-        if (logoutLink) {
-            logoutLink.addEventListener('click', function (e) {
-                e.preventDefault();
-                if (typeof window.logoutUser === 'function') window.logoutUser();
-            });
-        }
+            '<a href="profile.html" class="auth-username" title="' + escapeText(name) + '"' +
+            ' aria-label="Profile: ' + escapeText(name) + '"' +
+            ' data-initial="' + escapeText((name.charAt(0) || '?').toUpperCase()) + '">' +
+            escapeText(name) + '</a>';
     }
 
     window.plantAuth = {
@@ -430,12 +442,35 @@
         updateThemeSwitch();
     }
 
-    async function ensureSidebar() {
-        var user = await plantAuthReady;
+    /* Paint the header + sidebar only when what they show has changed. The
+       first paint comes from the sessionStorage copy of the user, so the
+       username and the sidebar are there immediately on every page change
+       instead of appearing after the /api/auth/me round trip. */
+    var lastPaintSignature = null;
 
-        renderAuthLinks(user); // bug fix preventing the sign in/sign out in nav header from rendering and confuse user
-        renderSidebar(user ? user.permissions : [], user ? user.roles : []);
-        await loadDiscoveryBadge();
+    function paint(user) {
+        var signature = user
+            ? JSON.stringify([user.username, user.roles || [], user.permissions || []])
+            : 'guest';
+        if (signature === lastPaintSignature) return;
+        lastPaintSignature = signature;
+        renderAuthLinks(user);
+        renderSidebar(user ? user.permissions || [] : [], user ? user.roles || [] : []);
+    }
+
+    async function ensureSidebar() {
+        try {
+            var cached = readSessionUser();
+            if (cached.username || cached.roles.length || cached.permissions.length) {
+                paint(cached);
+            }
+
+            var user = await plantAuthReady;
+            paint(user);
+            await loadDiscoveryBadge();
+        } finally {
+            finishInit();
+        }
     }
 
     /**
@@ -471,6 +506,7 @@
     function clearSidebarCache() {
         clearSessionUser();
         plantAuthUser = null;
+        lastPaintSignature = null;
         renderSidebar([], []);
         renderAuthLinks(null);
     }
@@ -488,9 +524,9 @@
         event.preventDefault();
 
         // The shared answer: the ONE /api/auth/me fetch on the page, and the ONE
-// renderer of the header. The single awaitable for a page's own gate is
-// window.plantAuth.ready; nothing else should fetch the current user.
-var loggedIn = !!(await plantAuthReady);
+        // renderer of the header. The single awaitable for a page's own gate is
+        // window.plantAuth.ready; nothing else should fetch the current user.
+        var loggedIn = !!(await plantAuthReady);
         if (!loggedIn) showRestrictedModal();
     }
 

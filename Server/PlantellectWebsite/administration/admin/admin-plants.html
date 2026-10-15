@@ -6,7 +6,7 @@
     <title>Plantellect - Plants</title>
 
     <!-- Shared sidebar + theme logic (must load here, no defer) -->
-    <script src="/javascript/admin-sidebar.js"></script>
+    <script src="/javascript/admin/admin-sidebar.js"></script>
 
     <link rel="stylesheet" href="/css/admin/admin-sidebar.css">
     <link rel="stylesheet" href="/css/admin/admin-style.css">
@@ -61,8 +61,7 @@
         /* Keeps a section's heading from hiding under the sticky bar */
         #pendingRequestsSection,
         #inventorySection,
-        #discoveryQueue,
-        #approvalModesSection { scroll-margin-top: 70px; }
+        #discoveryQueue { scroll-margin-top: 70px; }
 
         /* ---------- Collapsible sections ---------- */
         .collapse-summary {
@@ -261,6 +260,10 @@
                     <span class="nav-link-text">Plants</span>
                     <span class="nav-badge" id="navBadgePlants" hidden>0</span>
                 </a>
+                <a href="/admin/settings" data-perm="access_admin" title="Settings">
+                    <span class="material-symbols-outlined">settings</span>
+                    <span class="nav-link-text">Settings</span>
+                </a>
                 <a href="#" data-perm="view_logs" title="Logs">
                     <span class="material-symbols-outlined">history_toggle_off</span>
                     <span class="nav-link-text">Logs</span>
@@ -280,10 +283,9 @@
             <h1>Plants</h1>
             <p class="admin-subtitle">Review upload requests and manage the plant inventory</p>
 
-            <!-- Topbar: each tab opens (if collapsed) and scrolls to its section -->
+            <!-- Topbar: tracks the section you are reading; each tab opens (if collapsed) and scrolls to its section -->
             <nav class="plants-topbar" id="plantsTopbar" aria-label="Plants sections">
-                <a href="#approvalModesSection" class="plants-tab active" data-target="approvalModesSection">Approval modes</a>
-                <a href="#pendingRequestsSection" class="plants-tab" data-target="pendingRequestsSection">
+                <a href="#pendingRequestsSection" class="plants-tab active" data-target="pendingRequestsSection">
                     Request Pending
                     <span class="plants-tab-badge" id="plantsTabBadgePending" hidden>0</span>
                 </a>
@@ -295,29 +297,6 @@
             </nav>
 
             <div class="plants-container">
-
-                <!-- APPROVAL MODES (top of the page: it decides what the Approve
-                     button below is still needed for). Rows are BUILT FROM
-                     /admin/api/approval-modes, never hardcoded. All sections
-                     start collapsed (no `open` attribute on <details>). -->
-                <section class="admin-section approval-modes" id="approvalModesSection">
-                    <details class="collapse">
-                        <summary class="collapse-summary">
-                            <h2>Approval modes
-                                <span class="approval-auto-count" id="approvalModesAutoBadge" hidden>0 automatic</span>
-                            </h2>
-                            <span class="collapse-chevron" aria-hidden="true"></span>
-                        </summary>
-                        <div class="collapse-body">
-                            <p class="admin-subtitle">All types start as <strong>manual</strong>. Automatic means a fixed rule approves submissions, recorded as &ldquo;System&rdquo;.</p>
-                            <div id="approvalModesList" class="approval-mode-list">
-                                <p>Loading approval modes&hellip;</p>
-                            </div>
-                            <div id="approvalModesRails"></div>
-                            <p class="approval-modes-note" id="approvalModesNotice" hidden></p>
-                        </div>
-                    </details>
-                </section>
 
                 <!-- Pending plant upload requests -->
                 <section class="admin-section" id="pendingRequestsSection">
@@ -489,6 +468,12 @@
             return 'plant-badge plant-badge-' + type;
         }
 
+        // Moved here from the table header, where it had been pasted by mistake.
+        function approvalModeBadge(mode) {
+            if (!mode || mode === 'manual') return '';
+            return '<span class="approval-mode-badge approval-mode-' + mode + '">Auto</span>';
+        }
+
         function escapeHtml(str) {
             const div = document.createElement('div');
             div.textContent = String(str == null ? '' : str);
@@ -623,164 +608,6 @@
             pendingRequests = pendingRequests.filter(r => String(r.id) !== String(id));
             renderPlantRequests();
             loadPlants();
-        }
-
-        // -----------------------------------------------------------------
-        // Approval modes
-        // -----------------------------------------------------------------
-        /**
-         * AUTO vs the reviewer's name, decided from the value the SERVER sent.
-         * `approvalMode` arrives in the same MySQL row as the request, written in
-         * the same transaction as the decision, so a Mongo audit outage can't make
-         * a decided request look undecided. A pending row is 'manual' by definition.
-         */
-        function approvalModeBadge(mode) {
-            if (mode !== 'auto') return '';
-            return '<span class="request-mode-badge" title="Approved automatically by the rule set; no human reviewed it.">AUTO</span>';
-        }
-
-        /**
-         * Confirmation copy for a switch that publishes content. Enabling auto for
-         * new-plant submissions also covers records made FROM a discovery report,
-         * and an approved photo is ML training data from that moment on. Un-publishing
-         * text is possible later; un-training a photo is not. Say so BEFORE the click.
-         */
-        function confirmAutoEnable(mode) {
-            const lines = [
-                'Turn ON automatic approval for ' + mode.label + '?',
-                '',
-                mode.detail,
-                '',
-                'Every submission of this type will then be approved by a fixed rule, ' +
-                'with no human reading it. Decisions are recorded against the machine ' +
-                'account "System", not against you.'
-            ];
-            if (mode.warning) {
-                lines.push('', mode.warning);
-            }
-            lines.push('', 'A discovery report is never auto-decided, and a submitter\'s first ' +
-                'submission is always reviewed by hand.');
-            return confirm(lines.join('\n'));
-        }
-
-        function renderApprovalModes(payload) {
-            const list = document.getElementById('approvalModesList');
-            const rails = document.getElementById('approvalModesRails');
-            const modes = payload.modes || [];
-
-            // "N automatic" badge in the header, visible even when the section is collapsed
-            const autoCount = modes.filter(m => m.auto).length;
-            const autoBadge = document.getElementById('approvalModesAutoBadge');
-            autoBadge.textContent = autoCount + ' automatic';
-            autoBadge.hidden = autoCount === 0;
-
-            if (modes.length === 0) {
-                list.innerHTML = '<p>No approval switches are configured.</p>';
-                return;
-            }
-
-            list.innerHTML = modes.map(m => `
-                <div class="approval-mode-row ${m.auto ? 'is-auto' : ''}" data-request-type="${escapeHtml(m.requestType)}" title="${escapeHtml(m.metaKey)}">
-                    <div class="approval-mode-main">
-                        <div class="approval-mode-text">
-                            <div class="approval-mode-head">
-                                <span class="approval-mode-label">${escapeHtml(m.label)}</span>
-                                <span class="mode-pill">${m.auto ? 'Automatic' : 'Manual'}</span>
-                            </div>
-                            <p class="approval-mode-detail">${escapeHtml(m.detail)}</p>
-                            ${m.note ? `<p class="approval-mode-note">${escapeHtml(m.note)}</p>` : ''}
-                        </div>
-                        <label class="switch" title="Automatic approval">
-                            <input type="checkbox" class="approval-mode-input"
-                                   aria-label="Automatic approval for ${escapeHtml(m.label)}"
-                                   data-request-type="${escapeHtml(m.requestType)}"
-                                   ${m.auto ? 'checked' : ''}>
-                            <span class="switch-track"></span>
-                        </label>
-                    </div>
-                    ${m.warning ? `<p class="approval-mode-warning">${escapeHtml(m.warning)}</p>` : ''}
-                </div>
-            `).join('');
-
-            list.querySelectorAll('.approval-mode-input').forEach(input => {
-                input.addEventListener('change', () => handleApprovalModeToggle(input));
-            });
-
-            const railList = (payload.rules && payload.rules.rails) || [];
-            rails.innerHTML = railList.length > 0
-                ? '<details class="approval-rails"><summary>Always-on safeguards</summary><ul>' +
-                    railList.map(r => '<li>' + escapeHtml(r) + '</li>').join('') +
-                  '</ul><p>' + escapeHtml((payload.rules && payload.rules.neverDenies) || '') + '</p></details>'
-                : '';
-        }
-
-        async function handleApprovalModeToggle(input) {
-            const requestType = input.dataset.requestType;
-            const enabled = input.checked;
-            const notice = document.getElementById('approvalModesNotice');
-            const row = input.closest('.approval-mode-row');
-            const known = (approvalModesState.modes || []).find(m => m.requestType === requestType);
-
-            // Confirm BEFORE the request, and restore the checkbox if the admin
-            // cancels: a checkbox that says one thing while the server says another
-            // is the whole failure mode a settings panel has.
-            if (enabled && known && !confirmAutoEnable(known)) {
-                input.checked = false;
-                return;
-            }
-
-            notice.hidden = true;
-            try {
-                const response = await fetch('/admin/api/approval-modes', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ requestType, enabled })
-                });
-                const data = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                    input.checked = !enabled;
-                    notice.textContent = 'Error: ' + (data.error || 'Failed to change the approval mode');
-                    notice.hidden = false;
-                    return;
-                }
-                notice.textContent = data.message;
-                notice.hidden = false;
-                await loadApprovalModes();
-            } catch (err) {
-                console.error('Approval mode toggle error:', err);
-                input.checked = !enabled;
-                notice.textContent = 'Error: ' + err.message;
-                notice.hidden = false;
-            } finally {
-                if (row) {
-                    row.classList.toggle('is-auto', input.checked);
-                    const pill = row.querySelector('.mode-pill');
-                    if (pill) pill.textContent = input.checked ? 'Automatic' : 'Manual';
-                }
-            }
-        }
-
-        /** Held so the confirm dialog can describe the switch being flipped. */
-        let approvalModesState = { modes: [] };
-
-        async function loadApprovalModes() {
-            const list = document.getElementById('approvalModesList');
-            try {
-                const response = await fetch('/admin/api/approval-modes', { credentials: 'include' });
-                if (response.status === 401) {
-                    window.location.href = '/auth.html';
-                    return;
-                }
-                if (!response.ok) throw new Error('Failed to load approval modes');
-                approvalModesState = await response.json();
-                renderApprovalModes(approvalModesState);
-            } catch (err) {
-                console.error('Load approval modes error:', err);
-                // Its own failure, its own message: it must not blank the queue or
-                // claim the switches are off when it simply could not read them.
-                list.innerHTML = '<p>Approval modes could not be loaded.</p>';
-            }
         }
 
         // -----------------------------------------------------------------
@@ -1056,7 +883,13 @@
             }
             const data = await response.json();
 
-            document.getElementById('adminUser').textContent = 'Logged in as ' + data.username;
+            // Header shows just the name (no "Logged in as"), like the Settings page.
+            // The roles stay in the hover tooltip.
+            const adminUserEl = document.getElementById('adminUser');
+            adminUserEl.textContent = data.username || data.email || 'Admin';
+            if (Array.isArray(data.roles) && data.roles.length) {
+                adminUserEl.title = 'Roles: ' + data.roles.join(', ');
+            }
 
             const perms = data.permissions || [];
             document.querySelectorAll('.admin-sidebar a[data-perm]').forEach(function (a) {
@@ -1073,7 +906,6 @@
             await loadPlantTypes();
             loadPlantRequests();
             loadPlants();
-            loadApprovalModes();
             // The discovery queue starts itself: its init function is declared
             // inside admin-discoveries.js's IIFE, so no load order made it
             // reachable from here and the old call resolved to a ReferenceError.
@@ -1083,40 +915,152 @@
     <!-- Discovery reports : its own module, because the discovery row
          shape has no requestType field and sharing a renderer would mean one
          queue rendering the other's half-truths. -->
-    <script src="/javascript/admin-discoveries.js"></script>
+    <script src="/javascript/admin/admin-discoveries.js"></script>
 
-    <!-- Plants topbar: each tab opens its section if collapsed, then scrolls to it -->
+    <!-- Plants topbar: highlights the section you are reading while you scroll
+         (same behaviour as the Settings page). A sliding reference line lets even
+         collapsed, tiny sections get their turn. Clicking a tab opens the section
+         if it is collapsed, then scrolls to it. -->
     <script>
         (function () {
-            const tabs = document.querySelectorAll('.plants-tab');
+            const topbar = document.getElementById('plantsTopbar');
+            if (!topbar) return;
 
-            function setActive(id) {
-                tabs.forEach(t => t.classList.toggle('active', t.dataset.target === id));
+            const tabs = Array.from(topbar.querySelectorAll('.plants-tab'));
+            const sections = tabs
+                .map(function (t) { return document.getElementById(t.dataset.target); })
+                .filter(Boolean);
+            if (sections.length === 0) return;
+
+            let currentId = null;
+            let manualTarget = null;   // set by a tab click so scroll tracking does not fight the smooth scroll
+            let ticking = false;
+
+            // The element that actually scrolls: a scrollable ancestor if there is one, otherwise the page
+            function getScroller() {
+                let node = topbar.parentElement;
+                while (node && node !== document.body) {
+                    const overflowY = getComputedStyle(node).overflowY;
+                    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+                        return node;
+                    }
+                    node = node.parentElement;
+                }
+                return document.scrollingElement || document.documentElement;
             }
 
-            function openSection(id) {
-                const section = document.getElementById(id);
-                const details = section && section.querySelector('details');
-                if (details) details.open = true;
-                return section;
-            }
-
-            tabs.forEach(tab => {
-                tab.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const id = tab.dataset.target;
-                    openSection(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    history.replaceState(null, '', '#' + id);
-                    setActive(id);
+            function setActive(targetId) {
+                tabs.forEach(function (t) {
+                    const on = t.dataset.target === targetId;
+                    t.classList.toggle('active', on);
+                    if (on) t.setAttribute('aria-current', 'true');
+                    else t.removeAttribute('aria-current');
                 });
+
+                if (targetId === currentId) return;
+                currentId = targetId;
+
+                // Keep the active tab visible when the topbar itself scrolls sideways (phones)
+                const active = tabs.find(function (t) { return t.dataset.target === targetId; });
+                if (active && topbar.scrollWidth > topbar.clientWidth) {
+                    topbar.scrollTo({
+                        left: active.offsetLeft - (topbar.clientWidth - active.offsetWidth) / 2,
+                        behavior: 'smooth'
+                    });
+                }
+            }
+
+            // Sliding reference line, so even tiny (collapsed) sections get their turn.
+            //   scrolled to the top    -> line sits just below the topbar
+            //   scrolled to the bottom -> line sits at the bottom edge of the viewport
+            //   in between             -> linear blend
+            // The active section is the last one whose top edge is above the line.
+            function updateFromScroll() {
+                ticking = false;
+                if (manualTarget) return;
+
+                const scroller = getScroller();
+                const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+                if (maxScroll <= 2) return; // nothing to scroll: keep whatever is highlighted (clicks still work)
+
+                const progress = Math.min(1, Math.max(0, scroller.scrollTop / maxScroll));
+                const topLine = topbar.getBoundingClientRect().bottom + 16;
+                const bottomLine = window.innerHeight - 4;
+                const line = topLine + progress * (bottomLine - topLine);
+
+                let current = sections[0].id;
+                for (const section of sections) {
+                    if (section.getBoundingClientRect().top <= line) current = section.id;
+                    else break;
+                }
+
+                setActive(current);
+            }
+
+            function onScroll() {
+                if (ticking) return;
+                ticking = true;
+                requestAnimationFrame(updateFromScroll);
+            }
+
+            function goTo(targetId, opts) {
+                const smooth = !opts || opts.smooth !== false;
+                const updateHash = !opts || opts.updateHash !== false;
+                const section = document.getElementById(targetId);
+                if (!section) return;
+
+                const details = section.querySelector('details.collapse');
+                if (details) details.open = true;
+
+                manualTarget = targetId;
+                setActive(targetId);
+                if (updateHash) history.replaceState(null, '', '#' + targetId);
+
+                requestAnimationFrame(function () {
+                    section.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+                });
+            }
+
+            // Scroll tracking takes over again as soon as the person scrolls by hand
+            function releaseManual() {
+                if (manualTarget) {
+                    manualTarget = null;
+                    onScroll();
+                }
+            }
+            window.addEventListener('wheel', releaseManual, { passive: true });
+            window.addEventListener('touchmove', releaseManual, { passive: true });
+            window.addEventListener('keydown', function (e) {
+                if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) releaseManual();
+            });
+
+            topbar.addEventListener('click', function (e) {
+                const tab = e.target.closest('.plants-tab');
+                if (!tab) return;
+                e.preventDefault();
+                goTo(tab.dataset.target);
+            });
+
+            window.addEventListener('hashchange', function () {
+                const id = location.hash.slice(1);
+                if (tabs.some(function (t) { return t.dataset.target === id; })) goTo(id, { updateHash: false });
+            });
+
+            // capture:true catches scrolling of any element, so it works whether the page or a panel scrolls
+            document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+            window.addEventListener('resize', onScroll);
+            // Opening or closing a section changes the page height, so re-check
+            document.querySelectorAll('details.collapse').forEach(function (d) {
+                d.addEventListener('toggle', onScroll);
             });
 
             // Opening the page with a #hash (e.g. /admin/plants#discoveryQueue) jumps to that section
             window.addEventListener('load', function () {
-                const id = location.hash.slice(1);
-                if (id && document.querySelector('.plants-tab[data-target="' + id + '"]')) {
-                    setActive(id);
-                    openSection(id).scrollIntoView();
+                const initial = location.hash.slice(1);
+                if (tabs.some(function (t) { return t.dataset.target === initial; })) {
+                    goTo(initial, { smooth: false, updateHash: false });
+                } else {
+                    updateFromScroll();
                 }
             });
         })();

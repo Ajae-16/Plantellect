@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Admin Settings</title>
+
+    <script src="/javascript/admin/admin-sidebar.js"></script>
+
+    <link rel="stylesheet" href="/css/admin/admin-sidebar.css">
+    <link rel="stylesheet" href="/css/admin/admin-style.css">
+    <link rel="stylesheet" href="/css/admin/admin-plants.css">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="/css/admin/admin-theme.css">
+
+    <style>
+        .settings-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+            backdrop-filter: blur(8px);
+        }
+        .settings-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            color: inherit;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            opacity: 0.75;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        .settings-tab:hover { opacity: 1; background: rgba(128, 128, 128, 0.12); }
+        .settings-tab.active {
+            opacity: 1;
+            background: rgba(76, 175, 80, 0.15);
+            border-color: #4CAF50;
+        }
+
+        .collapse-summary {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 4px 0;
+            cursor: pointer;
+            list-style: none;
+            user-select: none;
+        }
+        .collapse-summary::-webkit-details-marker { display: none; }
+        .collapse-summary h2 {
+            margin: 0;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.05rem;
+        }
+        .collapse-summary:focus-visible { outline: 2px solid #4CAF50; outline-offset: 4px; border-radius: 6px; }
+        .collapse-chevron {
+            width: 9px;
+            height: 9px;
+            margin-right: 6px;
+            opacity: 0.6;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: rotate(45deg);
+            transition: transform 0.2s;
+        }
+        .collapse[open] > .collapse-summary .collapse-chevron { transform: rotate(-135deg); }
+        .collapse[open] > .collapse-summary {
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+        }
+        .collapse-body { padding-top: 12px; }
+        .collapse-summary:hover .collapse-chevron { opacity: 1; }
+        .collapse-summary:hover h2 { opacity: 0.85; }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            flex-wrap: wrap;
+        }
+        .setting-label {
+            min-width: 200px;
+            font-weight: 500;
+        }
+        .setting-select, .setting-input {
+            flex: 1;
+            min-width: 180px;
+            padding: 8px 12px;
+            border: 1px solid rgba(128, 128, 128, 0.3);
+            border-radius: 8px;
+            background: rgba(128, 128, 128, 0.06);
+            font-size: 14px;
+        }
+        .setting-input[type="number"] { width: 100px; }
+
+        .confidence-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .confidence-tab {
+            padding: 8px 16px;
+            border: 1px solid rgba(128, 128, 128, 0.3);
+            border-radius: 999px;
+            background: rgba(128, 128, 128, 0.06);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .confidence-tab:hover { background: rgba(128, 128, 128, 0.12); }
+        .confidence-tab.active {
+            background: rgba(76, 175, 80, 0.2);
+            border-color: #4CAF50;
+            color: #2e7d32;
+        }
+        .confidence-panel { display: none; }
+        .confidence-panel.active { display: block; }
+
+        .approval-modes .admin-subtitle { font-size: 13px; margin: 0 0 12px; opacity: 0.75; }
+        .approval-auto-count {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 9px;
+            border-radius: 999px;
+            background: rgba(230, 120, 60, 0.16);
+            color: #c2561b;
+        }
+        .approval-mode-list { display: grid; gap: 8px; margin-top: 12px; }
+        .approval-mode-row {
+            padding: 10px 14px;
+            border: 1px solid rgba(128, 128, 128, 0.22);
+            border-radius: 12px;
+            background: rgba(128, 128, 128, 0.04);
+            transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+        }
+        .approval-mode-row:hover { border-color: rgba(128, 128, 128, 0.4); }
+        .approval-mode-row.is-auto {
+            border-color: rgba(230, 120, 60, 0.55);
+            background: rgba(230, 120, 60, 0.06);
+            box-shadow: 0 1px 6px rgba(230, 120, 60, 0.12);
+        }
+        .approval-mode-main { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+        .approval-mode-text { flex: 1; min-width: 0; }
+        .approval-mode-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .approval-mode-label { font-weight: 600; font-size: 14px; }
+        .mode-pill {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(128, 128, 128, 0.16);
+        }
+        .approval-mode-row.is-auto .mode-pill { background: rgba(230, 120, 60, 0.2); color: #c2561b; }
+        .approval-mode-detail { font-size: 12px; opacity: 0.68; margin: 2px 0 0; line-height: 1.4; }
+        .approval-mode-note {
+            font-size: 11.5px;
+            opacity: 0.7;
+            margin: 6px 0 0;
+            padding-left: 8px;
+            border-left: 2px solid rgba(128, 128, 128, 0.3);
+        }
+        .approval-mode-warning {
+            display: none;
+            margin: 8px 0 0;
+            padding: 8px 10px;
+            font-size: 12px;
+            line-height: 1.45;
+            border-left: 3px solid #e6a23c;
+            background: rgba(230, 162, 60, 0.1);
+            border-radius: 0 8px 8px 0;
+        }
+        .approval-mode-row.is-auto .approval-mode-warning { display: block; }
+
+        .switch { position: relative; width: 38px; height: 22px; flex-shrink: 0; }
+        .switch input {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            opacity: 0;
+            cursor: pointer;
+            z-index: 1;
+        }
+        .switch-track {
+            position: absolute;
+            inset: 0;
+            border-radius: 999px;
+            background: rgba(128, 128, 128, 0.35);
+            transition: background 0.2s;
+        }
+        .switch-track::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s;
+        }
+        .switch input:checked + .switch-track { background: #e6783c; }
+        .switch input:checked + .switch-track::after { transform: translateX(16px); }
+        .switch input:focus-visible + .switch-track { outline: 2px solid #4CAF50; outline-offset: 2px; }
+
+        .approval-rails { margin-top: 10px; font-size: 12px; opacity: 0.8; }
+        .approval-rails summary { cursor: pointer; font-weight: 600; width: fit-content; }
+        .approval-rails ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.5; }
+        .approval-rails p { margin: 6px 0 0; }
+
+        .role-limits-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .role-limits-table th,
+        .role-limits-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+        }
+        .role-limits-table th {
+            font-weight: 600;
+            opacity: 0.8;
+        }
+
+        .admin-notice {
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-top: 8px;
+            background: rgba(76, 175, 80, 0.15);
+            border: 1px solid #4CAF50;
+            color: #2e7d32;
+        }
+        .admin-notice.error {
+            background: rgba(198, 40, 40, 0.12);
+            border-color: #c62828;
+            color: #c62828;
+        }
+        .admin-notice[hidden] { display: none; }
+
+        #modelSection, #confidenceSection, #approvalModesSection,
+        #discoveriesSection, #mlRequestSection, #spamQuotasSection {
+            scroll-margin-top: 70px;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="admin-header">
+        <div class="admin-header-top">
+            <div class="admin-logo">
+                <img src="/resource/logo.png" alt="Plantellect Logo">
+                <span>Settings</span>
+            </div>
+            <button class="admin-hamburger" aria-label="Open sidebar">☰</button>
+        </div>
+        <div class="admin-user" id="adminUser">Loading...</div>
+    </header>
+
+    <div class="admin-sidebar-scrim"></div>
+
+    <div class="admin-layout">
+        <aside class="admin-sidebar" id="adminSidebar">
+            <div class="admin-sidebar-header">
+                <h3>Menu</h3>
+                <button class="admin-sidebar-close" aria-label="Close sidebar">&times;</button>
+            </div>
+
+            <button class="admin-sidebar-toggle" id="adminSidebarToggle"
+                    aria-label="Toggle sidebar" title="Expand / collapse sidebar">
+                <span class="toggle-glyph">«</span>
+            </button>
+
+            <nav>
+                <a href="/admin/dashboard" title="Dashboard">
+                    <span class="material-symbols-outlined">home</span>
+                    <span class="nav-link-text">Dashboard</span>
+                    <span class="nav-badge" id="navBadgeDashboard" hidden>0</span>
+                </a>
+
+                <a href="/admin/users" data-perm="create_user" title="Users">
+                    <span class="material-symbols-outlined">person</span>
+                    <span class="nav-link-text">Users</span>
+                </a>
+                <a href="/admin/plants" data-perm="manage_plant" title="Plants">
+                    <span class="material-symbols-outlined">potted_plant</span>
+                    <span class="nav-link-text">Plants</span>
+                    <span class="nav-badge" id="navBadgePlants" hidden>0</span>
+                </a>
+                <a href="/admin/settings" class="active" data-perm="access_admin" title="Settings">
+                    <span class="material-symbols-outlined">settings</span>
+                    <span class="nav-link-text">Settings</span>
+                </a>
+                <a href="#" data-perm="view_logs" title="Logs">
+                    <span class="material-symbols-outlined">history_toggle_off</span>
+                    <span class="nav-link-text">Logs</span>
+                </a>
+                <a href="/home.html" title="Public">
+                    <span class="material-symbols-outlined">public</span>
+                    <span class="nav-link-text">Public</span>
+                </a>
+                <a href="#" id="adminLogoutLink" title="Sign out">
+                    <span class="material-symbols-outlined">logout</span>
+                    <span class="nav-link-text">Sign out</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <h1>Admin Settings</h1>
+            <p class="admin-subtitle">Manage ML models, approval modes, discovery caps, and spam quotas</p>
+
+            <nav class="settings-topbar" id="settingsTopbar" aria-label="Settings sections">
+                <a href="#modelSection" class="settings-tab active" data-target="modelSection">ML Model</a>
+                <a href="#confidenceSection" class="settings-tab" data-target="confidenceSection">Confidence</a>
+                <a href="#approvalModesSection" class="settings-tab" data-target="approvalModesSection">Approval Modes</a>
+                <a href="#discoveriesSection" class="settings-tab" data-target="discoveriesSection">Discoveries</a>
+                <a href="#mlRequestSection" class="settings-tab" data-target="mlRequestSection">ML Request</a>
+                <a href="#spamQuotasSection" class="settings-tab" data-target="spamQuotasSection">Spam Quotas</a>
+            </nav>
+
+            <div class="plants-container">
+                <!-- 1. ML Model Selection -->
+                <section class="admin-section" id="modelSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>ML Model Selection</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">Select the active ML model for plant identification. The model must be available in the ML service.</p>
+                            <div class="model-selector"></div>
+                            <p class="admin-notice" id="modelNotice" hidden></p>
+                        </div>
+                    </details>
+                </section>
+
+                <!-- 2. ML Confidence Thresholds -->
+                <section class="admin-section" id="confidenceSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>ML Confidence Thresholds</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">Configure confidence thresholds per model. <strong>Off</strong> = no gating, <strong>Log</strong> = record verdict only, <strong>Enforce</strong> = gate results.</p>
+                            <div class="confidence-editor"></div>
+                            <p class="admin-notice" id="confidenceNotice" hidden></p>
+                        </div>
+                    </details>
+                </section>
+
+                <!-- 3. Approval Modes -->
+                <section class="admin-section approval-modes" id="approvalModesSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Approval Modes
+                                <span class="approval-auto-count" id="approvalModesAutoBadge" hidden>0 automatic</span>
+                            </h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <div class="approval-modes-editor"></div>
+                            <p class="admin-notice" id="approvalModesNotice" hidden></p>
+                        </div>
+                    </details>
+                </section>
+
+                <!-- 4. Discovery Settings -->
+                <section class="admin-section" id="discoveriesSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Discovery Settings</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">Configure caps and timeouts for the discovery report loop.</p>
+                            <div class="discoveries-editor"></div>
+                            <p class="admin-notice" id="discoveriesNotice" hidden></p>
+                        </div>
+                    </details>
+                </section>
+
+                <!-- 5. ML Request Settings -->
+                <section class="admin-section" id="mlRequestSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>ML Request Settings</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">Configure limits for ML inference requests.</p>
+                            <div class="ml-request-editor"></div>
+                            <p class="admin-notice" id="mlRequestNotice" hidden></p>
+                        </div>
+                    </details>
+                </section>
+
+                <!-- 6. Spam Quotas (read-only) -->
+                <section class="admin-section" id="spamQuotasSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Spam Quotas (Per-Role)</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">Read-only view of per-role limits. Edit these on a separate Role Limits page.</p>
+                            <div class="spam-quotas-editor"></div>
+                        </div>
+                    </details>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="/javascript/logout.js"></script>
+    <script src="/javascript/auth.js"></script>
+    <script src="/javascript/home.js"></script>
+
+    <script type="module">
+        import { initSettingsPage, addTopbarTab, initSettingsTopbar, initAdminUser } from '/javascript/admin/admin-settings.js';
+        initAdminUser();
+        initSettingsTopbar();
+        initSettingsPage();
+        addTopbarTab();
+    </script>
+
+</body>
+</html>

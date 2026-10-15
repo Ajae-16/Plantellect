@@ -1,38 +1,317 @@
 {
   "0": {
     "scientific": "Andrographis paniculata",
-    "trainImages": 23
-  },
-  "1": {
-    "scientific": "Basella alba",
-    "trainImages": 34
-  },
-  "2": {
-    "scientific": "Blumea balsamifera",
-    "trainImages": 36
-  },
-  "3": {
-    "scientific": "Graptophyllum pictum",
-    "trainImages": 26
-  },
-  "4": {
-    "scientific": "Hibiscus rosa-sinensis",
-    "trainImages": 36
-  },
-  "5": {
-    "scientific": "Jatropha curcas",
+    "kind": "species",
     "trainImages": 77
   },
+  "1": {
+    "scientific": "Annona muricata",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "2": {
+    "scientific": "Antidesma bunius",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "3": {
+    "scientific": "Averrhoa bilimbi",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "4": {
+    "scientific": "Basella alba",
+    "kind": "species",
+    "trainImages": 64
+  },
+  "5": {
+    "scientific": "Blumea balsamifera",
+    "kind": "species",
+    "trainImages": 86
+  },
   "6": {
-    "scientific": "Origanum vulgare",
-    "trainImages": 62
+    "scientific": "Boehmeria nivea",
+    "kind": "species",
+    "trainImages": 36
   },
   "7": {
-    "scientific": "Solanum tuberosum",
+    "scientific": "Capsicum frutescens",
+    "kind": "species",
     "trainImages": 70
   },
   "8": {
+    "scientific": "Carmona retusa",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "9": {
+    "scientific": "Centella asiatica",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "10": {
+    "scientific": "Citrus aurantiifolia",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "11": {
+    "scientific": "Citrus aurantium",
+    "kind": "species",
+    "trainImages": 65
+  },
+  "12": {
+    "scientific": "Citrus maxima",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "13": {
+    "scientific": "Citrus microcarpa",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "14": {
+    "scientific": "Citrus sinensis",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "15": {
+    "scientific": "Codiaeum variegatum",
+    "kind": "species",
+    "trainImages": 82
+  },
+  "16": {
+    "scientific": "Coleus scutellarioides",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "17": {
+    "scientific": "Corchorus olitorius",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "18": {
+    "scientific": "Cordyline fruticosa",
+    "kind": "species",
+    "trainImages": 40
+  },
+  "19": {
+    "scientific": "Curcuma longa",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "20": {
+    "scientific": "Dracaena surculosa",
+    "kind": "species",
+    "trainImages": 84
+  },
+  "21": {
+    "scientific": "Epipremnum aureum",
+    "kind": "species",
+    "trainImages": 35
+  },
+  "22": {
+    "scientific": "Euphorbia hirta",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "23": {
+    "scientific": "Fragaria vesca",
+    "kind": "species",
+    "trainImages": 69
+  },
+  "24": {
+    "scientific": "Furcraea foetida",
+    "kind": "species",
+    "trainImages": 84
+  },
+  "25": {
+    "scientific": "Gliricidia sepium",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "26": {
+    "scientific": "Graptophyllum pictum",
+    "kind": "species",
+    "trainImages": 58
+  },
+  "27": {
+    "scientific": "Hibiscus rosa-sinensis",
+    "kind": "species",
+    "trainImages": 79
+  },
+  "28": {
+    "scientific": "Hibiscus syriacus",
+    "kind": "species",
+    "trainImages": 38
+  },
+  "29": {
+    "scientific": "Ipomoea batatas",
+    "kind": "species",
+    "trainImages": 68
+  },
+  "30": {
+    "scientific": "Jatropha curcas",
+    "kind": "species",
+    "trainImages": 73
+  },
+  "31": {
+    "scientific": "Lagerstroemia speciosa",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "32": {
+    "scientific": "Leucaena leucocephala",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "33": {
+    "scientific": "Lysimachia nummularia",
+    "kind": "species",
+    "trainImages": 80
+  },
+  "34": {
+    "scientific": "Mangifera indica",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "35": {
+    "scientific": "Manihot esculenta",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "36": {
+    "scientific": "Mentha cordifolia Opiz",
+    "kind": "species",
+    "trainImages": 59
+  },
+  "37": {
+    "scientific": "Momordica charantia",
+    "kind": "species",
+    "trainImages": 59
+  },
+  "38": {
+    "scientific": "Moringa oleifera",
+    "kind": "species",
+    "trainImages": 74
+  },
+  "39": {
+    "scientific": "Mussaenda philippica",
+    "kind": "species",
+    "trainImages": 63
+  },
+  "40": {
+    "scientific": "Nerium oleander",
+    "kind": "species",
+    "trainImages": 61
+  },
+  "41": {
+    "scientific": "Non plant",
+    "kind": "non_plant",
+    "trainImages": 1782
+  },
+  "42": {
+    "scientific": "Ocimum basilicum",
+    "kind": "species",
+    "trainImages": 59
+  },
+  "43": {
+    "scientific": "Origanum vulgare",
+    "kind": "species",
+    "trainImages": 72
+  },
+  "44": {
+    "scientific": "Other plant",
+    "kind": "other_plant",
+    "trainImages": 38
+  },
+  "45": {
+    "scientific": "Pandanus amaryllifolius",
+    "kind": "species",
+    "trainImages": 59
+  },
+  "46": {
+    "scientific": "Peperomia pellucida",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "47": {
+    "scientific": "Phyllanthus niruri",
+    "kind": "species",
+    "trainImages": 59
+  },
+  "48": {
+    "scientific": "Polyscias scutellaria",
+    "kind": "species",
+    "trainImages": 71
+  },
+  "49": {
+    "scientific": "Premna odorata",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "50": {
+    "scientific": "Prunus avium",
+    "kind": "species",
+    "trainImages": 48
+  },
+  "51": {
+    "scientific": "Prunus persica",
+    "kind": "species",
+    "trainImages": 48
+  },
+  "52": {
+    "scientific": "Psidium guajava",
+    "kind": "species",
+    "trainImages": 59
+  },
+  "53": {
+    "scientific": "Rubus idaeus",
+    "kind": "species",
+    "trainImages": 48
+  },
+  "54": {
+    "scientific": "Senna alata",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "55": {
+    "scientific": "Solanum lycopersicum",
+    "kind": "species",
+    "trainImages": 101
+  },
+  "56": {
+    "scientific": "Solanum tuberosum",
+    "kind": "species",
+    "trainImages": 48
+  },
+  "57": {
     "scientific": "Synsepalum dulcificum",
+    "kind": "species",
     "trainImages": 34
+  },
+  "58": {
+    "scientific": "Tamarindus indica",
+    "kind": "species",
+    "trainImages": 59
+  },
+  "59": {
+    "scientific": "Tinospora crispa",
+    "kind": "species",
+    "trainImages": 48
+  },
+  "60": {
+    "scientific": "Vitex negundo",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "61": {
+    "scientific": "Vitis vinifera",
+    "kind": "species",
+    "trainImages": 70
+  },
+  "62": {
+    "scientific": "Zea mays",
+    "kind": "species",
+    "trainImages": 48
   }
 }

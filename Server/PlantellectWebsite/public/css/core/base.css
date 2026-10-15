@@ -137,8 +137,8 @@ header nav a:hover {
     flex-shrink: 0;
 }
 
-.auth-link:not([data-ready]){
-    visibility: hidden;
+.auth-links:not([data-ready]) {
+    visibility: hidden;   /* until sidebar.js has rendered the right links: no SIGN IN flash */
 }
 
 .auth-links a {
@@ -152,26 +152,6 @@ header nav a:hover {
 
 .auth-links a:hover {
     color: var(--color-cyan);
-}
-
-.nav-container--dark {
-    border-top-color: var(--color-forest-green);
-    border-bottom-color: var(--color-forest-green);
-}
-
-.nav-container--dark nav a,
-.nav-container--dark .auth-links a {
-    color: var(--color-black);
-}
-
-.nav-container--dark nav a.active,
-.nav-container--dark .auth-links a.active {
-    color: var(--color-success);
-}
-
-.nav-container--dark nav a:hover,
-.nav-container--dark .auth-links a:hover {
-    color: var(--color-success);
 }
 
 .hero-content {
@@ -208,15 +188,6 @@ header nav a:hover {
     line-height: 1.3;
     text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
     text-align: left;
-}
-
-@media (min-width: 480px) {
-    .hero-content h1 {
-        font-size: var(--fs-hero-h1-sm);
-    }
-    .hero-content p {
-        font-size: var(--fs-hero-p-sm);
-    }
 }
 
 @media (min-width: 768px) {
@@ -271,13 +242,11 @@ header nav a:hover {
     }
 
     .nav-container {
-        padding: 12px 40px;
         overflow: visible;
     }
 
     header nav {
         padding-left: var(--spacing-logo-offset);
-        gap: var(--spacing-nav-gap);
     }
 
     header nav a {
@@ -315,4 +284,319 @@ header nav a:hover {
     .hero-container {
         padding: 20px 60px;
     }
+}
+
+/* =========================================================
+   APP HEADER (every page that has the sidebar hamburger:
+   home, about, library, scan, profile)
+
+   - Frosted-glass bar, fixed height (--topbar-height, shared with
+     sidebar.css so the two line up).
+   - Flex capsule: [ hamburger ][ nav ........ auth ].
+     The nav sits next to the hamburger, and the auth block is pushed
+     to the far right with margin-left:auto, so no empty gaps appear.
+   - The WHOLE bar content is one full-width capsule (hamburger, nav
+     and auth all sit inside it); the current page is a filled pill.
+   - Colours are --tb-* tokens:
+       photo pages (home/about)         -> dark glass, white text
+       pages with .nav-container--dark  -> light glass, green text
+       dark theme                        -> see public-theme.css
+   Headers without a hamburger (e.g. the auth page) keep the
+   original styles above.
+   ========================================================= */
+
+header:has(.nav-hamburger) {
+    --tb-bg:          rgba(12, 24, 10, 0.38);
+    --tb-border:      rgba(255, 255, 255, 0.16);
+    --tb-text:        rgba(255, 255, 255, 0.88);
+    --tb-text-hover:  #ffffff;
+    --tb-track:       rgba(255, 255, 255, 0.12);
+    --tb-hover:       rgba(255, 255, 255, 0.14);
+    --tb-active-bg:   #ffffff;
+    --tb-active-text: var(--color-dark-forest-green);
+    --tb-cta-bg:      #ffffff;
+    --tb-cta-text:    var(--color-dark-forest-green);
+    --tb-focus:       var(--color-library-green);
+
+    height: var(--topbar-height, 56px);
+    padding: 8px 12px;
+    background-color: var(--tb-bg);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    backdrop-filter: blur(14px) saturate(1.4);
+    border-bottom: 1px solid var(--tb-border);
+}
+
+/* Pages with a pale background (library, scan, profile): light glass */
+header:has(.nav-container--dark) {
+    --tb-bg:          rgba(255, 255, 255, 0.74);
+    --tb-border:      rgba(46, 100, 23, 0.14);
+    --tb-text:        rgba(35, 76, 17, 0.86);
+    --tb-text-hover:  var(--color-dark-forest-green);
+    --tb-track:       rgba(46, 100, 23, 0.08);
+    --tb-hover:       rgba(46, 100, 23, 0.10);
+    --tb-active-bg:   var(--color-forest-green);
+    --tb-active-text: #ffffff;
+    --tb-cta-bg:      var(--color-forest-green);
+    --tb-cta-text:    #ffffff;
+    --tb-focus:       var(--color-forest-green);
+}
+
+/* overflow-x:hidden on body made body its own scroll container, which
+   breaks position:sticky on the header. clip does not. */
+body:has(.nav-container--dark) {
+    overflow-x: clip;
+}
+
+/* ---- the capsule: spans the full width of the bar ---- */
+header:has(.nav-hamburger) .nav-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    margin: 0;
+    padding: 0 4px;
+    border: none;
+    border-radius: 999px;
+    background-color: var(--tb-track);
+    overflow: visible;
+}
+
+header:has(.nav-hamburger) .nav-hamburger {
+    width: 31px;
+    height: 31px;
+    background: transparent;
+    color: var(--tb-text);
+    border-radius: 999px;
+    font-size: 19px;
+}
+
+header:has(.nav-hamburger) .nav-hamburger:hover {
+    background: var(--tb-hover);
+    color: var(--tb-text-hover);
+}
+
+header:has(.nav-hamburger) .nav-hamburger:focus-visible {
+    outline-color: var(--tb-focus);
+}
+
+/* ---- nav: compact pills, centred in the space between the hamburger and
+        the username (auto margins), so nothing is stretched apart ---- */
+header:has(.nav-hamburger) nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 auto;
+    padding: 0;
+    min-width: max-content;
+    background: none;
+}
+
+header:has(.nav-hamburger) nav a {
+    padding: 7px 14px;
+    border-radius: 999px;
+    color: var(--tb-text);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    transition: background-color var(--transition-fast),
+                color var(--transition-fast),
+                box-shadow var(--transition-fast);
+}
+
+header:has(.nav-hamburger) nav a:hover {
+    background-color: var(--tb-hover);
+    color: var(--tb-text-hover);
+}
+
+header:has(.nav-hamburger) nav a.active {
+    background-color: var(--tb-active-bg);
+    color: var(--tb-active-text);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+header:has(.nav-hamburger) nav a:focus-visible,
+header:has(.nav-hamburger) .auth-links a:focus-visible {
+    outline: 2px solid var(--tb-focus);
+    outline-offset: 2px;
+}
+
+/* ---- auth: pushed to the far right of the capsule.
+        SIGN IN is quiet, SIGN UP is the call to action ---- */
+header:has(.nav-hamburger) .auth-links {
+    align-items: center;
+    gap: 4px;
+}
+
+header:has(.nav-hamburger) .auth-links a {
+    padding: 7px 15px;
+    border-radius: 999px;
+    color: var(--tb-text);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    transition: background-color var(--transition-fast),
+                color var(--transition-fast),
+                filter var(--transition-fast);
+}
+
+header:has(.nav-hamburger) .auth-links a:hover {
+    background-color: var(--tb-hover);
+    color: var(--tb-text-hover);
+}
+
+header:has(.nav-hamburger) .auth-links a:last-child:not(:first-child) {
+    background-color: var(--tb-cta-bg);
+    color: var(--tb-cta-text);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+}
+
+header:has(.nav-hamburger) .auth-links a:last-child:not(:first-child):hover {
+    background-color: var(--tb-cta-bg);
+    color: var(--tb-cta-text);
+    filter: brightness(0.94);
+}
+
+/* Logged in: the username is the only item left, so it is a quiet label,
+   not the white SIGN UP style button */
+body.has-sidebar header:has(.nav-hamburger) .auth-links a:is(:first-child, :last-child, :hover) {
+    background-color: transparent;
+    color: var(--tb-text);
+    box-shadow: none;
+    filter: none;
+}
+
+body.has-sidebar header:has(.nav-hamburger) .auth-links a:hover {
+    background-color: var(--tb-hover);
+    color: var(--tb-text-hover);
+}
+
+/* ---- USERNAME: responsive
+        wide   : icon + full name, cut with "..." when very long
+        medium : icon + shorter name
+        phone  : round avatar with the first letter (the full name is in the
+                 tooltip / aria-label and on the PROFILE page) ---- */
+header:has(.nav-hamburger) .auth-links .auth-username {
+    display: inline-block;
+    max-width: clamp(110px, 16vw, 240px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+header:has(.nav-hamburger) .auth-links .auth-username::before {
+    content: 'account_circle';
+    font-family: 'Material Symbols Outlined';
+    font-size: 18px;
+    font-weight: normal;
+    font-style: normal;
+    font-feature-settings: 'liga';
+    font-variation-settings: 'FILL' 1;
+    letter-spacing: normal;
+    text-transform: none;
+    line-height: 1;
+    margin-right: 6px;
+    vertical-align: -4px;
+}
+
+@media (max-width: 1023px) {
+    header:has(.nav-hamburger) .auth-links .auth-username {
+        max-width: 130px;
+    }
+}
+
+@media (max-width: 639px) {
+    header:has(.nav-hamburger) .auth-links a.auth-username {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        max-width: none;
+        padding: 0 !important;
+        border-radius: 50% !important;
+        background-color: var(--tb-active-bg) !important;
+        color: var(--tb-active-text) !important;
+        font-size: 0 !important;          /* hides the text, keeps it for screen readers */
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18) !important;
+    }
+
+    header:has(.nav-hamburger) .auth-links .auth-username::before {
+        content: attr(data-initial);
+        font-family: var(--font-primary);
+        font-size: 13px;
+        font-weight: 700;
+        margin: 0;
+        vertical-align: baseline;
+    }
+}
+
+@media (min-width: 768px) {
+    header:has(.nav-hamburger) {
+        padding: 8px 24px;
+    }
+}
+
+@media (min-width: 1024px) {
+    header:has(.nav-hamburger) {
+        padding: 8px 32px;
+    }
+
+    header:has(.nav-hamburger) nav a {
+        font-size: 14px;
+    }
+}
+
+/* Small phones: nav stays next to the hamburger, auth on the right,
+   scrolls sideways only if it truly cannot fit */
+@media (max-width: 639px) {
+    header:has(.nav-hamburger) {
+        padding: 8px 10px;
+    }
+
+    header:has(.nav-hamburger) .nav-container {
+        gap: 6px;
+        padding: 0 3px;
+        overflow-x: auto;
+    }
+
+    header:has(.nav-hamburger) nav a {
+        padding: 6px 10px;
+        font-size: 11.5px;
+        letter-spacing: 0.4px;
+    }
+
+    header:has(.nav-hamburger) .auth-links {
+        gap: 2px;
+    }
+
+    header:has(.nav-hamburger) .auth-links a {
+        padding: 6px 9px;
+        font-size: 11px;
+        letter-spacing: 0.4px;
+    }
+}
+
+@media (max-width: 399px) {
+    header:has(.nav-hamburger) nav {
+        gap: 0;
+    }
+
+    header:has(.nav-hamburger) nav a {
+        padding: 6px 7px;
+        font-size: 10.5px;
+        letter-spacing: 0.2px;
+    }
+}
+
+/* Page-load flicker: sidebar.js adds html.sb-init while it paints the
+   sidebar / header for the first time and removes it right after, so the
+   sidebar width and body padding never animate in from the empty state.
+   If the script fails, the class is never there and nothing is disabled. */
+html.sb-init *,
+html.sb-init *::before,
+html.sb-init *::after {
+    transition: none !important;
 }

@@ -8,7 +8,7 @@ import json
 import time
 from predict import (
     load_model, predict_image, get_model_info,
-    check_model_output, input_shape_of,
+    check_model_output, check_class_kinds, input_shape_of,
 )
 from preprocess import preprocess_image, load_config, check_model_input
 
@@ -46,8 +46,9 @@ def load_entry(model_dir: Path) -> dict:
     model_path = model_dir / MODEL_FILE
     cfg = load_config(str(model_dir))
     model = load_model(str(model_path))
-    with open(model_dir / "classes.json", "r") as f:
+    with open(model_dir / "classes.json", "r", encoding="utf-8") as f:
         classes = json.load(f)
+    check_class_kinds(classes)                      # kind must be species / non_plant / other_plant (or absent)
     check_model_input(cfg, input_shape_of(model))   # wrong preprocessing.json for this model?
     check_model_output(model, classes)              # softmax probabilities, right class count?
     return {
@@ -92,6 +93,7 @@ def resolve(model_id: Optional[str]) -> dict:
 class Prediction(BaseModel):
     class_id: int
     scientific_name: str
+    kind: str = "species"      # without this field response_model would silently DROP kind from /predict
     confidence: float
 
 class PredictResponse(BaseModel):
@@ -130,12 +132,18 @@ async def predict(
 ):
     entry = resolve(x_model_id)
 
-    if not image.content_type.startswith("image/"):
+    if not (image.content_type or "").startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
+    # Only the preprocessing step may answer 400: it fails because of the uploaded file.
+    # Anything that fails after this point is the model's problem and stays a 500.
     try:
         image_bytes = await image.read()
         img = preprocess_image(image_bytes, entry["cfg"])      # per-model preprocessing
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
         start_time = time.time()
         predictions = predict_image(entry["model"], img, entry["classes"], top_k)
         inference_ms = int((time.time() - start_time) * 1000)
@@ -194,3 +202,4 @@ async def model_info(x_model_id: Optional[str] = Header(None)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+    

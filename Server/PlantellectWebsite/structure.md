@@ -17,8 +17,8 @@ PlantellectWebsite/
 │   │   │                        #   YOUR ACCESS card, and the read-only species-gap card)
 │   │   ├── admin-user.html       # Users & roles (server-side pagination, suspend/promote)
 │   │   ├── admin-plants.html     # Pending plant requests + inventory with detail rows,
-│   │   │                        #   the discovery-report audit queue (#discoveryQueue),
-│   │   │                        #   and the Approval modes settings block (3 switches)
+│   │   │                        #   the discovery-report audit queue (#discoveryQueue)
+│   │   ├── admin-settings.html   # Centralized admin settings (ML model, approval modes, quotas)
 │   │   └── editor/
 │   └── botanist/              # Botanist-specific administration
 │       ├── certificates/      # Per-account certificate storage (accountId subfolders)
@@ -157,7 +157,13 @@ PlantellectWebsite/
     │   │                        #   render on DOMContentLoaded, window.plantAuth.ready/user)
     │   │                        #   + the client-side sidebar renderer and its sessionStorage cache
     │   ├── nav-toggle.js        # Hamburger toggle for the library sidebar drawer
-    │   ├── admin-sidebar.js     # Admin sidebar, drawer, and notification badges (loadNavBadges)
+    │   ├── admin/               # Admin JavaScript modules
+    │   │   ├── admin-sidebar.js     # Admin sidebar, drawer, and notification badges (loadNavBadges)
+    │   │   ├── admin-settings.js    # Centralized admin settings (ES module)
+    │   │   ├── admin-discoveries.js # The admin discovery-report audit queue on admin-plants.html.
+    │   │   │                        #   SELF-INITIALISING: it calls initDiscoveryQueue() itself, so
+    │   │   │                        #   no page may call it and no load order is assumed
+    │   │   └── admin-user.js        # Admin users page logic
     │   ├── library-script.js    # Library: server-side search, card rendering, pagination
     │   ├── plant-profile.js     # Plant profile page (renders GET /api/plants/:plantId) and the
     │   │                        #   record_plant-gated Contribute button

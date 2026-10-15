@@ -53,6 +53,21 @@ def check_model_output(model: tf.keras.Model, class_names: Dict[str, Any]) -> No
             "layer or export the model with one.")
 
 
+VALID_KINDS = ("species", "non_plant", "other_plant")
+
+
+def check_class_kinds(class_names: Dict[str, Any]) -> None:
+    """
+    Call once at startup. A missing kind means 'species' (older models), but any OTHER value
+    must be one of VALID_KINDS: the Node side treats every unknown kind as a species, so a typo
+    such as 'other-plant' would otherwise be shown to users as a plant name.
+    """
+    bad = {k: v.get("kind") for k, v in class_names.items()
+           if isinstance(v, dict) and v.get("kind", "species") not in VALID_KINDS}
+    if bad:
+        raise ValueError(f"classes.json has invalid kind values (allowed: {', '.join(VALID_KINDS)}): {bad}")
+
+
 def _format_top_k(
     predictions: np.ndarray,
     class_names: Dict[str, Dict[str, str]],
@@ -67,6 +82,7 @@ def _format_top_k(
         results.append({
             "class_id": class_id,
             "scientific_name": class_info.get("scientific", "Unknown"),
+            "kind": class_info.get("kind", "species"),
             "confidence": float(predictions[idx])
         })
     return results

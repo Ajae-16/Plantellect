@@ -6,8 +6,9 @@
   "width": 240,
   "channels": 3,
   "color_mode": "rgb",
+  "exif_transpose": true,
   "resize": {
-    "method": "nearest",
+    "method": "lanczos",
     "keep_aspect_ratio": false
   },
   "rescale": 1.0,

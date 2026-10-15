@@ -20,6 +20,7 @@ const {
     adminDisqualifyDiscovery,
     getDiscoveryImageForReview,
     mysqlPool,
+    getSystemSetting,
     DISCOVERY_STORAGE_ROOT
 } = require('../config/mysql.js');
 const approvalMode = require('../config/approval-mode.js');
@@ -43,6 +44,10 @@ router.get('/users', requirePermission('access_admin'), (req, res) => {
 
 router.get('/plants', requirePermission('access_admin'), (req, res) => {
     res.sendFile(path.join(adminDir, 'admin-plants.html'));
+});
+
+router.get('/settings', requirePermission('access_admin'), (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'administration', 'admin', 'admin-settings.html'));
 });
 
 // ---------------------------------------------------------------------------
@@ -314,7 +319,7 @@ router.get('/api/plants', requirePermission('access_admin'), async (req, res) =>
     }
 });
 
-router.get('/api/approval-modes', requirePermission('access_admin'), async (req, res) => {
+router.get('/api/approval-modes', requirePermission('admin_settings'), async (req, res) => {
     try {
         res.json({
             modes: await approvalMode.listApprovalModes(mysqlPool),
@@ -361,7 +366,7 @@ router.get('/api/approval-modes', requirePermission('access_admin'), async (req,
  * every live session in the system to record one boolean, and the field exists to
  * make RBAC caches correct, not to be a general change counter.
  */
-router.post('/api/approval-modes', requirePermission('access_admin'), async (req, res) => {
+router.post('/api/approval-modes', requirePermission('admin_settings'), async (req, res) => {
     const { requestType, enabled } = req.body || {};
 
     if (typeof enabled !== 'boolean') {
@@ -407,8 +412,9 @@ router.post('/api/approval-modes', requirePermission('access_admin'), async (req
  * Body: { "modelId": "efficientnetv2b1" | "convnexttiny" }
  * Validates against available_models from FastAPI /model/info
  * Writes to system_settings with optimistic locking (version column)
+ * Also notifies FastAPI to reload the model (if endpoint exists)
  */
-router.post('/api/ml/active-model', requirePermission('access_admin'), async (req, res) => {
+router.post('/api/ml/active-model', requirePermission('admin_settings'), async (req, res) => {
     const { modelId } = req.body || {};
     if (!modelId || typeof modelId !== 'string') {
         return res.status(400).json({ error: 'modelId is required and must be a string' });
@@ -424,16 +430,22 @@ router.post('/api/ml/active-model', requirePermission('access_admin'), async (re
             const response = await fetch(`${ML_SERVICE_URL}/model/info`, { signal: controller.signal });
             if (response.ok) {
                 const data = await response.json();
-                availableModels = data.available_models || [];
+                // Normalize available_models: FastAPI may return objects like {id, name, ...}
+                const modelIdOf = (m) =>
+                    typeof m === 'string' ? m : (m && (m.id || m.modelId || m.model_id || m.name)) || '';
+                availableModels = (data.available_models || []).map(modelIdOf).filter(Boolean);
             }
         } catch (err) {
-            console.warn('Could not fetch available models from FastAPI, allowing switch with cached list:', err.message);
+            console.warn('Could not fetch available models from FastAPI:', err.message);
         } finally {
             clearTimeout(timeoutId);
         }
 
-        // Validate modelId if we have available_models
-        if (availableModels.length > 0 && !availableModels.includes(modelId)) {
+        // Must have available_models to validate - reject if ML service unreachable
+        if (availableModels.length === 0) {
+            return res.status(503).json({ error: 'ML service unreachable, cannot verify the model' });
+        }
+        if (!availableModels.includes(modelId)) {
             return res.status(400).json({
                 error: `Unknown modelId: ${modelId}. Available: ${availableModels.join(', ')}`
             });
@@ -468,6 +480,7 @@ router.post('/api/ml/active-model', requirePermission('access_admin'), async (re
             }
 
             await conn.commit();
+
             res.json({ message: `Active model switched to ${modelId}`, modelId });
         } catch (err) {
             await conn.rollback();
@@ -486,7 +499,7 @@ router.post('/api/ml/active-model', requirePermission('access_admin'), async (re
 
 router.get('/api/ml/coverage', requirePermission('access_admin'), async (req, res) => {
     try {
-        const classes = loadClasses();
+        const classes = await loadClasses();
         if (!classes) {
             return res.status(200).json({
                 error: 'classes.json not found or unreadable',
@@ -501,20 +514,646 @@ router.get('/api/ml/coverage', requirePermission('access_admin'), async (req, re
     }
 });
 
-/** Reads the trained model's class list, or null when it is not available. */
-function loadClasses() {
-    const classesPath = path.join(__dirname, '..', 'ml', 'model', 'main', 'classes.json');
+/** Reads the trained model's class list from the ACTIVE model's folder, or null when not available. */
+async function loadClasses() {
+    let modelId = '';
+    try {
+        let value = await getSystemSetting('mlActiveModel');
+        if (typeof value === 'string') {
+            try { value = JSON.parse(value); } catch (_) { /* bare id */ }
+        }
+        modelId = typeof value === 'string' ? value : (value && value.modelId) || '';
+    } catch (err) {
+        console.error('mlActiveModel read failed:', err.message);
+    }
+    modelId = path.basename(modelId || settings.ml.defaultModel || 'efficientnetv2b1');
+
+    const classesPath = path.join(__dirname, '..', 'ml', 'model', modelId, 'classes.json');
     try {
         if (!fs.existsSync(classesPath)) return null;
         const parsed = JSON.parse(fs.readFileSync(classesPath, 'utf8'));
         const values = Array.isArray(parsed) ? parsed : Object.values(parsed);
         return values
             .map((v) => (typeof v === 'string' ? { scientific: v, common: v } : v))
-            .filter((v) => v && v.scientific);
+            .filter((v) => v && v.scientific && (v.kind || 'species') === 'species');
     } catch (err) {
         console.error('Could not read classes.json:', err.message);
         return null;
     }
 }
+
+/**
+ * GET /admin/api/settings
+ * Consolidated endpoint returning all admin settings at once.
+ * Uses per-key optimistic locking via version column.
+ */
+router.get('/api/settings', requirePermission('admin_settings'), async (req, res) => {
+    try {
+        const conn = await mysqlPool.getConnection();
+        try {
+            const keys = ['mlActiveModel', 'mlConfidence', 'discoveries', 'mlRequest'];
+            const settings = {};
+
+            for (const key of keys) {
+                const [rows] = await conn.query(
+                    'SELECT settingValue, version FROM system_settings WHERE settingKey = ?',
+                    [key]
+                );
+                if (rows.length > 0) {
+                    let value = rows[0].settingValue;
+                    if (typeof value === 'string') {
+                        try {
+                            value = JSON.parse(value);
+                        } catch (_) {
+                        }
+                    }
+                    settings[key] = {
+                        value,
+                        version: rows[0].version
+                    };
+                }
+            }
+
+            // Ensure all keys exist with defaults
+            if (!settings.mlActiveModel) settings.mlActiveModel = { value: { modelId: 'efficientnetv2b1' }, version: 0 };
+            if (!settings.mlConfidence) settings.mlConfidence = {
+                value: {
+                    efficientnetv2b1: { mode: 'off', acceptThreshold: 0.70, uncertainThreshold: 0.35, marginThreshold: 0.15 },
+                    convnexttiny: { mode: 'off', acceptThreshold: 0.70, uncertainThreshold: 0.35, marginThreshold: 0.15 }
+                },
+                version: 0
+            };
+            if (!settings.discoveries) settings.discoveries = {
+                value: {
+                    maxClaimsPerBotanist: 20,
+                    maxOpenReportsPerAccount: 10,
+                    cancelGraceHours: 24,
+                    reportCooldownMinutes: 10,
+                    claimStaleDays: 90,
+                    notAPlantVotes: 5,
+                    discoveryClosedPhotoDays: 90
+                },
+                version: 0
+            };
+            if (!settings.mlRequest) settings.mlRequest = { value: { maxTopK: 10 }, version: 0 };
+
+            // Return settings with versions as separate top-level keys
+            const response = {};
+            for (const key of keys) {
+                response[key] = settings[key].value;
+                response[key + 'Version'] = settings[key].version;
+            }
+
+            res.json(response);
+        } finally {
+            conn.release();
+        }
+    } catch (err) {
+        console.error('Get settings error:', err.message);
+        res.status(500).json({ error: 'Failed to load settings' });
+    }
+});
+
+const { validateConfig } = require('../config/ml-confidence.js');
+
+/**
+ * Fetch available model IDs from FastAPI /model/info.
+ * Called before the transaction so we don't hold a DB connection during the HTTP call.
+ */
+async function fetchAvailableModelIds() {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), settings.ml.timeoutMs);
+    try {
+        const response = await fetch(`${settings.ml.serviceUrl}/model/info`, { signal: controller.signal });
+        if (!response.ok) return [];
+        const data = await response.json();
+        const idOf = (m) => typeof m === 'string' ? m : (m && (m.id || m.modelId || m.model_id || m.name)) || '';
+        return (data.available_models || []).map(idOf).filter(Boolean);
+    } catch (err) {
+        console.warn('Could not fetch available models from FastAPI:', err.message);
+        return [];
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+/**
+ * POST /admin/api/settings
+ * Consolidated endpoint for updating settings with per-key optimistic locking.
+ * Accepts partial updates: { mlConfidence: { efficientnetv2b1: {...} }, discoveries: {...} }
+ * Returns updated settings with new versions.
+ */
+router.post('/api/settings', requirePermission('admin_settings'), async (req, res) => {
+    const updates = req.body || {};
+    if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No settings provided' });
+    }
+
+    const allowedKeys = ['mlActiveModel', 'mlConfidence', 'discoveries', 'mlRequest'];
+    const invalidKeys = Object.keys(updates).filter(k => !allowedKeys.includes(k));
+    if (invalidKeys.length > 0) {
+        return res.status(400).json({ error: `Invalid setting keys: ${invalidKeys.join(', ')}` });
+    }
+
+    // Fetch available model IDs from FastAPI BEFORE the transaction (if mlConfidence is being updated)
+    const knownModels = updates.mlConfidence ? await fetchAvailableModelIds() : [];
+
+    const conn = await mysqlPool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const results = {};
+
+        for (const [key, value] of Object.entries(updates)) {
+            // Read current version and existing value
+            const [current] = await conn.query(
+                'SELECT settingValue, version FROM system_settings WHERE settingKey = ?',
+                [key]
+            );
+
+            let currentVersion;
+            let existingValue = {};
+            if (current.length === 0) {
+                // Key doesn't exist - seed it with defaults and start at version 1
+                let defaultValue = {};
+                if (key === 'mlActiveModel') defaultValue = { modelId: 'efficientnetv2b1' };
+                else if (key === 'mlConfidence') defaultValue = {
+                    efficientnetv2b1: { mode: 'off', acceptThreshold: 0.70, uncertainThreshold: 0.35, marginThreshold: 0.15 },
+                    convnexttiny: { mode: 'off', acceptThreshold: 0.70, uncertainThreshold: 0.35, marginThreshold: 0.15 }
+                };
+                else if (key === 'discoveries') defaultValue = {
+                    maxClaimsPerBotanist: 20,
+                    maxOpenReportsPerAccount: 10,
+                    cancelGraceHours: 24,
+                    reportCooldownMinutes: 10,
+                    claimStaleDays: 90,
+                    notAPlantVotes: 5,
+                    discoveryClosedPhotoDays: 90
+                };
+                else if (key === 'mlRequest') defaultValue = { maxTopK: 10 };
+
+                await conn.query(
+                    'INSERT INTO system_settings (settingKey, settingValue, version) VALUES (?, ?, 1)',
+                    [key, JSON.stringify(defaultValue)]
+                );
+                currentVersion = 1;
+                existingValue = defaultValue;
+            } else {
+                currentVersion = current[0].version;
+                existingValue = current[0].settingValue;
+                if (typeof existingValue === 'string') {
+                    try { existingValue = JSON.parse(existingValue); } catch (_) { existingValue = {}; }
+                }
+            }
+
+            // Validate based on key
+            let validatedValue = value;
+            if (key === 'mlConfidence') {
+                // Reject non-object config (e.g., { convnexttiny: 5 })
+                if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                    await conn.rollback();
+                    return res.status(400).json({ error: 'mlConfidence must be an object' });
+                }
+                // Models the ML service has loaded, plus any that already have a saved entry
+                const allowed = new Set([...knownModels, ...Object.keys(existingValue || {})]);
+                for (const [modelId, config] of Object.entries(value)) {
+                    if (!allowed.has(modelId)) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: `Unknown model: ${modelId}. Available: ${[...allowed].join(', ')}` });
+                    }
+                    // Reject non-object config (e.g., { convnexttiny: 5 })
+                    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: `${modelId}: settings must be an object` });
+                    }
+                    // Merge with saved config first (so partial updates keep mode), then coerce numeric strings
+                    const merged = { ...(existingValue[modelId] || {}), ...config };
+                    const NUMERIC = ['acceptThreshold', 'uncertainThreshold', 'marginThreshold'];
+                    for (const k of NUMERIC) {
+                        if (typeof merged[k] === 'string' && merged[k].trim() !== '') {
+                            merged[k] = Number(merged[k]);
+                        }
+                    }
+                    const check = validateConfig(merged);
+                    if (!check.ok) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: `${modelId}: ${check.errors.join('; ')}` });
+                    }
+                    value[modelId] = check.value;
+                }
+                validatedValue = { ...existingValue, ...value };
+            } else if (key === 'discoveries') {
+                const disc = value;
+                if (disc.maxClaimsPerBotanist !== undefined) {
+                    const v = parseInt(disc.maxClaimsPerBotanist, 10);
+                    if (!Number.isFinite(v) || v < 1 || v > 1000) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: 'maxClaimsPerBotanist must be 1-1000' });
+                    }
+                }
+                if (disc.maxOpenReportsPerAccount !== undefined) {
+                    const v = parseInt(disc.maxOpenReportsPerAccount, 10);
+                    if (!Number.isFinite(v) || v < 1 || v > 1000) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: 'maxOpenReportsPerAccount must be 1-1000' });
+                    }
+                }
+                if (disc.cancelGraceHours !== undefined) {
+                    const v = parseInt(disc.cancelGraceHours, 10);
+                    if (!Number.isFinite(v) || v < 0 || v > 8760) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: 'cancelGraceHours must be 0-8760' });
+                    }
+                }
+                if (disc.reportCooldownMinutes !== undefined) {
+                    const v = parseInt(disc.reportCooldownMinutes, 10);
+                    if (!Number.isFinite(v) || v < 0 || v > 10080) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: 'reportCooldownMinutes must be 0-10080' });
+                    }
+                }
+                if (disc.claimStaleDays !== undefined) {
+                    const v = parseInt(disc.claimStaleDays, 10);
+                    if (!Number.isFinite(v) || v < 1 || v > 365) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: 'claimStaleDays must be 1-365' });
+                    }
+                }
+                if (disc.notAPlantVotes !== undefined) {
+                    const v = parseInt(disc.notAPlantVotes, 10);
+                    if (!Number.isFinite(v) || v < 2 || v > 100) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: 'notAPlantVotes must be 2-100' });
+                    }
+                }
+                if (disc.discoveryClosedPhotoDays !== undefined) {
+                    const v = parseInt(disc.discoveryClosedPhotoDays, 10);
+                    if (!Number.isFinite(v) || v < 1 || v > 365) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: 'discoveryClosedPhotoDays must be 1-365' });
+                    }
+                }
+                // MERGE for discoveries too
+                validatedValue = { ...existingValue, ...value };
+            } else if (key === 'mlRequest') {
+                if (value.maxTopK !== undefined) {
+                    const v = parseInt(value.maxTopK, 10);
+                    if (!Number.isFinite(v) || v < 1 || v > 100) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: 'maxTopK must be 1-100' });
+                    }
+                }
+                validatedValue = { ...existingValue, ...value };
+            } else if (key === 'mlActiveModel') {
+                if (!value.modelId || typeof value.modelId !== 'string') {
+                    await conn.rollback();
+                    return res.status(400).json({ error: 'modelId is required and must be a string' });
+                }
+                validatedValue = value;
+            }
+
+            // Update with optimistic locking
+            const [result] = await conn.query(
+                'UPDATE system_settings SET settingValue = ?, version = version + 1, updatedBy = ?, updatedAt = NOW() WHERE settingKey = ? AND version = ?',
+                [JSON.stringify(validatedValue), req.session.accountId, key, currentVersion]
+            );
+
+            if (result.affectedRows === 0) {
+                await conn.rollback();
+                return res.status(409).json({
+                    error: `Concurrent modification for ${key}, please retry`,
+                    key,
+                    serverVersion: currentVersion
+                });
+            }
+
+            // Read back updated value
+            const [updated] = await conn.query(
+                'SELECT settingValue, version FROM system_settings WHERE settingKey = ?',
+                [key]
+            );
+            let updatedValue = updated[0].settingValue;
+            if (typeof updatedValue === 'string') {
+                try { updatedValue = JSON.parse(updatedValue); } catch (_) {}
+            }
+            results[key] = { value: updatedValue, version: updated[0].version };
+        }
+
+        await conn.commit();
+        res.json(results);
+    } catch (err) {
+        await conn.rollback();
+        console.error('Update settings error:', err.message);
+        res.status(500).json({ error: 'Failed to update settings' });
+    } finally {
+        conn.release();
+    }
+});
+
+/**
+ * POST /admin/api/discoveries
+ * Update discovery settings caps.
+ */
+router.post('/api/discoveries', requirePermission('admin_settings'), async (req, res) => {
+    const settings = req.body || {};
+    if (!settings || typeof settings !== 'object') {
+        return res.status(400).json({ error: 'Invalid settings object' });
+    }
+
+    const conn = await mysqlPool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const [current] = await conn.query(
+            'SELECT version FROM system_settings WHERE settingKey = ?',
+            ['discoveries']
+        );
+        if (current.length === 0) {
+            await conn.rollback();
+            return res.status(500).json({ error: 'discoveries not initialized' });
+        }
+        const currentVersion = current[0].version;
+
+        // Validate
+        const disc = settings;
+        if (disc.maxClaimsPerBotanist !== undefined) {
+            const v = parseInt(disc.maxClaimsPerBotanist, 10);
+            if (!Number.isFinite(v) || v < 1 || v > 1000) {
+                await conn.rollback();
+                return res.status(400).json({ error: 'maxClaimsPerBotanist must be 1-1000' });
+            }
+        }
+        if (disc.maxOpenReportsPerAccount !== undefined) {
+            const v = parseInt(disc.maxOpenReportsPerAccount, 10);
+            if (!Number.isFinite(v) || v < 1 || v > 1000) {
+                await conn.rollback();
+                return res.status(400).json({ error: 'maxOpenReportsPerAccount must be 1-1000' });
+            }
+        }
+        if (disc.cancelGraceHours !== undefined) {
+            const v = parseInt(disc.cancelGraceHours, 10);
+            if (!Number.isFinite(v) || v < 0 || v > 8760) {
+                await conn.rollback();
+                return res.status(400).json({ error: 'cancelGraceHours must be 0-8760' });
+            }
+        }
+        if (disc.reportCooldownMinutes !== undefined) {
+            const v = parseInt(disc.reportCooldownMinutes, 10);
+            if (!Number.isFinite(v) || v < 0 || v > 10080) {
+                await conn.rollback();
+                return res.status(400).json({ error: 'reportCooldownMinutes must be 0-10080' });
+            }
+        }
+        if (disc.claimStaleDays !== undefined) {
+            const v = parseInt(disc.claimStaleDays, 10);
+            if (!Number.isFinite(v) || v < 1 || v > 365) {
+                await conn.rollback();
+                return res.status(400).json({ error: 'claimStaleDays must be 1-365' });
+            }
+        }
+        if (disc.notAPlantVotes !== undefined) {
+            const v = parseInt(disc.notAPlantVotes, 10);
+            if (!Number.isFinite(v) || v < 2 || v > 100) {
+                await conn.rollback();
+                return res.status(400).json({ error: 'notAPlantVotes must be 2-100' });
+            }
+        }
+        if (disc.discoveryClosedPhotoDays !== undefined) {
+            const v = parseInt(disc.discoveryClosedPhotoDays, 10);
+            if (!Number.isFinite(v) || v < 1 || v > 365) {
+                await conn.rollback();
+                return res.status(400).json({ error: 'discoveryClosedPhotoDays must be 1-365' });
+            }
+        }
+
+        // Merge with existing
+        const [existing] = await conn.query('SELECT settingValue FROM system_settings WHERE settingKey = ?', ['discoveries']);
+        let existingValue = existing[0]?.settingValue || '{}';
+        if (typeof existingValue === 'string') {
+            try { existingValue = JSON.parse(existingValue); } catch (_) { existingValue = {}; }
+        }
+        const mergedValue = { ...existingValue, ...disc };
+
+        const [result] = await conn.query(
+            'UPDATE system_settings SET settingValue = ?, version = version + 1, updatedBy = ?, updatedAt = NOW() WHERE settingKey = ? AND version = ?',
+            [JSON.stringify(mergedValue), req.session.accountId, 'discoveries', currentVersion]
+        );
+
+        if (result.affectedRows === 0) {
+            await conn.rollback();
+            return res.status(409).json({ error: 'Concurrent modification, please retry' });
+        }
+
+        await conn.commit();
+
+        const [updated] = await conn.query('SELECT settingValue, version FROM system_settings WHERE settingKey = ?', ['discoveries']);
+        let updatedValue = updated[0].settingValue;
+        if (typeof updatedValue === 'string') {
+            try { updatedValue = JSON.parse(updatedValue); } catch (_) {}
+        }
+        res.json({ value: updatedValue, version: updated[0].version });
+    } catch (err) {
+        await conn.rollback();
+        console.error('Update discoveries settings error:', err.message);
+        res.status(500).json({ error: 'Failed to update discovery settings' });
+    } finally {
+        conn.release();
+    }
+});
+
+/**
+ * POST /admin/api/ml/request
+ * Update ML request settings (maxTopK).
+ */
+router.post('/api/ml/request', requirePermission('admin_settings'), async (req, res) => {
+    const { maxTopK } = req.body || {};
+    if (maxTopK === undefined) {
+        return res.status(400).json({ error: 'maxTopK is required' });
+    }
+    const v = parseInt(maxTopK, 10);
+    if (!Number.isFinite(v) || v < 1 || v > 100) {
+        return res.status(400).json({ error: 'maxTopK must be 1-100' });
+    }
+
+    const conn = await mysqlPool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const [current] = await conn.query(
+            'SELECT version FROM system_settings WHERE settingKey = ?',
+            ['mlRequest']
+        );
+        if (current.length === 0) {
+            await conn.rollback();
+            return res.status(500).json({ error: 'mlRequest not initialized' });
+        }
+        const currentVersion = current[0].version;
+
+        const [existing] = await conn.query('SELECT settingValue FROM system_settings WHERE settingKey = ?', ['mlRequest']);
+        let existingValue = existing[0]?.settingValue || '{}';
+        if (typeof existingValue === 'string') {
+            try { existingValue = JSON.parse(existingValue); } catch (_) { existingValue = {}; }
+        }
+        const mergedValue = { ...existingValue, maxTopK: v };
+
+        const [result] = await conn.query(
+            'UPDATE system_settings SET settingValue = ?, version = version + 1, updatedBy = ?, updatedAt = NOW() WHERE settingKey = ? AND version = ?',
+            [JSON.stringify(mergedValue), req.session.accountId, 'mlRequest', currentVersion]
+        );
+
+        if (result.affectedRows === 0) {
+            await conn.rollback();
+            return res.status(409).json({ error: 'Concurrent modification, please retry' });
+        }
+
+        await conn.commit();
+
+        const [updated] = await conn.query('SELECT settingValue, version FROM system_settings WHERE settingKey = ?', ['mlRequest']);
+        let updatedValue = updated[0].settingValue;
+        if (typeof updatedValue === 'string') {
+            try { updatedValue = JSON.parse(updatedValue); } catch (_) {}
+        }
+        res.json({ value: updatedValue, version: updated[0].version });
+    } catch (err) {
+        await conn.rollback();
+        console.error('Update ml request settings error:', err.message);
+        res.status(500).json({ error: 'Failed to update ML request settings' });
+    } finally {
+        conn.release();
+    }
+});
+
+/**
+ * GET /admin/api/role-limits
+ * Read-only view of per-role spam quotas.
+ */
+router.get('/api/role-limits', requirePermission('admin_settings'), async (req, res) => {
+    try {
+        const [rows] = await mysqlPool.query(`
+            SELECT r.roleName, rl.limitKey, rl.limitValue
+            FROM role_limits rl
+            JOIN roles r ON r.roleId = rl.roleId
+            ORDER BY r.roleName, rl.limitKey
+        `);
+
+        const roleLimits = {};
+        for (const row of rows) {
+            if (!roleLimits[row.roleName]) roleLimits[row.roleName] = { roleName: row.roleName };
+            let value = row.limitValue;
+            if (typeof value === 'string') {
+                try { value = JSON.parse(value); } catch (_) {}
+            }
+            roleLimits[row.roleName][row.limitKey] = value;
+        }
+
+        res.json({ roleLimits: Object.values(roleLimits) });
+    } catch (err) {
+        console.error('List role limits error:', err.message);
+        res.status(500).json({ error: 'Failed to load role limits' });
+    }
+});
+
+/**
+ * POST /admin/api/role-limits
+ * Update per-role spam quotas.
+ * Body: { roleLimits: [{ roleName, maxClaimsPerBotanist, maxOpenReportsPerAccount, maxScan, rateLimitWindowMin }] }
+ */
+router.post('/api/role-limits', requirePermission('admin_settings'), async (req, res) => {
+    const { roleLimits } = req.body || {};
+    if (!roleLimits || !Array.isArray(roleLimits) || roleLimits.length === 0) {
+        return res.status(400).json({ error: 'roleLimits array is required' });
+    }
+
+    const conn = await mysqlPool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        for (const limit of roleLimits) {
+            const { roleName, maxClaimsPerBotanist, maxOpenReportsPerAccount, maxScan, rateLimitWindowMin } = limit;
+            if (!roleName) {
+                await conn.rollback();
+                return res.status(400).json({ error: 'roleName is required for each limit' });
+            }
+
+            // Get roleId from roleName
+            const [roleRows] = await conn.query('SELECT roleId FROM roles WHERE roleName = ?', [roleName]);
+            if (roleRows.length === 0) {
+                await conn.rollback();
+                return res.status(400).json({ error: `Unknown role: ${roleName}` });
+            }
+            const roleId = roleRows[0].roleId;
+
+            // Validate and update each limit
+            const updates = [];
+            if (maxClaimsPerBotanist !== undefined) {
+                const v = parseInt(maxClaimsPerBotanist, 10);
+                if (!Number.isFinite(v) || v < 1 || v > 1000) {
+                    await conn.rollback();
+                    return res.status(400).json({ error: 'maxClaimsPerBotanist must be 1-1000' });
+                }
+                updates.push({ limitKey: 'maxClaimsPerBotanist', limitValue: v });
+            }
+            if (maxOpenReportsPerAccount !== undefined) {
+                const v = parseInt(maxOpenReportsPerAccount, 10);
+                if (!Number.isFinite(v) || v < 1 || v > 1000) {
+                    await conn.rollback();
+                    return res.status(400).json({ error: 'maxOpenReportsPerAccount must be 1-1000' });
+                }
+                updates.push({ limitKey: 'maxOpenReportsPerAccount', limitValue: v });
+            }
+            if (maxScan !== undefined) {
+                const v = parseInt(maxScan, 10);
+                if (!Number.isFinite(v) || v < 1 || v > 1000) {
+                    await conn.rollback();
+                    return res.status(400).json({ error: 'maxScan must be 1-1000' });
+                }
+                updates.push({ limitKey: 'maxScan', limitValue: v });
+            }
+            if (rateLimitWindowMin !== undefined) {
+                const v = parseInt(rateLimitWindowMin, 10);
+                if (!Number.isFinite(v) || v < 1 || v > 10080) {
+                    await conn.rollback();
+                    return res.status(400).json({ error: 'rateLimitWindowMin must be 1-10080' });
+                }
+                updates.push({ limitKey: 'rateLimitWindowMin', limitValue: v });
+            }
+
+            for (const { limitKey, limitValue } of updates) {
+                await conn.query(
+                    'INSERT INTO role_limits (roleId, limitKey, limitValue) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE limitValue = VALUES(limitValue)',
+                    [roleId, limitKey, JSON.stringify(limitValue)]
+                );
+            }
+        }
+
+        await conn.commit();
+
+        // Return updated limits
+        const [rows] = await conn.query(`
+            SELECT r.roleName, rl.limitKey, rl.limitValue
+            FROM role_limits rl
+            JOIN roles r ON r.roleId = rl.roleId
+            ORDER BY r.roleName, rl.limitKey
+        `);
+
+        const updatedLimits = {};
+        for (const row of rows) {
+            if (!updatedLimits[row.roleName]) updatedLimits[row.roleName] = { roleName: row.roleName };
+            let value = row.limitValue;
+            if (typeof value === 'string') {
+                try { value = JSON.parse(value); } catch (_) {}
+            }
+            updatedLimits[row.roleName][row.limitKey] = value;
+        }
+
+        res.json({ roleLimits: Object.values(updatedLimits) });
+    } catch (err) {
+        await conn.rollback();
+        console.error('Update role limits error:', err.message);
+        res.status(500).json({ error: 'Failed to update role limits' });
+    } finally {
+        conn.release();
+    }
+});
 
 module.exports = router;

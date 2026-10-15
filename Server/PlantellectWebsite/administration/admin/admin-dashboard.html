@@ -6,7 +6,7 @@
     <title>Plantellect - Admin Dashboard</title>
 
     <!-- Shared sidebar + theme logic (must load here, no defer) -->
-    <script src="/javascript/admin-sidebar.js"></script>
+    <script src="/javascript/admin/admin-sidebar.js"></script>
 
     <link rel="stylesheet" href="/css/admin/admin-sidebar.css">
     <link rel="stylesheet" href="/css/admin/admin-style.css">
@@ -34,7 +34,7 @@
             font-weight: 600;
         }
 
-        /* ---------- Topbar (same look as the Plants page) ---------- */
+        /* ---------- Topbar (same look as the Plants and Settings pages) ---------- */
         .dashboard-topbar {
             position: sticky;
             top: 0;
@@ -308,6 +308,10 @@
                     <span class="nav-link-text">Plants</span>
                     <span class="nav-badge" id="navBadgePlants" hidden>0</span>
                 </a>
+                <a href="/admin/settings" data-perm="access_admin" title="Settings">
+                    <span class="material-symbols-outlined">settings</span>
+                    <span class="nav-link-text">Settings</span>
+                </a>
                 <a href="#" data-perm="view_logs" title="Logs">
                     <span class="material-symbols-outlined">history_toggle_off</span>
                     <span class="nav-link-text">Logs</span>
@@ -333,7 +337,7 @@
             </div>
             <p class="admin-subtitle">Plantellect administrative control panel</p>
 
-            <!-- Topbar: each tab scrolls to its section (Access also expands) -->
+            <!-- Topbar: tracks the section you are reading; each tab scrolls to its section (Access also expands) -->
             <nav class="dashboard-topbar" id="dashboardTopbar" aria-label="Dashboard sections">
                 <a href="#statsSection" class="dashboard-tab active" data-target="statsSection">Overview</a>
                 <a href="#roleRequestsSection" class="dashboard-tab" data-target="roleRequestsSection">
@@ -483,40 +487,155 @@
         });
 
         // ---------------------------------------------------------
-        // Topbar: scroll to the section; the Access tab also expands it
+        // Topbar: highlights the section you are reading while you scroll
+        // (same behaviour as the Settings page). A sliding reference line
+        // lets even short sections get their turn. Clicking a tab scrolls to
+        // it; the Access tab also expands the card.
         // ---------------------------------------------------------
         (function () {
-            const tabs = document.querySelectorAll('.dashboard-tab');
+            const topbar = document.getElementById('dashboardTopbar');
+            if (!topbar) return;
 
-            function setActive(id) {
+            const tabs = Array.from(topbar.querySelectorAll('.dashboard-tab'));
+            const sections = tabs
+                .map(function (t) { return document.getElementById(t.dataset.target); })
+                .filter(Boolean);
+            if (sections.length === 0) return;
+
+            let currentId = null;
+            let manualTarget = null;   // set by a tab click so scroll tracking does not fight the smooth scroll
+            let ticking = false;
+
+            // The element that actually scrolls: a scrollable ancestor if there is one, otherwise the page
+            function getScroller() {
+                let node = topbar.parentElement;
+                while (node && node !== document.body) {
+                    const overflowY = getComputedStyle(node).overflowY;
+                    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+                        return node;
+                    }
+                    node = node.parentElement;
+                }
+                return document.scrollingElement || document.documentElement;
+            }
+
+            function setActive(targetId) {
                 tabs.forEach(function (t) {
-                    t.classList.toggle('active', t.dataset.target === id);
+                    const on = t.dataset.target === targetId;
+                    t.classList.toggle('active', on);
+                    if (on) t.setAttribute('aria-current', 'true');
+                    else t.removeAttribute('aria-current');
+                });
+
+                if (targetId === currentId) return;
+                currentId = targetId;
+
+                // Keep the active tab visible when the topbar itself scrolls sideways (phones)
+                const active = tabs.find(function (t) { return t.dataset.target === targetId; });
+                if (active && topbar.scrollWidth > topbar.clientWidth) {
+                    topbar.scrollTo({
+                        left: active.offsetLeft - (topbar.clientWidth - active.offsetWidth) / 2,
+                        behavior: 'smooth'
+                    });
+                }
+            }
+
+            // Sliding reference line:
+            //   scrolled to the top    -> line sits just below the topbar
+            //   scrolled to the bottom -> line sits at the bottom edge of the viewport
+            //   in between             -> linear blend
+            // The active section is the one whose top edge is closest above the line.
+            // Statistics and Access sit side by side on wide screens (same top edge);
+            // the first one in tab order wins that tie, so Overview stays highlighted
+            // and Access is highlighted when you click it.
+            function updateFromScroll() {
+                ticking = false;
+                if (manualTarget) return;
+
+                const scroller = getScroller();
+                const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+                if (maxScroll <= 2) return; // nothing to scroll: keep whatever is highlighted
+
+                const progress = Math.min(1, Math.max(0, scroller.scrollTop / maxScroll));
+                const topLine = topbar.getBoundingClientRect().bottom + 16;
+                const bottomLine = window.innerHeight - 4;
+                const line = topLine + progress * (bottomLine - topLine);
+
+                let current = sections[0].id;
+                let bestTop = -Infinity;
+                sections.forEach(function (section) {
+                    const top = section.getBoundingClientRect().top;
+                    if (top <= line && top > bestTop) {
+                        bestTop = top;
+                        current = section.id;
+                    }
+                });
+
+                setActive(current);
+            }
+
+            function onScroll() {
+                if (ticking) return;
+                ticking = true;
+                requestAnimationFrame(updateFromScroll);
+            }
+
+            function goTo(targetId, opts) {
+                const smooth = !opts || opts.smooth !== false;
+                const updateHash = !opts || opts.updateHash !== false;
+                const section = document.getElementById(targetId);
+                if (!section) return;
+
+                if (targetId === 'accessCard') setAccessOpen(true);
+
+                manualTarget = targetId;
+                setActive(targetId);
+                if (updateHash) history.replaceState(null, '', '#' + targetId);
+
+                requestAnimationFrame(function () {
+                    section.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
                 });
             }
 
-            function goTo(id, smooth) {
-                if (id === 'accessCard') setAccessOpen(true);
-                document.getElementById(id).scrollIntoView({
-                    behavior: smooth ? 'smooth' : 'auto',
-                    block: 'start'
-                });
-                setActive(id);
+            // Scroll tracking takes over again as soon as the person scrolls by hand
+            function releaseManual() {
+                if (manualTarget) {
+                    manualTarget = null;
+                    onScroll();
+                }
             }
-
-            tabs.forEach(function (tab) {
-                tab.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const id = tab.dataset.target;
-                    history.replaceState(null, '', '#' + id);
-                    goTo(id, true);
-                });
+            window.addEventListener('wheel', releaseManual, { passive: true });
+            window.addEventListener('touchmove', releaseManual, { passive: true });
+            window.addEventListener('keydown', function (e) {
+                if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) releaseManual();
             });
+
+            topbar.addEventListener('click', function (e) {
+                const tab = e.target.closest('.dashboard-tab');
+                if (!tab) return;
+                e.preventDefault();
+                goTo(tab.dataset.target);
+            });
+
+            window.addEventListener('hashchange', function () {
+                const id = location.hash.slice(1);
+                if (tabs.some(function (t) { return t.dataset.target === id; })) goTo(id, { updateHash: false });
+            });
+
+            // capture:true catches scrolling of any element, so it works whether the page or a panel scrolls
+            document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+            window.addEventListener('resize', onScroll);
+
+            // Content loads asynchronously and the access card opens/closes, so re-check after layout changes
+            accessToggle.addEventListener('click', onScroll);
 
             // Opening the page with a #hash (e.g. /admin/dashboard#accessCard) jumps there
             window.addEventListener('load', function () {
-                const id = location.hash.slice(1);
-                if (id && document.querySelector('.dashboard-tab[data-target="' + id + '"]')) {
-                    goTo(id, false);
+                const initial = location.hash.slice(1);
+                if (tabs.some(function (t) { return t.dataset.target === initial; })) {
+                    goTo(initial, { smooth: false, updateHash: false });
+                } else {
+                    updateFromScroll();
                 }
             });
         })();
@@ -562,7 +681,13 @@
             }
             const data = await response.json();
 
-            document.getElementById('adminUser').textContent = 'Logged in as ' + data.username;
+            // Header shows just the name (no "Logged in as"), like the Settings page.
+            // The role stays in the green pill next to the title and in the hover tooltip.
+            const adminUserEl = document.getElementById('adminUser');
+            adminUserEl.textContent = data.username || data.email || 'Admin';
+            if (Array.isArray(data.roles) && data.roles.length) {
+                adminUserEl.title = 'Roles: ' + data.roles.join(', ');
+            }
             document.getElementById('adminRole').textContent = (data.roles || []).join(', ') || 'N/A';
 
             const perms = data.permissions || [];

@@ -10,7 +10,6 @@ in memory at once. Nothing about image size, resize method or scaling is hardcod
 IMPORTANT: the current models (EfficientNet / ConvNeXtTiny) normalise INSIDE the network,
 so the output of preprocess_image() is raw 0-255 float32. Do not divide by 255.
 """
-
 import io
 import json
 import os
@@ -18,7 +17,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 SCHEMA_VERSION = 1
 FILENAME = "preprocessing.json"
@@ -42,6 +41,9 @@ class PreprocessConfig:
     rescale: float
     mean: Tuple[float, float, float]
     std: Tuple[float, float, float]
+    # Rotate phone photos upright (EXIF) BEFORE resizing. Off when the key is missing, so models trained
+    # before this option existed keep behaving exactly as they were trained.
+    exif_transpose: bool = False
 
     @property
     def input_shape(self) -> Tuple[int, int, int]:
@@ -90,6 +92,10 @@ def load_config(path: str) -> PreprocessConfig:
             raise bad(f"{key} must be a list of 3 numbers, got {v!r}")
         return tuple(float(n) for n in v)
 
+    exif = raw.get("exif_transpose", False)
+    if not isinstance(exif, bool):
+        raise bad(f"exif_transpose must be true or false, got {exif!r}")
+
     mean = triple("mean", [0.0, 0.0, 0.0])
     std = triple("std", [1.0, 1.0, 1.0])
     if any(s == 0 for s in std):
@@ -98,7 +104,7 @@ def load_config(path: str) -> PreprocessConfig:
     return PreprocessConfig(
         model=str(raw.get("model", "")),
         height=raw["height"], width=raw["width"], resize_method=method,
-        rescale=float(rescale), mean=mean, std=std,
+        rescale=float(rescale), mean=mean, std=std, exif_transpose=exif,
     )
 
 
@@ -135,6 +141,8 @@ def check_model_input(cfg: PreprocessConfig, model_input_shape) -> None:
 
 
 def _prepare(img: Image.Image, cfg: PreprocessConfig) -> np.ndarray:
+    if cfg.exif_transpose:                     # same order as training: rotate, convert, resize
+        img = ImageOps.exif_transpose(img)
     if img.mode != "RGB":                      # RGBA, palette, grayscale, CMYK ...
         img = img.convert("RGB")
     img = img.resize((cfg.width, cfg.height), _RESAMPLE[cfg.resize_method])
@@ -152,7 +160,10 @@ def preprocess_image(image_bytes: bytes, cfg: PreprocessConfig = None) -> np.nda
         img.load()                             # decode now so truncated files fail here
     except Exception as e:
         raise ValueError(f"Invalid image: {str(e)}")
-    return _prepare(img, cfg)
+    try:
+        return _prepare(img, cfg)
+    except Exception as e:                     # e.g. malformed EXIF/resize: the photo's fault, so a 400 not a 500
+        raise ValueError(f"Invalid image: {str(e)}")
 
 
 def preprocess_image_from_path(image_path: str, cfg: PreprocessConfig = None) -> np.ndarray:
@@ -163,4 +174,8 @@ def preprocess_image_from_path(image_path: str, cfg: PreprocessConfig = None) ->
         img.load()
     except Exception as e:
         raise ValueError(f"Invalid image at {image_path}: {str(e)}")
-    return _prepare(img, cfg)
+    try:
+        return _prepare(img, cfg)
+    except Exception as e:
+        raise ValueError(f"Invalid image at {image_path}: {str(e)}")
+    

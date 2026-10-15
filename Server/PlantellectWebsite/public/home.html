@@ -42,59 +42,20 @@
         </div>
     </div>
 
-    <div class="slider-wrapper">
-        <div class="slider-track">
-            <div class="plant-card">
-                <div class="image-box"><img src="resource/alugbati.jpg" alt="Alugbati Plant"></div>
-                <h3>ALUGBATI</h3>
-                <p>Alugbati is a succulent, fast-growing vine that is common throughout the Philippines. It is easily recognized by its fleshy, heart-shaped, smooth leaves.</p>
-            </div>
-            <div class="plant-card">
-                <div class="image-box"><img src="resource/aratiles.jpg" alt="Aratiles Plant"></div>
-                <h3>ARATILES</h3>
-                <p>Aratiles is a fast-growing, evergreen tree featuring spreading branches, sticky leaves, and small white flowers.</p>
-            </div>
-            <div class="plant-card">
-                <div class="image-box"><img src="resource/malunggay.jpg" alt="Malunggay Plant"></div>
-                <h3>MALUNGGAY</h3>
-                <p>Malunggay is widely cultivated for its nutritious leaf vegetables, flower pods, and seeds, and is frequently used as a vegetable in soups.</p>
-            </div>
-            <div class="plant-card">
-                <div class="image-box"><img src="resource/sampaguita.jpg" alt="Sampaguita Plant"></div>
-                <h3>SAMPAGUITA</h3>
-                <p>Sampaguita is a species of jasmine native to tropical Asia, prized for its strongly scented small white flowers that bloom all year round.</p>
-            </div>
-            <div class="plant-card">
-                <div class="image-box"><img src="resource/gumamela.jpg" alt="Gumamela Plant"></div>
-                <h3>GUMAMELA</h3>
-                <p>Gumamela is a tropical shrub with large, prominent flowers that come in vibrant shades of red, pink, yellow, and orange.</p>
-            </div>
-            <div class="plant-card">
-                <div class="image-box"><img src="resource/alugbati.jpg" alt="Alugbati Plant"></div>
-                <h3>ALUGBATI</h3>
-                <p>Alugbati is a succulent, fast-growing vine that is common throughout the Philippines. It is easily recognized by its fleshy, heart-shaped, smooth leaves.</p>
-            </div>
-            <div class="plant-card">
-                <div class="image-box"><img src="resource/aratiles.jpg" alt="Aratiles Plant"></div>
-                <h3>ARATILES</h3>
-                <p>Aratiles is a fast-growing, evergreen tree featuring spreading branches, sticky leaves, and small white flowers.</p>
-            </div>
-            <div class="plant-card">
-                <div class="image-box"><img src="resource/malunggay.jpg" alt="Malunggay Plant"></div>
-                <h3>MALUNGGAY</h3>
-                <p>Malunggay is widely cultivated for its nutritious leaf vegetables, flower pods, and seeds, and is frequently used as a vegetable in soups.</p>
-            </div>
-            <div class="plant-card">
-                <div class="image-box"><img src="resource/sampaguita.jpg" alt="Sampaguita Plant"></div>
-                <h3>SAMPAGUITA</h3>
-                <p>Sampaguita is a species of jasmine native to tropical Asia, prized for its strongly scented small white flowers that bloom all year round.</p>
-            </div>
-            <div class="plant-card">
-                <div class="image-box"><img src="resource/gumamela.jpg" alt="Gumamela Plant"></div>
-                <h3>GUMAMELA</h3>
-                <p>Gumamela is a tropical shrub with large, prominent flowers that come in vibrant shades of red, pink, yellow, and orange.</p>
-            </div>
+    <!-- The 10 newest plants. Cards (and the loading skeletons) are filled in by home.js -->
+    <div class="slider-wrapper" aria-label="Newest plants" aria-busy="true">
+        <span class="slider-label">
+            <span class="material-symbols-outlined" aria-hidden="true">eco</span>
+            Newest plants
+        </span>
+
+        <div class="slider-viewport">
+            <div class="slider-track" id="latestPlantsTrack"></div>
         </div>
+
+        <button type="button" class="slider-pause" aria-label="Pause auto-scroll" aria-pressed="false">
+            <span class="material-symbols-outlined" aria-hidden="true">pause</span>
+        </button>
     </div>
 
     <div class="sidebar-scrim"></div>

@@ -4,6 +4,10 @@
 // Pure functions: no mysql.js, no mongoose, no I/O. The caller reads the
 // `mlConfidence` row from system_settings and passes it in, same shape of
 // contract as config/approval-mode.js taking an executor.
+//
+// CLASS-AWARE: a prediction may carry `kind` ('species' | 'non_plant' | 'other_plant'),
+// which FastAPI copies from classes.json. A missing kind means 'species', so models
+// trained before those classes existed behave exactly as before.
 
 const MODES = Object.freeze(['off', 'log', 'enforce']);
 
@@ -12,6 +16,18 @@ const OUTCOMES = Object.freeze({
     UNCERTAIN: 'uncertain',
     UNRECOGNIZED: 'unrecognized'
 });
+
+// WHY the outcome happened. The outcome set above is unchanged on purpose, so
+// anything that already stores or switches on it keeps working.
+const REASONS = Object.freeze({
+    SPECIES: 'species',               // identified a supported species
+    NON_PLANT: 'non_plant',           // "No plant detected"
+    OTHER_PLANT: 'other_plant',       // "Plant detected, but species is not supported"
+    LOW_CONFIDENCE: 'low_confidence', // top-1 too weak to name anything
+    CLOSE_CALL: 'close_call'          // confident, but too close to the runner-up
+});
+
+const NON_SPECIES_KINDS = Object.freeze(['non_plant', 'other_plant']);
 
 // Placeholders. NOT tuned: measure a held-out set (trained species, untrained
 // plants, non-plants) before trusting any of these numbers.
@@ -23,6 +39,12 @@ const DEFAULTS = Object.freeze({
 });
 
 const isUnit = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1;
+
+/** True for anything that may be shown to a user as a species name. */
+function isSpecies(prediction) {
+    const kind = prediction && typeof prediction === 'object' ? prediction.kind : undefined;
+    return !NON_SPECIES_KINDS.includes(kind);
+}
 
 /**
  * Validate a config object (use on admin write). Returns { ok, errors, value }.
@@ -56,33 +78,61 @@ function resolveConfig(stored) {
 }
 
 /**
- * Accepts [0.91, 0.05, ...] or [{ confidence: 0.91, ... }, ...] in any order.
- * Adjust the object field name if your /predict response uses another one.
+ * Accepts [0.91, 0.05, ...] or [{ confidence: 0.91, kind: 'species', ... }, ...]
+ * in any order. Returns [{ confidence, kind }] sorted high to low. Bare numbers
+ * (and objects without a kind) count as species.
  */
-function toScores(predictions) {
+function toRanked(predictions) {
     if (!Array.isArray(predictions)) return [];
     return predictions
-        .map((p) => (typeof p === 'number' ? p : p && p.confidence))
-        .filter((n) => typeof n === 'number' && Number.isFinite(n))
-        .map((n) => Math.min(1, Math.max(0, n)))
-        .sort((a, b) => b - a); // never trust the incoming order
+        .map((p) => ({
+            confidence: typeof p === 'number' ? p : p && p.confidence,
+            kind: isSpecies(p) ? 'species' : p.kind
+        }))
+        .filter((p) => typeof p.confidence === 'number' && Number.isFinite(p.confidence))
+        .map((p) => ({ ...p, confidence: Math.min(1, Math.max(0, p.confidence)) }))
+        .sort((a, b) => b.confidence - a.confidence); // never trust the incoming order
 }
 
 /** The decision itself, ignoring mode. */
 function classify(predictions, config) {
     const cfg = resolveConfig(config);
-    const [top1 = 0, top2 = 0] = toScores(predictions);
-    const margin = top1 - top2;
+    const ranked = toRanked(predictions);
+    const top1 = ranked.length > 0 ? ranked[0].confidence : 0;
+    const top2 = ranked.length > 1 ? ranked[1].confidence : 0;
+    const topKind = ranked.length > 0 ? ranked[0].kind : 'species';
+    // Margin = how far top-1 leads the answer it actually competes with.
+    //  - a species answer competes with whatever is second (another species, or a non-species class);
+    //  - a non_plant / other_plant answer competes only with SPECIES. Those two classes both mean
+    //    "no supported species", so a narrow gap between them is not a close call.
+    // top2 stays the raw second-highest score, for logging.
+    const rival = topKind === 'species' ? ranked[1] : ranked.slice(1).find((p) => p.kind === 'species');
+    const margin = top1 - (rival ? rival.confidence : 0);
 
     let outcome;
-    if (top1 >= cfg.acceptThreshold && margin >= cfg.marginThreshold) {
+    let reason;
+    if (top1 < cfg.uncertainThreshold) {
+        // includes: empty or malformed prediction list
+        outcome = OUTCOMES.UNRECOGNIZED;
+        reason = REASONS.LOW_CONFIDENCE;
+    } else if (topKind !== 'species') {
+        // The model's best guess is "not a plant" or "a plant we do not support".
+        // Say so only when it clearly beats the runner-up; a narrow win is a coin flip.
+        if (margin >= cfg.marginThreshold) {
+            outcome = OUTCOMES.UNRECOGNIZED;
+            reason = topKind;
+        } else {
+            outcome = OUTCOMES.UNCERTAIN;
+            reason = REASONS.CLOSE_CALL;
+        }
+    } else if (top1 >= cfg.acceptThreshold && margin >= cfg.marginThreshold) {
         outcome = OUTCOMES.IDENTIFIED;
-    } else if (top1 >= cfg.uncertainThreshold) {
-        outcome = OUTCOMES.UNCERTAIN;   // includes: confident but too close to the runner-up
+        reason = REASONS.SPECIES;
     } else {
-        outcome = OUTCOMES.UNRECOGNIZED; // includes: empty or malformed prediction list
+        outcome = OUTCOMES.UNCERTAIN;
+        reason = top1 >= cfg.acceptThreshold ? REASONS.CLOSE_CALL : REASONS.LOW_CONFIDENCE;
     }
-    return { outcome, top1, top2, margin };
+    return { outcome, reason, topKind, top1, top2, margin };
 }
 
 /**
@@ -108,4 +158,7 @@ function evaluate(predictions, config) {
     };
 }
 
-module.exports = { MODES, OUTCOMES, DEFAULTS, validateConfig, resolveConfig, classify, evaluate };
+module.exports = {
+    MODES, OUTCOMES, REASONS, NON_SPECIES_KINDS, DEFAULTS,
+    validateConfig, resolveConfig, classify, evaluate, isSpecies
+};

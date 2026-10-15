@@ -676,3 +676,771 @@
         display: flex;
     }
 }
+
+
+/* ==========================================================================
+   SIGNUP UI ADDITIONS (keep this block last so it overrides the rules above)
+   ========================================================================== */
+
+/* ---------- Fit the whole form: no clipping at top or bottom ---------- */
+
+/* The page may grow taller than the screen; never force it to 100vh */
+.hero-container {
+    height: auto !important;
+    min-height: 100dvh;
+    justify-content: flex-start;
+    padding-bottom: 32px;
+}
+
+/* The card keeps its full content height instead of shrinking and clipping */
+.auth-container {
+    flex-shrink: 0;
+    height: auto;
+    min-height: 600px;
+}
+
+/* Start the form at the top; centring is what cut off the heading */
+.form-container {
+    justify-content: flex-start;
+    height: auto;
+}
+
+.forms-wrapper {
+    align-items: stretch;
+}
+
+.register-container .auth-form,
+.login-container .auth-form {
+    padding-top: 8px;
+    padding-bottom: 28px;
+}
+
+.register-container h2 {
+    margin-top: 28px;
+    margin-bottom: 8px;
+}
+
+.container-row {
+    align-items: start;
+    column-gap: 8px;
+    row-gap: 6px;
+}
+
+@media (min-width: 480px) {
+    .register-container .input-group input:not([type="checkbox"]) {
+        padding-top: 11px;
+        padding-bottom: 11px;
+    }
+
+    .register-container .auth-requirements {
+        padding: 6px 8px;
+        margin-bottom: 4px;
+    }
+
+    .register-container .auth-requirements ul {
+        margin: 2px 0;
+    }
+
+    .register-container .auth-requirements li {
+        margin: 1px 0;
+    }
+
+    .register-container .signup-btn {
+        margin-top: 10px;
+    }
+
+    .register-container .form-footer {
+        margin-top: 10px;
+        padding-bottom: 4px;
+    }
+}
+
+@media (min-width: 480px) and (max-width: 1100px) {
+    .register-container .auth-form {
+        padding-left: 28px;
+        padding-right: 28px;
+    }
+}
+
+/* ---------- Fluid text ---------- */
+.form-container h2,
+.auth-form h2 {
+    font-size: clamp(18px, 4.5vw, 24px);
+    letter-spacing: clamp(1px, 0.3vw, 2px);
+}
+
+.auth-form .subtitle {
+    font-size: clamp(10px, 2.6vw, 12px);
+}
+
+.input-group input:not([type="checkbox"]) {
+    font-size: clamp(14px, 3.8vw, 16px);
+    min-width: 0;
+}
+
+/* Floating labels use the real available width (no more "FIRST ...") */
+.input-group label:not(.checkbox-label) {
+    font-size: clamp(10.5px, 2.8vw, 12px);
+    letter-spacing: 0.8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 58px);
+}
+
+/* Labels beside the eye icon reserve room on the right */
+.password-wrapper label:not(.checkbox-label) {
+    max-width: calc(100% - 92px);
+}
+
+.input-group input:focus + label,
+.input-group input:not(:placeholder-shown) + label {
+    font-size: clamp(9px, 2.4vw, 10px);
+}
+
+.auth-requirements {
+    font-size: clamp(10px, 2.8vw, 12px);
+    line-height: 1.4;
+}
+
+.form-footer,
+.checkbox-label {
+    font-size: clamp(11px, 3vw, 13px);
+}
+
+.container-input > p {
+    color: rgba(255, 255, 255, 0.85);
+    font-family: var(--font-primary);
+    font-size: clamp(11px, 3vw, 13px);
+    margin: 6px 0 4px;
+}
+
+.login-btn,
+.signup-btn,
+.role-btn {
+    font-size: clamp(12px, 3.2vw, 14px);
+}
+
+.container-input .container-row:has(.role-btn) {
+    display: flex;
+    gap: 8px;
+}
+
+.role-btn {
+    padding: clamp(8px, 2.5vw, 12px) clamp(10px, 3vw, 24px);
+}
+
+@media (max-width: 479px) {
+    .container-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    .auth-form {
+        padding: 20px 16px;
+    }
+}
+
+/* ---------- Terms block ---------- */
+.terms-section {
+    margin-top: 10px;
+    text-align: left;
+}
+
+.terms-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: var(--font-primary);
+    font-size: clamp(11px, 3vw, 13px);
+    color: var(--color-white);
+    text-decoration: underline;
+    cursor: pointer;
+    text-align: left;
+}
+
+.terms-link:hover,
+.terms-link:focus-visible {
+    color: var(--color-cyan);
+}
+
+.terms-hint {
+    margin: 6px 0 0;
+    font-family: var(--font-primary);
+    font-size: clamp(10px, 2.8vw, 12px);
+    color: rgba(255, 255, 255, 0.65);
+    font-style: italic;
+}
+
+.terms-checkboxes {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.terms-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-family: var(--font-primary);
+    font-size: clamp(11px, 3vw, 13px);
+    line-height: 1.4;
+    color: var(--color-white);
+    cursor: pointer;
+    transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.terms-check input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+    accent-color: var(--color-cyan);
+    cursor: pointer;
+}
+
+/* Disabled until the terms are read to the bottom. Keys off the real
+   `disabled` attribute, so enabling the checkbox removes this look. */
+.terms-check:has(input:disabled) {
+    opacity: 0.45 !important;
+    color: rgba(255, 255, 255, 0.7) !important;
+    cursor: not-allowed !important;
+}
+
+.terms-check:has(input:disabled) input {
+    cursor: not-allowed !important;
+    filter: grayscale(1);
+}
+
+.terms-check:has(input:disabled)::after {
+    content: "\1F512";
+    font-size: 0.9em;
+    margin-left: auto;
+}
+
+/* ---------- Terms modal ---------- */
+.terms-modal {
+    padding: 12px;
+    box-sizing: border-box;
+}
+
+.terms-modal-content {
+    background: #2b3a2f;
+    color: var(--color-white);
+    padding: clamp(16px, 4vw, 25px);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 550px;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-sizing: border-box;
+}
+
+.terms-modal-content h3 {
+    margin: 0 0 12px;
+    font-size: clamp(15px, 4vw, 18px);
+    border-bottom: 1px solid #444;
+    padding-bottom: 8px;
+}
+
+.terms-scroll {
+    flex: 1 1 auto;
+    min-height: 140px;
+    max-height: 55vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    font-size: clamp(12px, 3.2vw, 13px);
+    line-height: 1.55;
+    color: #ddd;
+    padding: 12px;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: #1e2821;
+    text-align: left;
+}
+
+.terms-scroll p {
+    margin: 0 0 12px;
+}
+
+.terms-modal-footer {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.terms-progress {
+    font-family: var(--font-primary);
+    font-size: clamp(10px, 2.8vw, 12px);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.terms-close-btn {
+    padding: 8px 18px;
+    background: #4CAF50;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+    width: auto;
+}
+
+.terms-close-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ---------- Certificate upload + preview ---------- */
+.certificate-attachment .input-group {
+    position: relative;
+    margin-bottom: 0;
+}
+
+.certificate-attachment input[type="file"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.custom-file-upload {
+    box-sizing: border-box;
+    font-size: clamp(12px, 3.2vw, 13px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Undo the floating-label behaviour inherited from .input-group labels */
+.certificate-attachment .input-group label.custom-file-upload {
+    position: static;
+    transform: none;
+    left: auto;
+    top: auto;
+    bottom: auto;
+    display: block;
+    width: 100%;
+    max-width: none;
+    opacity: 1;
+    visibility: visible;
+    color: var(--color-white);
+    letter-spacing: 0.5px;
+    pointer-events: none; /* clicks go to the invisible file input on top */
+}
+
+.certificate-attachment .input-group:hover .custom-file-upload,
+.certificate-attachment .input-group:focus-within .custom-file-upload {
+    border-color: var(--color-cyan);
+    background: rgba(0, 188, 212, 0.1);
+}
+
+.certificate-preview {
+    display: none;
+    position: relative;
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    align-items: center;
+    gap: 12px;
+}
+
+.certificate-preview.visible {
+    display: flex;
+}
+
+.certificate-preview-thumb {
+    flex: 0 0 auto;
+    width: 72px;
+    height: 72px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: rgba(0, 0, 0, 0.25);
+    cursor: zoom-in;
+}
+
+.certificate-preview-icon {
+    flex: 0 0 auto;
+    width: 72px;
+    height: 72px;
+    border-radius: 8px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--color-cyan);
+    font-size: 36px;
+}
+
+.certificate-preview.is-pdf .certificate-preview-thumb { display: none; }
+.certificate-preview.is-pdf .certificate-preview-icon { display: flex; }
+
+.certificate-preview-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: var(--font-primary);
+    color: var(--color-white);
+}
+
+.certificate-preview-name {
+    display: block;
+    font-size: clamp(11px, 3vw, 13px);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.certificate-preview-size {
+    display: block;
+    font-size: clamp(10px, 2.8vw, 12px);
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.certificate-remove-btn {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--color-white);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.certificate-remove-btn:hover,
+.certificate-remove-btn:focus-visible {
+    background: var(--color-error);
+}
+
+.certificate-lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    background: rgba(0, 0, 0, 0.85);
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    cursor: zoom-out;
+}
+
+.certificate-lightbox.visible {
+    display: flex;
+}
+
+.certificate-lightbox img {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 8px;
+}
+
+/* ---------- Back to home ---------- */
+.auth-back-btn {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 20;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(12, 24, 10, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    color: var(--color-white);
+    font-family: var(--font-primary);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-decoration: none;
+    transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.auth-back-btn .material-symbols-outlined {
+    font-size: 20px;
+    transition: transform var(--transition-fast);
+}
+
+.auth-back-btn:hover {
+    background: rgba(0, 188, 212, 0.35);
+    border-color: var(--color-cyan);
+}
+
+.auth-back-btn:hover .material-symbols-outlined {
+    transform: translateX(-3px);
+}
+
+.auth-back-btn:focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 2px;
+}
+
+/* Small phones: arrow only, so it never overlaps the card */
+@media (max-width: 479px) {
+    .auth-back-btn {
+        top: 10px;
+        left: 10px;
+        padding: 8px;
+    }
+
+    .auth-back-text {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .auth-back-btn,
+    .auth-back-btn .material-symbols-outlined {
+        transition: none;
+    }
+}
+
+
+/* ==========================================================================
+   PHONE LAYOUT (< 480px)
+   Why it was too long: both forms sit side by side inside .forms-wrapper, so
+   the card was as tall as the SIGN UP form even while SIGN IN was showing,
+   and a leftover min-height: 600px plus the 64px header margin added more.
+   Now the form that is not showing collapses to zero height, so the card is
+   exactly as tall as the form you are looking at.
+   Keep this block last.
+   ========================================================================== */
+@media (max-width: 479px) {
+
+    /* No header on this page: drop the 64px gap, leave room for the back button */
+    .hero-container {
+        margin-top: 0;
+        padding: 56px 12px 24px;
+        min-height: 100dvh;
+    }
+
+    .auth-container {
+        min-height: 0;
+        margin: 0 auto;
+        border-radius: var(--border-radius-xl);
+        box-shadow: var(--box-shadow-modal);
+    }
+
+    .forms-wrapper {
+        align-items: flex-start;
+    }
+
+    /* The form that is not showing takes no height (and no tab stops) */
+    .auth-container:not(.active) .register-container,
+    .auth-container.active .login-container {
+        max-height: 0;
+        overflow: hidden;
+        visibility: hidden;
+        transition: visibility 0s linear 0.6s;
+    }
+
+    /* Tighter headings, logo and spacing */
+    .form-container h2,
+    .register-container h2 {
+        margin-top: 18px;
+        margin-bottom: 4px;
+    }
+
+    .plantellect-logo {
+        height: 56px;
+    }
+
+    .login-container .auth-form,
+    .register-container .auth-form {
+        padding: 4px 16px 20px;
+        gap: 8px;
+    }
+
+    .container-row {
+        gap: 6px;
+    }
+
+    .remember-group {
+        margin-top: 2px;
+    }
+
+    .login-btn,
+    .signup-btn,
+    .register-container .signup-btn {
+        margin-top: 6px;
+        padding: 12px;
+    }
+
+    .form-footer {
+        margin-top: 8px;
+    }
+
+    .guest-prompt {
+        margin-top: 4px;
+    }
+
+    /* Sign up: first and last name share a row; icons are hidden to give the
+       fields room, so the labels start at the left edge */
+    .register-container .container-input-group:first-child .container-row {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .register-container .input-icon {
+        display: none;
+    }
+
+    .register-container .input-group input:not([type="checkbox"]) {
+        padding: 18px 12px 6px 12px;
+    }
+
+    .register-container .input-group label:not(.checkbox-label) {
+        left: 12px;
+        max-width: calc(100% - 28px);
+    }
+
+    .register-container .password-wrapper label:not(.checkbox-label) {
+        max-width: calc(100% - 62px);
+    }
+
+    /* Requirement lists run in a row instead of a tall stack */
+    .auth-requirements {
+        padding: 6px 8px;
+        margin-bottom: 2px;
+    }
+
+    .auth-requirements ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0 14px;
+        margin: 0;
+        padding-left: 0;
+    }
+
+    .auth-requirements li {
+        margin: 1px 0;
+    }
+
+    .terms-section {
+        margin-top: 4px;
+    }
+
+    .certificate-preview-thumb,
+    .certificate-preview-icon {
+        width: 56px;
+        height: 56px;
+    }
+}
+
+
+/* ==========================================================================
+   SIGN UP: PASSWORD + CONFIRM PASSWORD LABELS WERE CUT OFF ("CONFIRM...")
+   The two password fields shared one row, so each was only ~160px wide and the
+   label had to reserve room for the lock icon and the eye icon, leaving ~68px
+   for the text. They now sit one under the other at full width, so the whole
+   label shows. Keep this block last.
+   ========================================================================== */
+.register-container .container-input-group:nth-child(2) .container-row + .container-row {
+    grid-template-columns: 1fr;
+}
+
+/* Never clip these two labels with "..." */
+.register-container .password-wrapper label:not(.checkbox-label) {
+    max-width: calc(100% - 92px);
+    text-overflow: clip;
+}
+
+/* The same fix at the wider breakpoints, where the labels also keep their
+   letter-spacing and size so nothing shrinks */
+@media (min-width: 480px) {
+    .register-container .password-wrapper label:not(.checkbox-label) {
+        font-size: 12px;
+        letter-spacing: 0.8px;
+    }
+}
+
+
+/* ==========================================================================
+   WIDER SIGN IN / SIGN UP BOX (tablet and desktop)
+   The card was capped at 900px and each form at 450px, which squeezed the
+   fields together. Keep this block last.
+   ========================================================================== */
+@media (min-width: 768px) {
+    .auth-container {
+        max-width: 1100px;
+    }
+
+    /* Forms use the whole half of the card instead of stopping at 450px */
+    .auth-form {
+        max-width: none;
+    }
+
+    .login-container .auth-form,
+    .register-container .auth-form {
+        padding-left: clamp(32px, 5vw, 64px);
+        padding-right: clamp(32px, 5vw, 64px);
+    }
+
+    /* More air between neighbouring fields */
+    .container-row {
+        column-gap: 18px;
+        row-gap: 10px;
+    }
+
+    .auth-form {
+        gap: 12px;
+    }
+}
+
+/* Wide enough for password and confirm password to sit side by side again */
+@media (min-width: 1200px) {
+    .register-container .container-input-group:nth-child(2) .container-row + .container-row {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+
+/* ==========================================================================
+   BACK BUTTON LOCATION
+   It used to float in the page corner (pushed down by the 64px header margin
+   this page does not have), far from the card. Now it sits in the page flow
+   directly above the card, lined up with the card's left edge.
+   Keep this block last.
+   ========================================================================== */
+.hero-container {
+    margin-top: 0;
+    padding-top: 24px;
+}
+
+.auth-back-btn {
+    position: relative;
+    top: auto;
+    left: auto;
+    align-self: flex-start;
+    flex: 0 0 auto;
+    /* line up with the card: it is centred and at most 1100px wide */
+    margin: 0 0 14px max(0px, calc((100% - 1100px) / 2));
+}
+
+@media (max-width: 479px) {
+    .hero-container {
+        padding-top: 16px;
+    }
+
+    .auth-back-btn {
+        top: auto;
+        left: auto;
+        margin: 0 0 12px 0;
+    }
+}

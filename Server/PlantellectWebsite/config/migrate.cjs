@@ -519,6 +519,74 @@ async function migrateApprovalModeSetup(conn) {
 }
 
 /**
+ * admin_settings permission for superadmin and admin roles.
+ *
+ * Allows access to centralized admin settings (ML model, approval modes, quotas).
+ * Added in M31.
+ */
+async function migrateAdminSettingsPermission(conn) {
+    // First, ensure the permission exists
+    const [permRows] = await conn.query(
+        `SELECT permissionId FROM permissions WHERE permissionName = 'admin_settings'`
+    );
+    let permissionId;
+    if (permRows.length === 0) {
+        // Find the next permission ID
+        const [maxPerm] = await conn.query(
+            `SELECT MAX(CAST(SUBSTRING_INDEX(permissionId, '_', -1) AS UNSIGNED)) AS maxId FROM permissions`
+        );
+        const nextId = (maxPerm[0]?.maxId || 0) + 1;
+        permissionId = `perm_${String(nextId).padStart(6, '0')}`;
+        await conn.query(
+            `INSERT INTO permissions (permissionId, permissionName, description) VALUES (?, ?, ?)`,
+            [permissionId, 'admin_settings', 'Manage centralized admin settings (ML model, approval modes, quotas)']
+        );
+        applied.push(`created admin_settings permission (${permissionId})`);
+    } else {
+        permissionId = permRows[0].permissionId;
+        skipped.push('admin_settings permission already exists');
+    }
+
+    // Grant to superadmin (role_000001)
+    const [saRows] = await conn.query(
+        `SELECT 1 FROM role_permissions WHERE roleId = 'role_000001' AND permissionId = ?`,
+        [permissionId]
+    );
+    if (saRows.length === 0) {
+        await conn.query(
+            `INSERT IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)`,
+            ['role_000001', permissionId]
+        );
+        applied.push('granted admin_settings to superadmin');
+    } else {
+        skipped.push('admin_settings already granted to superadmin');
+    }
+
+    // Grant to admin (role_000002)
+    const [adminRows] = await conn.query(
+        `SELECT 1 FROM role_permissions WHERE roleId = 'role_000002' AND permissionId = ?`,
+        [permissionId]
+    );
+    if (adminRows.length === 0) {
+        await conn.query(
+            `INSERT IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)`,
+            ['role_000002', permissionId]
+        );
+        applied.push('granted admin_settings to admin');
+    } else {
+        skipped.push('admin_settings already granted to admin');
+    }
+
+    // Bump permissions_version so live sessions pick it up
+    if (saRows.length === 0 || adminRows.length === 0) {
+        await conn.query(
+            "UPDATE rbac_meta SET metaValue = metaValue + 1 WHERE metaKey = 'permissions_version'"
+        );
+        applied.push('bumped permissions_version');
+    }
+}
+
+/**
  * view_plants for role_000004 (the plain `user` role), plus the version bump.
  *
  * The permission is declared at config/seed.cjs and granted to botanists, but
@@ -773,6 +841,7 @@ const STEPS = [
     ['rbac_meta discovery_auto_dispatch', migrateDiscoveryAutoDispatchFlag],
     ['system reviewer + approval_auto_* switches', migrateApprovalModeSetup],
     ['id_counters match MAX(id) + 1', repairIdCounters],
+    ['admin_settings permission', migrateAdminSettingsPermission],
     ['view_plants for role_000004', migrateUserViewPlants],
     ['system_settings table', migrateSystemSettingsTable],
     ['role_limits table', migrateRoleLimitsTable],

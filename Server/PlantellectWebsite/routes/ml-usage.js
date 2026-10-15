@@ -28,6 +28,8 @@ const settings = require('../config/settings');
 
 const router = express.Router();
 
+const NON_SPECIES = ['non_plant', 'other_plant'];
+
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function monthKey(date) {
@@ -171,7 +173,7 @@ router.get('/top', requirePermission('view_logs'), async (req, res) => {
         const pipeline = [
             { $match: { createdAt: { $gte: range.start, $lt: range.end } } },
             { $unwind: '$predictions' },
-            ...SPECIES_GROUP(null),
+            ...SPECIES_GROUP({ 'predictions.kind': { $nin: NON_SPECIES } }),
             { $limit: limit }
         ];
         const results = await Mlscan.aggregate(pipeline);
@@ -239,6 +241,7 @@ router.get('/gaps', requirePermission('view_logs'), async (req, res) => {
             { $unwind: '$predictions' },
             ...SPECIES_GROUP({
                 'predictions.plantId': null,
+                'predictions.kind': { $nin: NON_SPECIES },
                 'predictions.scientificName': { $nin: handledSpecies }
             }),
             { $sort: GAPS_SORT },

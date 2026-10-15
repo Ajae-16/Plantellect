@@ -33,6 +33,11 @@
 
     <div class="library-container">
 
+        <section class="library-hero">
+            <h1>Plant Library</h1>
+            <p>Browse and search the plants our community has added.</p>
+        </section>
+
         <!-- Centered search bar with recent searches (styles live in library.css) -->
         <div class="library-search-container">
             <div class="search-input-wrapper">
@@ -51,16 +56,18 @@
         </div>
 
         <div class="main-workspace">
-        <!-- Cards are rendered by library-script.js from GET /api/plants -->
-        <main class="plant-grid" id="plantGrid">
-            <p class="library-loading">Loading plants…</p>
-        </main>
-    </div>
+            <!-- Cards are rendered by library-script.js from GET /api/plants -->
+            <main class="plant-grid" id="plantGrid">
+                <p class="library-loading">Loading plants…</p>
+            </main>
+        </div>
 
-    <div class="library-pagination" id="libraryPagination" hidden>
-        <span class="library-pagination-info" id="libraryPaginationInfo"></span>
-        <div class="library-pagination-controls" id="libraryPaginationControls"></div>
-    </div>
+        <div class="library-pagination" id="libraryPagination" hidden>
+            <span class="library-pagination-info" id="libraryPaginationInfo"></span>
+            <div class="library-pagination-controls" id="libraryPaginationControls"></div>
+        </div>
+
+    </div><!-- /.library-container -->
 
     <div class="sidebar-scrim"></div>
     <!-- Same sidebar as the other pages, at body level. Filled in by sidebar.js according to the signed-in role -->
