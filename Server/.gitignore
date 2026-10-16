@@ -7,4 +7,3 @@ ml/model
 *.tflite
 *.zip
 Guide
-config/migrate.cjs
