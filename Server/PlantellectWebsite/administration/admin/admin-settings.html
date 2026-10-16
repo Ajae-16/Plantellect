@@ -9,45 +9,12 @@
 
     <link rel="stylesheet" href="/css/admin/admin-sidebar.css">
     <link rel="stylesheet" href="/css/admin/admin-style.css">
+    <link rel="stylesheet" href="/css/admin/admin-topbar.css">
     <link rel="stylesheet" href="/css/admin/admin-plants.css">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="/css/admin/admin-theme.css">
 
     <style>
-        .settings-topbar {
-            position: sticky;
-            top: 0;
-            z-index: 20;
-            display: flex;
-            gap: 6px;
-            overflow-x: auto;
-            padding: 10px 0;
-            margin-bottom: 20px;
-            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
-            backdrop-filter: blur(8px);
-        }
-        .settings-tab {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            border-radius: 999px;
-            border: 1px solid transparent;
-            color: inherit;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 600;
-            white-space: nowrap;
-            opacity: 0.75;
-            transition: background 0.2s, opacity 0.2s;
-        }
-        .settings-tab:hover { opacity: 1; background: rgba(128, 128, 128, 0.12); }
-        .settings-tab.active {
-            opacity: 1;
-            background: rgba(76, 175, 80, 0.15);
-            border-color: #4CAF50;
-        }
-
         .collapse-summary {
             display: flex;
             align-items: center;
@@ -260,11 +227,6 @@
             color: #c62828;
         }
         .admin-notice[hidden] { display: none; }
-
-        #modelSection, #confidenceSection, #approvalModesSection,
-        #discoveriesSection, #mlRequestSection, #spamQuotasSection {
-            scroll-margin-top: 70px;
-        }
     </style>
 </head>
 <body>
@@ -333,13 +295,15 @@
             <h1>Admin Settings</h1>
             <p class="admin-subtitle">Manage ML models, approval modes, discovery caps, and spam quotas</p>
 
-            <nav class="settings-topbar" id="settingsTopbar" aria-label="Settings sections">
-                <a href="#modelSection" class="settings-tab active" data-target="modelSection">ML Model</a>
-                <a href="#confidenceSection" class="settings-tab" data-target="confidenceSection">Confidence</a>
-                <a href="#approvalModesSection" class="settings-tab" data-target="approvalModesSection">Approval Modes</a>
-                <a href="#discoveriesSection" class="settings-tab" data-target="discoveriesSection">Discoveries</a>
-                <a href="#mlRequestSection" class="settings-tab" data-target="mlRequestSection">ML Request</a>
-                <a href="#spamQuotasSection" class="settings-tab" data-target="spamQuotasSection">Spam Quotas</a>
+            <!-- Shared topbar. The old settings-topbar / settings-tab classes stay as extra hooks
+                 so admin-settings.js (addTopbarTab) can still find the bar and its tabs. -->
+            <nav class="admin-topbar settings-topbar" id="settingsTopbar" aria-label="Settings sections">
+                <a href="#modelSection" class="admin-tab settings-tab active" data-target="modelSection">ML Model</a>
+                <a href="#confidenceSection" class="admin-tab settings-tab" data-target="confidenceSection">Confidence</a>
+                <a href="#approvalModesSection" class="admin-tab settings-tab" data-target="approvalModesSection">Approval Modes</a>
+                <a href="#discoveriesSection" class="admin-tab settings-tab" data-target="discoveriesSection">Discoveries</a>
+                <a href="#mlRequestSection" class="admin-tab settings-tab" data-target="mlRequestSection">ML Request</a>
+                <a href="#spamQuotasSection" class="admin-tab settings-tab" data-target="spamQuotasSection">Spam Quotas</a>
             </nav>
 
             <div class="plants-container">
@@ -440,10 +404,12 @@
     <script src="/javascript/auth.js"></script>
     <script src="/javascript/home.js"></script>
 
+    <!-- Shared topbar: scroll tracking + tab clicks (replaces initSettingsTopbar) -->
+    <script src="/javascript/admin/admin-topbar.js"></script>
+
     <script type="module">
-        import { initSettingsPage, addTopbarTab, initSettingsTopbar, initAdminUser } from '/javascript/admin/admin-settings.js';
+        import { initSettingsPage, addTopbarTab, initAdminUser } from '/javascript/admin/admin-settings.js';
         initAdminUser();
-        initSettingsTopbar();
         initSettingsPage();
         addTopbarTab();
     </script>

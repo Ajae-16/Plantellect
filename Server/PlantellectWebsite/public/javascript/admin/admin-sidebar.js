@@ -9,7 +9,7 @@
      - Dark / light mode (a separate "Appearance" switch is added
        at the bottom of the sidebar, apart from the nav links)
      - Desktop collapsible icon rail (manual toggle only)
-     - Desktop sidebar height (header edge to bottom of screen)
+     - Desktop sidebar offset under the header (CSS custom properties)
      - Mobile off-canvas drawer
      - Sidebar notification badges (window.loadNavBadges)
    ========================================================= */
@@ -261,6 +261,18 @@
             if (e.key === 'Escape') closeDrawer();
         }
 
+        // Growing past the breakpoint with the drawer open: reset it
+        function onBreakpoint() { if (desktop.matches) closeDrawer(); }
+        if (desktop.addEventListener) desktop.addEventListener('change', onBreakpoint);
+        else if (desktop.addListener) desktop.addListener(onBreakpoint);
+
+        // Watch the header itself: its height changes with the breakpoint,
+        // the wrapping user line and web-font loading.
+        var header = document.querySelector('.admin-header');
+        if (header && window.ResizeObserver) {
+            new ResizeObserver(queueSizeSidebar).observe(header);
+        }
+
         sizeSidebar();
     }
 
@@ -271,26 +283,30 @@
     }
 
     /* ---------------------------------------------------------
-       5b. Desktop sidebar height
-           Runs from the header's bottom edge (or the top of the screen
-           once the header has scrolled away) down to the bottom of the
-           screen, so Sign out and the Appearance switch always sit at
-           the very bottom with no gap.
+       5b. Desktop sidebar position
+
+           The desktop sidebar is position: fixed with bottom: 0, so it always
+           reaches the bottom edge of the viewport. Only its top edge needs
+           tracking. Keeps two CSS custom properties current
+           (admin-sidebar.css reads them):
+             --admin-header-h     the header's real height
+             --admin-sidebar-top  the bottom edge of the header while it is on
+                                  screen, 0 once it has scrolled away, so the
+                                  sidebar sits directly under the header and
+                                  then slides up to the top of the window
+
+           No inline height is ever set on the sidebar.
        --------------------------------------------------------- */
     var sizeQueued = false;
 
     function sizeSidebar() {
         sizeQueued = false;
-        var sidebar = document.getElementById('adminSidebar');
         var header = document.querySelector('.admin-header');
-        if (!sidebar) return;
+        if (!header) return;
 
-        if (!desktop.matches) {
-            sidebar.style.height = '';      // mobile drawer uses its own CSS
-            return;
-        }
-        var top = header ? Math.max(0, header.getBoundingClientRect().bottom) : 0;
-        sidebar.style.height = (window.innerHeight - top) + 'px';
+        var rect = header.getBoundingClientRect();
+        root.style.setProperty('--admin-header-h', header.offsetHeight + 'px');
+        root.style.setProperty('--admin-sidebar-top', Math.max(0, rect.bottom) + 'px');
     }
 
     function queueSizeSidebar() {

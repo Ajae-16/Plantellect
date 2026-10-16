@@ -10,59 +10,12 @@
 
     <link rel="stylesheet" href="/css/admin/admin-sidebar.css">
     <link rel="stylesheet" href="/css/admin/admin-style.css">
+    <link rel="stylesheet" href="/css/admin/admin-topbar.css">
     <link rel="stylesheet" href="/css/admin/admin-plants.css">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="/css/admin/admin-theme.css">
 
     <style>
-        /* ---------- Topbar ---------- */
-        .plants-topbar {
-            position: sticky;
-            top: 0;
-            z-index: 20;
-            display: flex;
-            gap: 6px;
-            overflow-x: auto;
-            padding: 10px 0;
-            margin-bottom: 20px;
-            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
-            backdrop-filter: blur(8px);
-        }
-        .plants-tab {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            border-radius: 999px;
-            border: 1px solid transparent;
-            color: inherit;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 600;
-            white-space: nowrap;
-            opacity: 0.75;
-            transition: background 0.2s, opacity 0.2s;
-        }
-        .plants-tab:hover { opacity: 1; background: rgba(128, 128, 128, 0.12); }
-        .plants-tab.active {
-            opacity: 1;
-            background: rgba(76, 175, 80, 0.15);
-            border-color: #4CAF50;
-        }
-        .plants-tab-badge {
-            min-width: 20px;
-            padding: 1px 6px;
-            border-radius: 999px;
-            background: #e57373;
-            color: #fff;
-            font-size: 11px;
-            text-align: center;
-        }
-        /* Keeps a section's heading from hiding under the sticky bar */
-        #pendingRequestsSection,
-        #inventorySection,
-        #discoveryQueue { scroll-margin-top: 70px; }
-
         /* ---------- Collapsible sections ---------- */
         .collapse-summary {
             display: flex;
@@ -284,15 +237,15 @@
             <p class="admin-subtitle">Review upload requests and manage the plant inventory</p>
 
             <!-- Topbar: tracks the section you are reading; each tab opens (if collapsed) and scrolls to its section -->
-            <nav class="plants-topbar" id="plantsTopbar" aria-label="Plants sections">
-                <a href="#pendingRequestsSection" class="plants-tab active" data-target="pendingRequestsSection">
+            <nav class="admin-topbar" id="plantsTopbar" aria-label="Plants sections">
+                <a href="#pendingRequestsSection" class="admin-tab active" data-target="pendingRequestsSection">
                     Request Pending
-                    <span class="plants-tab-badge" id="plantsTabBadgePending" hidden>0</span>
+                    <span class="admin-tab-badge" id="plantsTabBadgePending" hidden>0</span>
                 </a>
-                <a href="#inventorySection" class="plants-tab" data-target="inventorySection">Inventory</a>
-                <a href="#discoveryQueue" class="plants-tab" data-target="discoveryQueue">
+                <a href="#inventorySection" class="admin-tab" data-target="inventorySection">Inventory</a>
+                <a href="#discoveryQueue" class="admin-tab" data-target="discoveryQueue">
                     Discoveries
-                    <span class="plants-tab-badge" id="plantsTabBadgeDiscoveries" hidden>0</span>
+                    <span class="admin-tab-badge" id="plantsTabBadgeDiscoveries" hidden>0</span>
                 </a>
             </nav>
 
@@ -917,154 +870,9 @@
          queue rendering the other's half-truths. -->
     <script src="/javascript/admin/admin-discoveries.js"></script>
 
-    <!-- Plants topbar: highlights the section you are reading while you scroll
-         (same behaviour as the Settings page). A sliding reference line lets even
-         collapsed, tiny sections get their turn. Clicking a tab opens the section
-         if it is collapsed, then scrolls to it. -->
-    <script>
-        (function () {
-            const topbar = document.getElementById('plantsTopbar');
-            if (!topbar) return;
-
-            const tabs = Array.from(topbar.querySelectorAll('.plants-tab'));
-            const sections = tabs
-                .map(function (t) { return document.getElementById(t.dataset.target); })
-                .filter(Boolean);
-            if (sections.length === 0) return;
-
-            let currentId = null;
-            let manualTarget = null;   // set by a tab click so scroll tracking does not fight the smooth scroll
-            let ticking = false;
-
-            // The element that actually scrolls: a scrollable ancestor if there is one, otherwise the page
-            function getScroller() {
-                let node = topbar.parentElement;
-                while (node && node !== document.body) {
-                    const overflowY = getComputedStyle(node).overflowY;
-                    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
-                        return node;
-                    }
-                    node = node.parentElement;
-                }
-                return document.scrollingElement || document.documentElement;
-            }
-
-            function setActive(targetId) {
-                tabs.forEach(function (t) {
-                    const on = t.dataset.target === targetId;
-                    t.classList.toggle('active', on);
-                    if (on) t.setAttribute('aria-current', 'true');
-                    else t.removeAttribute('aria-current');
-                });
-
-                if (targetId === currentId) return;
-                currentId = targetId;
-
-                // Keep the active tab visible when the topbar itself scrolls sideways (phones)
-                const active = tabs.find(function (t) { return t.dataset.target === targetId; });
-                if (active && topbar.scrollWidth > topbar.clientWidth) {
-                    topbar.scrollTo({
-                        left: active.offsetLeft - (topbar.clientWidth - active.offsetWidth) / 2,
-                        behavior: 'smooth'
-                    });
-                }
-            }
-
-            // Sliding reference line, so even tiny (collapsed) sections get their turn.
-            //   scrolled to the top    -> line sits just below the topbar
-            //   scrolled to the bottom -> line sits at the bottom edge of the viewport
-            //   in between             -> linear blend
-            // The active section is the last one whose top edge is above the line.
-            function updateFromScroll() {
-                ticking = false;
-                if (manualTarget) return;
-
-                const scroller = getScroller();
-                const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-                if (maxScroll <= 2) return; // nothing to scroll: keep whatever is highlighted (clicks still work)
-
-                const progress = Math.min(1, Math.max(0, scroller.scrollTop / maxScroll));
-                const topLine = topbar.getBoundingClientRect().bottom + 16;
-                const bottomLine = window.innerHeight - 4;
-                const line = topLine + progress * (bottomLine - topLine);
-
-                let current = sections[0].id;
-                for (const section of sections) {
-                    if (section.getBoundingClientRect().top <= line) current = section.id;
-                    else break;
-                }
-
-                setActive(current);
-            }
-
-            function onScroll() {
-                if (ticking) return;
-                ticking = true;
-                requestAnimationFrame(updateFromScroll);
-            }
-
-            function goTo(targetId, opts) {
-                const smooth = !opts || opts.smooth !== false;
-                const updateHash = !opts || opts.updateHash !== false;
-                const section = document.getElementById(targetId);
-                if (!section) return;
-
-                const details = section.querySelector('details.collapse');
-                if (details) details.open = true;
-
-                manualTarget = targetId;
-                setActive(targetId);
-                if (updateHash) history.replaceState(null, '', '#' + targetId);
-
-                requestAnimationFrame(function () {
-                    section.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
-                });
-            }
-
-            // Scroll tracking takes over again as soon as the person scrolls by hand
-            function releaseManual() {
-                if (manualTarget) {
-                    manualTarget = null;
-                    onScroll();
-                }
-            }
-            window.addEventListener('wheel', releaseManual, { passive: true });
-            window.addEventListener('touchmove', releaseManual, { passive: true });
-            window.addEventListener('keydown', function (e) {
-                if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) releaseManual();
-            });
-
-            topbar.addEventListener('click', function (e) {
-                const tab = e.target.closest('.plants-tab');
-                if (!tab) return;
-                e.preventDefault();
-                goTo(tab.dataset.target);
-            });
-
-            window.addEventListener('hashchange', function () {
-                const id = location.hash.slice(1);
-                if (tabs.some(function (t) { return t.dataset.target === id; })) goTo(id, { updateHash: false });
-            });
-
-            // capture:true catches scrolling of any element, so it works whether the page or a panel scrolls
-            document.addEventListener('scroll', onScroll, { passive: true, capture: true });
-            window.addEventListener('resize', onScroll);
-            // Opening or closing a section changes the page height, so re-check
-            document.querySelectorAll('details.collapse').forEach(function (d) {
-                d.addEventListener('toggle', onScroll);
-            });
-
-            // Opening the page with a #hash (e.g. /admin/plants#discoveryQueue) jumps to that section
-            window.addEventListener('load', function () {
-                const initial = location.hash.slice(1);
-                if (tabs.some(function (t) { return t.dataset.target === initial; })) {
-                    goTo(initial, { smooth: false, updateHash: false });
-                } else {
-                    updateFromScroll();
-                }
-            });
-        })();
-    </script>
+    <!-- Shared topbar: highlights the section you are reading while you scroll and
+         scrolls to a section when its tab is clicked (opening it first if collapsed) -->
+    <script src="/javascript/admin/admin-topbar.js"></script>
 
 </body>
 </html>

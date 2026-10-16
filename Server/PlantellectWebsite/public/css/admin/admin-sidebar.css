@@ -1,32 +1,55 @@
 @import '../core/variables.css';
 
-/* =========================================
-   SIDEBAR (mobile: off-canvas drawer)
-   A fixed-height flex column: header, toggle, nav (scrolls on its own),
-   then the Appearance switch. Sign out is pinned to the bottom of the nav,
-   directly above the Appearance switch.
-   ========================================= */
+/* =========================================================
+   admin-sidebar.css  (single owner of sidebar STRUCTURE)
+
+   Layout model: the sidebar is a fixed-height flex column:
+     1. header / toggle   (never shrinks)
+     2. nav               (takes the rest, scrolls on its own)
+     3. Appearance switch (never shrinks; added by admin-sidebar.js)
+
+   Height is bounded by the viewport, never by page content.
+   admin-theme.css must NOT redefine display/flex/overflow here.
+
+   Desktop: the sidebar is position: fixed. Its bottom is always the
+   viewport edge, so no page background can show underneath it. Its top
+   follows the visible part of the header.
+
+   Custom properties (set by admin-sidebar.js, with safe fallbacks):
+     --admin-header-h     real height of .admin-header in px
+     --admin-sidebar-top  where the desktop sidebar starts: the bottom edge
+                          of the header while it is on screen, 0 once it has
+                          scrolled away, in px
+   ========================================================= */
+
+/* ---------- Mobile: off-canvas drawer ---------- */
 
 .admin-sidebar {
     position: fixed;
     top: 0;
     left: 0;
-    height: 100vh;
-    width: 260px;
-    max-width: 80vw;
+    height: 100vh;               /* fallback */
+    height: 100dvh;
+    max-height: 100dvh;
+    width: min(260px, 80vw);
     background-color: var(--color-dark-forest-green);
     color: var(--color-white);
     z-index: var(--z-index-drawer);
-    transform: translateX(-100%);
-    transition: transform var(--transition-normal) ease;
-    overflow: hidden;
-    box-shadow: var(--box-shadow-modal);
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    box-shadow: var(--box-shadow-modal);
+    transform: translateX(-100%);
+    /* visibility keeps links in a closed drawer out of the tab order */
+    visibility: hidden;
+    transition: transform var(--transition-normal) ease,
+                visibility 0s linear var(--transition-normal);
 }
 
 .admin-sidebar.open {
     transform: translateX(0);
+    visibility: visible;
+    transition-delay: 0s;
 }
 
 .admin-sidebar-header {
@@ -59,6 +82,13 @@
     color: var(--color-bg-nav-light);
 }
 
+.admin-sidebar-close:focus-visible,
+.admin-sidebar-toggle:focus-visible,
+.admin-sidebar nav a:focus-visible {
+    outline: 2px solid var(--color-bg-nav-light);
+    outline-offset: -2px;
+}
+
 /* Collapse / expand toggle (desktop only, shown in the media query below) */
 .admin-sidebar-toggle {
     display: none;
@@ -76,17 +106,21 @@
     cursor: pointer;
 }
 
-/* The nav takes the remaining height and scrolls by itself if it overflows */
+/* The nav takes the remaining height and scrolls by itself.
+   flex-basis auto + shrink 1 + min-height 0 is what lets it shrink. */
 .admin-sidebar nav {
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 12px 0;
 }
 
-/* The Appearance switch (added by admin-sidebar.js) never shrinks */
+/* The Appearance switch (added by admin-sidebar.js) never shrinks.
+   Its look lives in admin-theme.css. */
 .admin-theme-switch {
     flex-shrink: 0;
 }
@@ -96,6 +130,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;              /* links never squash; the nav scrolls instead */
     gap: 10px;
     padding: 14px 22px;
     color: var(--color-timberwolf);
@@ -104,9 +139,23 @@
     font-weight: 500;
     letter-spacing: 0.3px;
     border-left: 3px solid transparent;
+    /* Background-only hover: no float or shadow, because the nav clips
+       overflow and a lifted link would be cut off. */
     transition: background-color var(--transition-fast),
                 color var(--transition-fast),
                 border-color var(--transition-fast);
+}
+
+.admin-sidebar nav a:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--color-white);
+}
+
+.admin-sidebar nav a.active {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--color-bg-nav-light);
+    border-left-color: var(--color-bg-nav-light);
+    font-weight: 700;
 }
 
 /* Nav icon (Material Symbols, or an emoji in a .nav-icon span) */
@@ -142,8 +191,23 @@
     flex-shrink: 0;
 }
 
-/* Small red dot on the hamburger button when any nav badge is active,
-   so the notification is visible even while the drawer is closed. */
+/* Sign out: margin-top:auto pushes it to the bottom of the nav when there is
+   free space (directly above the Appearance switch). When the nav is too
+   short and scrolls, the auto margin collapses to 0 and it stays reachable
+   at the end of the scrolling list. */
+.admin-sidebar nav a#adminLogoutLink {
+    margin-top: auto;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--color-error-hover);
+}
+
+.admin-sidebar nav a#adminLogoutLink:hover {
+    background-color: rgba(217, 83, 79, 0.12);
+    color: var(--color-error-hover);
+}
+
+/* Small red dot on the hamburger when any nav badge is active, so the
+   notification is visible while the drawer is closed. */
 .admin-hamburger {
     position: relative;
 }
@@ -160,30 +224,7 @@
     border: 2px solid var(--color-forest-green);
 }
 
-.admin-sidebar nav a:hover {
-    background-color: rgba(255, 255, 255, 0.06);
-    color: var(--color-white);
-}
-
-.admin-sidebar nav a.active {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: var(--color-bg-nav-light);
-    border-left-color: var(--color-bg-nav-light);
-    font-weight: 700;
-}
-
-/* Sign out: margin-top:auto pins it to the bottom of the nav, so it stays put
-   no matter how long the page is or how far you have scrolled. */
-.admin-sidebar nav a#adminLogoutLink {
-    margin-top: auto;
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    color: var(--color-error-hover);
-}
-
-.admin-sidebar nav a#adminLogoutLink:hover {
-    background-color: rgba(217, 83, 79, 0.12);
-    color: var(--color-error-hover);
-}
+/* ---------- Scrim (backdrop behind the mobile drawer) ---------- */
 
 .admin-sidebar-scrim {
     display: none;
@@ -200,85 +241,45 @@
     opacity: 1;
 }
 
-/* =========================================
-   HOVER FLOAT (anything clickable)
-   Add the .is-clickable class to any other
-   clickable card / element to get the effect.
-   ========================================= */
-
-.admin-sidebar nav a,
-.admin-hamburger,
-.admin-sidebar-toggle,
-.btn-approve,
-.btn-deny,
-.role-box,
-.btn-view,
-.btn-expand,
-.page-btn,
-.is-clickable {
-    transition: transform var(--transition-fast) ease,
-                box-shadow var(--transition-fast) ease,
-                background-color var(--transition-fast),
-                color var(--transition-fast),
-                border-color var(--transition-fast);
-}
-
-.admin-sidebar nav a:hover,
-.admin-hamburger:hover,
-.admin-sidebar-toggle:hover,
-.btn-approve:not(:disabled):hover,
-.btn-deny:not(:disabled):hover,
-.role-box:hover,
-.btn-view:hover,
-.btn-expand:hover,
-.page-btn:not(:disabled):hover,
-.is-clickable:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25);
-}
-
-.admin-sidebar nav a:active,
-.btn-approve:active,
-.btn-deny:active,
-.is-clickable:active {
-    transform: translateY(-1px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .admin-sidebar nav a:hover,
-    .admin-hamburger:hover,
-    .admin-sidebar-toggle:hover,
-    .btn-approve:hover,
-    .btn-deny:hover,
-    .role-box:hover,
-    .btn-view:hover,
-    .btn-expand:hover,
-    .page-btn:hover,
-    .is-clickable:hover {
-        transform: none;
-    }
-}
-
-/* =========================================
-   SIDEBAR (desktop: sticky column + collapsible icon rail)
-   The sidebar sticks to the very top of the screen once the header has
-   scrolled away. Its height is set by admin-sidebar.js (header bottom
-   edge to the bottom of the screen); the calc() is only a fallback.
-   ========================================= */
+/* ---------- Desktop: fixed column + collapsible icon rail ---------- */
 
 @media (min-width: 768px) {
     .admin-sidebar {
-        position: sticky;
-        top: 0;
-        align-self: flex-start;
-        height: calc(100vh - 76px);
+        position: fixed;
+        /* Top follows the visible part of the header (admin-sidebar.js keeps
+           --admin-sidebar-top current). Bottom is always the viewport edge,
+           so there is never a gap under the sidebar, whatever sits below
+           .admin-layout in the page. */
+        top: var(--admin-sidebar-top, var(--admin-header-h, 76px));
+        bottom: 0;
+        left: 0;
+        height: auto;
+        max-height: none;
         width: 240px;
         max-width: none;
         transform: none;
+        visibility: visible;
         box-shadow: none;
-        flex-shrink: 0;
         overflow-x: hidden;
         transition: width var(--transition-normal) ease;
+    }
+
+    /* A fixed element leaves the flow, so this empty flex item reserves the
+       sidebar's width and keeps the page content offset beside it.
+       Requires .admin-layout to be a flex row. */
+    .admin-layout::before {
+        content: '';
+        display: block;
+        flex: 0 0 240px;
+        width: 240px;
+        transition: flex-basis var(--transition-normal) ease,
+                    width var(--transition-normal) ease;
+        pointer-events: none;
+    }
+
+    html.sidebar-collapsed .admin-layout::before {
+        flex-basis: 68px;
+        width: 68px;
     }
 
     .admin-sidebar-header,
@@ -288,10 +289,6 @@
 
     .admin-sidebar-toggle {
         display: flex;
-    }
-
-    .admin-sidebar nav {
-        padding-top: 12px;
     }
 
     .admin-sidebar-scrim {
@@ -331,5 +328,13 @@
         height: 16px;
         padding: 0 4px;
         font-size: 10px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-sidebar,
+    .admin-sidebar-scrim,
+    .admin-sidebar nav a {
+        transition: none;
     }
 }

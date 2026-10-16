@@ -123,6 +123,9 @@ html[data-theme="dark"] {
     --dk-text-muted: rgba(234, 230, 213, 0.68);
     --dk-accent:     var(--color-library-green);    /* #c6e78f */
     --dk-header-row: var(--color-dark-forest-green);/* table headers */
+
+    /* Canvas behind body: no white band on overscroll or sideways shift */
+    background-color: var(--dk-bg);
 }
 
 /* ---------- Page ---------- */

@@ -1,0 +1,81 @@
+/* =========================================================
+   admin-topbar.css
+   The sticky tab bar under the page title. Shared by the
+   Dashboard, Users, Plants and Settings pages.
+
+   Markup:
+     <nav class="admin-topbar" id="somethingTopbar" aria-label="...">
+         <a href="#sectionId" class="admin-tab active" data-target="sectionId">
+             Label
+             <span class="admin-tab-badge" id="..." hidden>0</span>
+         </a>
+         <a href="/other/page" class="admin-tab">Plain link</a>
+     </nav>
+
+   Behaviour (scroll tracking, click to scroll) lives in admin-topbar.js.
+   Load this after admin-style.css.
+   ========================================================= */
+
+.admin-topbar {
+    position: sticky;
+    /* The header is now pinned too, so the bar sticks directly beneath it.
+       --admin-header-h is kept current by admin-sidebar.js. */
+    top: var(--admin-header-h, 0px);
+    z-index: 20;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 10px 0;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+    backdrop-filter: blur(8px);
+}
+
+.admin-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    color: inherit;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0.75;
+    transition: background 0.2s, opacity 0.2s;
+}
+
+.admin-tab:hover {
+    opacity: 1;
+    background: rgba(128, 128, 128, 0.12);
+}
+
+.admin-tab.active {
+    opacity: 1;
+    background: rgba(76, 175, 80, 0.15);
+    border-color: #4CAF50;
+}
+
+.admin-tab:focus-visible {
+    outline: 2px solid #4CAF50;
+    outline-offset: 2px;
+}
+
+/* Pending-count pill inside a tab (the page's own JS fills it in) */
+.admin-tab-badge {
+    min-width: 20px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: #e57373;
+    color: #fff;
+    font-size: 11px;
+    text-align: center;
+}
+
+/* admin-topbar.js adds this class to every section a tab points at, so a
+   section's heading is not hidden under the pinned header + sticky bar. */
+.topbar-target {
+    scroll-margin-top: calc(var(--admin-header-h, 0px) + 70px);
+}

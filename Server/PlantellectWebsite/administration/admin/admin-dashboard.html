@@ -10,10 +10,11 @@
 
     <link rel="stylesheet" href="/css/admin/admin-sidebar.css">
     <link rel="stylesheet" href="/css/admin/admin-style.css">
+    <link rel="stylesheet" href="/css/admin/admin-topbar.css">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="/css/admin/admin-theme.css">
 
-    <!-- Dashboard layout: topbar, statistics, collapsible access, role pill -->
+    <!-- Dashboard layout: statistics, collapsible access, role pill (the topbar lives in admin-topbar.css) -->
     <style>
         .dashboard-title-row {
             display: flex;
@@ -33,54 +34,6 @@
             font-size: 13px;
             font-weight: 600;
         }
-
-        /* ---------- Topbar (same look as the Plants and Settings pages) ---------- */
-        .dashboard-topbar {
-            position: sticky;
-            top: 0;
-            z-index: 20;
-            display: flex;
-            gap: 6px;
-            overflow-x: auto;
-            padding: 10px 0;
-            margin-bottom: 20px;
-            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
-            backdrop-filter: blur(8px);
-        }
-        .dashboard-tab {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            border-radius: 999px;
-            border: 1px solid transparent;
-            color: inherit;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 600;
-            white-space: nowrap;
-            opacity: 0.75;
-            transition: background 0.2s, opacity 0.2s;
-        }
-        .dashboard-tab:hover { opacity: 1; background: rgba(128, 128, 128, 0.12); }
-        .dashboard-tab.active {
-            opacity: 1;
-            background: rgba(76, 175, 80, 0.15);
-            border-color: #4CAF50;
-        }
-        .dashboard-tab-badge {
-            min-width: 20px;
-            padding: 1px 6px;
-            border-radius: 999px;
-            background: #e57373;
-            color: #fff;
-            font-size: 11px;
-            text-align: center;
-        }
-        /* Keeps a section's heading from hiding under the sticky bar */
-        #statsSection,
-        #roleRequestsSection,
-        #accessCard { scroll-margin-top: 70px; }
 
         /* ---------- Top area: statistics (left) + access (right) ---------- */
         .dashboard-top {
@@ -145,16 +98,7 @@
 
         /* ============================================================
              SPECIES GAPS
-
-             Appended to a page that already carries document 1's taxonomy
-             count, so the styling is inline and additive: nothing existing
-             moved.
-
-             READ-ONLY on purpose. There is no Approve, no Record, no "add to
-             library" and no link to the library search on any row. The card
-             answers one question — "what should a botanist record next?" — and a
-             triage feed that also writes is a feed whose entries get approved by
-             clicking near them. Nothing in this project acts on it yet.
+             READ-ONLY on purpose: no Approve, no Record, no "add to library".
              ============================================================ */
         .gaps-card { margin-top: 26px; }
         .gap-filters { display: flex; gap: 10px; margin: 12px 0 0; }
@@ -172,6 +116,7 @@
         .gap-row {
             display: flex;
             align-items: center;
+            flex-wrap: wrap;          /* added: wrap instead of overflowing */
             gap: 12px;
             padding: 10px 12px;
             border: 1px solid rgba(128, 128, 128, 0.24);
@@ -189,22 +134,19 @@
         .gap-common { font-size: 13px; opacity: 0.7; }
         .gap-stats {
             display: flex;
+            flex-wrap: wrap;          /* added; white-space: nowrap removed */
             gap: 14px;
             font-size: 13px;
             text-align: right;
-            white-space: nowrap;
         }
         .gap-stat-value { font-weight: 700; font-variant-numeric: tabular-nums; }
         .gap-stat-label { font-size: 11px; opacity: 0.6; display: block; }
-        /* The widest signal first, so the column an admin reads is the one the
-           API ranks on. */
         .gap-stat-primary .gap-stat-value { color: var(--green-dark); }
         .gap-empty, .gap-loading, .gap-error {
             padding: 12px 0;
             font-size: 14px;
             opacity: 0.75;
         }
-        /* Shown when the endpoint could not produce a trustworthy answer. */
         .gap-error { opacity: 1; color: #b4553a; font-weight: 600; }
         .gap-error-note { display: block; font-weight: 400; opacity: 0.85; margin-top: 4px; }
 
@@ -338,13 +280,13 @@
             <p class="admin-subtitle">Plantellect administrative control panel</p>
 
             <!-- Topbar: tracks the section you are reading; each tab scrolls to its section (Access also expands) -->
-            <nav class="dashboard-topbar" id="dashboardTopbar" aria-label="Dashboard sections">
-                <a href="#statsSection" class="dashboard-tab active" data-target="statsSection">Overview</a>
-                <a href="#roleRequestsSection" class="dashboard-tab" data-target="roleRequestsSection">
+            <nav class="admin-topbar" id="dashboardTopbar" aria-label="Dashboard sections">
+                <a href="#statsSection" class="admin-tab active" data-target="statsSection">Overview</a>
+                <a href="#roleRequestsSection" class="admin-tab" data-target="roleRequestsSection">
                     Role Requests
-                    <span class="dashboard-tab-badge" id="dashTabBadgeRequests" hidden>0</span>
+                    <span class="admin-tab-badge" id="dashTabBadgeRequests" hidden>0</span>
                 </a>
-                <a href="#accessCard" class="dashboard-tab" data-target="accessCard">Access</a>
+                <a href="#accessCard" class="admin-tab" data-target="accessCard">Access</a>
             </nav>
 
             <!-- TOP AREA: statistics on the left, collapsible access on the right -->
@@ -411,17 +353,7 @@
                 </div>
             </section>
 
-            <!-- ============================================================
-                 SPECIES GAPS 
-
-                 A section, not a topbar tab: this page has two tabs and both of
-                 them are lists of things to DO, while this is a reading panel.
-
-                 GATED ON view_logs server-side. The endpoint decides that, not
-                 this markup: the card simply shows nothing when the fetch is
-                 refused, so the page never has to know whether the viewer may see
-                 scan data.
-                 ============================================================ -->
+            <!-- SPECIES GAPS: a reading panel, gated on view_logs server-side -->
             <section class="admin-section gaps-card" id="speciesGapsCard">
                 <h2>Species People Scan That Are Missing
                     <span class="section-count-badge" id="speciesGapsCount" hidden>0</span>
@@ -456,11 +388,11 @@
     <script src="/javascript/auth.js"></script>
     <script src="/javascript/home.js"></script>
 
+    <!-- Shared topbar: scroll tracking + tab clicks -->
+    <script src="/javascript/admin/admin-topbar.js"></script>
+
     <!-- Dashboard logic (sidebar, theme and badges live in admin-sidebar.js) -->
     <script>
-        // ---------------------------------------------------------
-        // Statistics: call setStat('users', 42) when you have real data
-        // ---------------------------------------------------------
         function setStat(name, value) {
             const el = document.querySelector('[data-stat="' + name + '"]');
             if (!el) return;
@@ -469,9 +401,6 @@
             if (hint) hint.hidden = true;
         }
 
-        // ---------------------------------------------------------
-        // Collapsible access card
-        // ---------------------------------------------------------
         const accessCard = document.getElementById('accessCard');
         const accessToggle = document.getElementById('accessToggle');
         const accessBody = document.getElementById('accessBody');
@@ -486,164 +415,13 @@
             setAccessOpen(!accessCard.classList.contains('open'));
         });
 
-        // ---------------------------------------------------------
-        // Topbar: highlights the section you are reading while you scroll
-        // (same behaviour as the Settings page). A sliding reference line
-        // lets even short sections get their turn. Clicking a tab scrolls to
-        // it; the Access tab also expands the card.
-        // ---------------------------------------------------------
-        (function () {
-            const topbar = document.getElementById('dashboardTopbar');
-            if (!topbar) return;
+        document.getElementById('dashboardTopbar').addEventListener('admintopbar:navigate', function (e) {
+            if (e.detail.target === 'accessCard') setAccessOpen(true);
+        });
+        accessToggle.addEventListener('click', function () {
+            if (window.AdminTopbar) AdminTopbar.refresh();
+        });
 
-            const tabs = Array.from(topbar.querySelectorAll('.dashboard-tab'));
-            const sections = tabs
-                .map(function (t) { return document.getElementById(t.dataset.target); })
-                .filter(Boolean);
-            if (sections.length === 0) return;
-
-            let currentId = null;
-            let manualTarget = null;   // set by a tab click so scroll tracking does not fight the smooth scroll
-            let ticking = false;
-
-            // The element that actually scrolls: a scrollable ancestor if there is one, otherwise the page
-            function getScroller() {
-                let node = topbar.parentElement;
-                while (node && node !== document.body) {
-                    const overflowY = getComputedStyle(node).overflowY;
-                    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
-                        return node;
-                    }
-                    node = node.parentElement;
-                }
-                return document.scrollingElement || document.documentElement;
-            }
-
-            function setActive(targetId) {
-                tabs.forEach(function (t) {
-                    const on = t.dataset.target === targetId;
-                    t.classList.toggle('active', on);
-                    if (on) t.setAttribute('aria-current', 'true');
-                    else t.removeAttribute('aria-current');
-                });
-
-                if (targetId === currentId) return;
-                currentId = targetId;
-
-                // Keep the active tab visible when the topbar itself scrolls sideways (phones)
-                const active = tabs.find(function (t) { return t.dataset.target === targetId; });
-                if (active && topbar.scrollWidth > topbar.clientWidth) {
-                    topbar.scrollTo({
-                        left: active.offsetLeft - (topbar.clientWidth - active.offsetWidth) / 2,
-                        behavior: 'smooth'
-                    });
-                }
-            }
-
-            // Sliding reference line:
-            //   scrolled to the top    -> line sits just below the topbar
-            //   scrolled to the bottom -> line sits at the bottom edge of the viewport
-            //   in between             -> linear blend
-            // The active section is the one whose top edge is closest above the line.
-            // Statistics and Access sit side by side on wide screens (same top edge);
-            // the first one in tab order wins that tie, so Overview stays highlighted
-            // and Access is highlighted when you click it.
-            function updateFromScroll() {
-                ticking = false;
-                if (manualTarget) return;
-
-                const scroller = getScroller();
-                const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-                if (maxScroll <= 2) return; // nothing to scroll: keep whatever is highlighted
-
-                const progress = Math.min(1, Math.max(0, scroller.scrollTop / maxScroll));
-                const topLine = topbar.getBoundingClientRect().bottom + 16;
-                const bottomLine = window.innerHeight - 4;
-                const line = topLine + progress * (bottomLine - topLine);
-
-                let current = sections[0].id;
-                let bestTop = -Infinity;
-                sections.forEach(function (section) {
-                    const top = section.getBoundingClientRect().top;
-                    if (top <= line && top > bestTop) {
-                        bestTop = top;
-                        current = section.id;
-                    }
-                });
-
-                setActive(current);
-            }
-
-            function onScroll() {
-                if (ticking) return;
-                ticking = true;
-                requestAnimationFrame(updateFromScroll);
-            }
-
-            function goTo(targetId, opts) {
-                const smooth = !opts || opts.smooth !== false;
-                const updateHash = !opts || opts.updateHash !== false;
-                const section = document.getElementById(targetId);
-                if (!section) return;
-
-                if (targetId === 'accessCard') setAccessOpen(true);
-
-                manualTarget = targetId;
-                setActive(targetId);
-                if (updateHash) history.replaceState(null, '', '#' + targetId);
-
-                requestAnimationFrame(function () {
-                    section.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
-                });
-            }
-
-            // Scroll tracking takes over again as soon as the person scrolls by hand
-            function releaseManual() {
-                if (manualTarget) {
-                    manualTarget = null;
-                    onScroll();
-                }
-            }
-            window.addEventListener('wheel', releaseManual, { passive: true });
-            window.addEventListener('touchmove', releaseManual, { passive: true });
-            window.addEventListener('keydown', function (e) {
-                if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) releaseManual();
-            });
-
-            topbar.addEventListener('click', function (e) {
-                const tab = e.target.closest('.dashboard-tab');
-                if (!tab) return;
-                e.preventDefault();
-                goTo(tab.dataset.target);
-            });
-
-            window.addEventListener('hashchange', function () {
-                const id = location.hash.slice(1);
-                if (tabs.some(function (t) { return t.dataset.target === id; })) goTo(id, { updateHash: false });
-            });
-
-            // capture:true catches scrolling of any element, so it works whether the page or a panel scrolls
-            document.addEventListener('scroll', onScroll, { passive: true, capture: true });
-            window.addEventListener('resize', onScroll);
-
-            // Content loads asynchronously and the access card opens/closes, so re-check after layout changes
-            accessToggle.addEventListener('click', onScroll);
-
-            // Opening the page with a #hash (e.g. /admin/dashboard#accessCard) jumps there
-            window.addEventListener('load', function () {
-                const initial = location.hash.slice(1);
-                if (tabs.some(function (t) { return t.dataset.target === initial; })) {
-                    goTo(initial, { smooth: false, updateHash: false });
-                } else {
-                    updateFromScroll();
-                }
-            });
-        })();
-
-        // ---------------------------------------------------------
-        // Friendly names and icons for the raw permission keys.
-        // Anything not listed here falls back to a prettified version of its key.
-        // ---------------------------------------------------------
         const PERMISSION_INFO = {
             access_admin:  { label: 'Access admin panel', icon: 'admin_panel_settings' },
             create_user:   { label: 'Manage users',       icon: 'person' },
@@ -681,8 +459,6 @@
             }
             const data = await response.json();
 
-            // Header shows just the name (no "Logged in as"), like the Settings page.
-            // The role stays in the green pill next to the title and in the hover tooltip.
             const adminUserEl = document.getElementById('adminUser');
             adminUserEl.textContent = data.username || data.email || 'Admin';
             if (Array.isArray(data.roles) && data.roles.length) {
@@ -705,13 +481,6 @@
             });
 
             loadPendingRequests();
-            // Only the plant-requests count needs a fresh fetch here — the
-            // role-requests count comes for free once loadPendingRequests
-            // resolves, so loadNavBadges is triggered from there instead.
-            //
-            // The gap card is independent of that chain and starts now: it is a
-            // reading panel, not a queue, so it must not wait on (or fail with)
-            // the role-request fetch.
             initSpeciesGaps();
         })();
 
@@ -736,11 +505,6 @@
             }
         }
 
-        /**
-         * A small certificate preview. Image certificates render as a real
-         * thumbnail; PDFs cannot be shown inline, so those get a file card.
-         * Either way it is a link that opens in a new tab.
-         */
         function renderCertificatePreview(req) {
             const cert = req.certificate;
             if (!cert) {
@@ -779,7 +543,6 @@
             const tabBadge = document.getElementById('dashTabBadgeRequests');
             const count = requests ? requests.length : 0;
 
-            // Keep the section badge and the topbar badge in sync
             [countBadge, tabBadge].forEach(function (badge) {
                 if (!badge) return;
                 if (count > 0) {
@@ -880,14 +643,8 @@
         }
 
         // ---------------------------------------------------------
-        // Species gaps 
-        //
-        // Uses this file's own escapeHtml at :746 — there is no second copy of it
-        // on this page, and no new stylesheet: the row reuses admin-style.css's
-        // existing card classes.
+        // Species gaps
         // ---------------------------------------------------------
-
-        /** "12 accounts" / "1 account", so a row never reads "1 accounts". */
         function pluralAccounts(n) {
             return n + (n === 1 ? ' account' : ' accounts');
         }
@@ -904,15 +661,8 @@
             return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
         }
 
-        /**
-         * Renders the list, or the reason there isn't one.
-         *
-         * `degraded` is checked BEFORE `results.length`, and that order is the point:
-         * a degraded response carries an empty results array, so checking the length
-         * first would print "No gaps found" — telling an admin that nothing is
-         * missing when in fact the server could not find out. The two states look
-         * identical in the payload and must not look identical on screen.
-         */
+        // `degraded` is checked BEFORE `results.length`: a degraded response has an
+        // empty results array and must not read as "nothing is missing".
         function renderSpeciesGaps(payload) {
             const list = document.getElementById('speciesGapList');
             const countBadge = document.getElementById('speciesGapsCount');
@@ -964,14 +714,6 @@
             `).join('');
         }
 
-        /**
-         * Offers the months the endpoint will actually accept.
-         *
-         * Retention is at least a year (settings.ml.retentionDays), and a month
-         * older than that is a 400, not an empty list. So the options are built from
-         * the retention window instead of listing every month since 1970, which would
-         * be a menu of requests that are guaranteed to fail.
-         */
         function populateGapMonths() {
             const select = document.getElementById('gapMonth');
             const now = new Date();
@@ -987,7 +729,6 @@
         }
 
         function settingsRetentionMonthsFallback() {
-            // settings.js is server-side; the client only needs an approximate span.
             // Thirteen months covers the one-year default plus the current one.
             return 13;
         }
@@ -1009,9 +750,6 @@
                     return;
                 }
                 if (response.status === 403) {
-                    // The card is gated on view_logs server-side. Saying nothing is
-                    // the right answer here: this viewer simply does not see scan data,
-                    // which is not an error condition on the dashboard.
                     list.innerHTML = '';
                     document.getElementById('speciesGapsCount').hidden = true;
                     return;

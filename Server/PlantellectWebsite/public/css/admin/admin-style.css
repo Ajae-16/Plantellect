@@ -33,7 +33,8 @@ body {
     color: var(--color-white);
     padding: 16px 20px;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-    position: relative;
+    position: sticky;          /* was relative: header stays pinned, so header + sidebar move as one unit */
+    top: 0;
     z-index: 100;
 }
 
@@ -456,3 +457,29 @@ body {
 }
 
 .cert-preview-caption .material-symbols-outlined { font-size: 14px; }
+
+/* =========================================
+   WHITESPACE FIXES (top gap + sideways overflow)
+   ========================================= */
+
+/* The canvas behind body matches the page, so overscroll / sideways shift never shows white. */
+html {
+    background-color: #f4f6f4;
+    overflow-x: hidden;
+    overscroll-behavior-y: none;   /* no rubber-band gap above the header */
+}
+
+/* `clip` (unlike `hidden`) does not create a scroll container, so the sticky topbar keeps working. */
+body {
+    overflow-x: clip;
+    max-width: 100%;
+}
+
+/* Let the flex child shrink instead of forcing the page wider than the screen. */
+.admin-layout {
+    max-width: 100%;
+}
+
+.admin-main {
+    min-width: 0;
+}
