@@ -1,66 +1,22 @@
 package com.plantellect.mobileplantellect.ui.screen
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun PlantInventoryScreen() {
-    val colors = MaterialTheme.colorScheme
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(colors.primaryContainer, colors.secondaryContainer, colors.background)
-                )
-            )
-            .systemBarsPadding()
-    ) {
-        Card(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(24.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = colors.surface.copy(alpha = 0.85f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(32.dp).fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("🪴", style = MaterialTheme.typography.displayMedium)
-                Text(
-                    "My Plants",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = colors.onSurface,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    "Your plant collection will show up here.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = colors.onSurface.copy(alpha = 0.7f),
-                    textAlign = TextAlign.Center
-                )
-            }
+    PlantellectPage {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            PageHeading("Your collection", "My plants", "All your saved plants, in one place.")
+            FeatureCard("🪴", "Your collection", "Plants you save will appear here.")
+            EmptyState("🌱", "Your collection is waiting to grow", "Scan a plant or add one to start building your personal plant library.")
+            androidx.compose.material3.Text("Tip: Use clear photos and keep notes about where and when you found a plant.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = .7f))
         }
     }
 }
