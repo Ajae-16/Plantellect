@@ -31,8 +31,10 @@ class NetworkModule(context: Context) {
     /** Fires when any request other than login//me gets a 401: the server dropped our session. */
     val sessionExpired: SharedFlow<Unit> = _sessionExpired.asSharedFlow()
 
-/** Also hand this to the image loader (Coil) so /mine/images/* carries the session cookie. */
-val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+    /** Also hand this to the image loader (Coil) so /mine/images/* carries the session cookie. */
+     *
+     */
+    val okHttpClient: OkHttpClient = OkHttpClient.Builder()
 .cookieJar(cookieJar)
 .connectTimeout(15, TimeUnit.SECONDS)
 .readTimeout(60, TimeUnit.SECONDS)     // /predict waits on the ML service
