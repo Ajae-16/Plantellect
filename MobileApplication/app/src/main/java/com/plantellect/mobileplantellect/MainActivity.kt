@@ -1,6 +1,5 @@
 package com.plantellect.mobileplantellect
 
-import android.R
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -25,151 +25,63 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.plantellect.mobileplantellect.data.repository.AuthState
 import com.plantellect.mobileplantellect.ui.screen.HomeScreen
+import com.plantellect.mobileplantellect.ui.screen.LoginScreen
 import com.plantellect.mobileplantellect.ui.screen.PlantInventoryScreen
 import com.plantellect.mobileplantellect.ui.screen.ProfileScreen
 import com.plantellect.mobileplantellect.ui.screen.RecordPlantScreen
 import com.plantellect.mobileplantellect.ui.screen.ScanPlantScreen
 import com.plantellect.mobileplantellect.ui.theme.MobilePlantellectTheme
+import com.plantellect.mobileplantellect.viewmodel.AuthViewModel
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Built once in PlantellectApp (declare it in the manifest: android:name=".PlantellectApp").
+        val factory = (application as PlantellectApp).container.viewModelFactory
+
         setContent {
             MobilePlantellectTheme {
-                // Background
-                Box(modifier = Modifier.fillMaxSize().background(brush = Brush.linearGradient(colors = listOf(
-                    MaterialTheme.colorScheme.primaryContainer ,
-                    MaterialTheme.colorScheme.secondaryContainer,
-                    MaterialTheme.colorScheme.tertiaryContainer),
-                    start = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
-                    end = Offset.Zero,
-                    tileMode = TileMode.Clamp
-                )))
-                // Navigation Controller
-                val navController = androidx.navigation.compose.rememberNavController()
-                // Drawer State (to open/close the sidebar)
-                val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-                val scope = rememberCoroutineScope()
+                // Activity-scoped, so the login screen, the drawer and ProfileScreen all see the SAME login state.
+                val auth: AuthViewModel = viewModel(factory = factory)
+                val authState by auth.authState.collectAsState()
 
-                // The Sidebar Wrapper
-                ModalNavigationDrawer(
-                    drawerState = drawerState,
-                    drawerContent = {
-                        ModalDrawerSheet(drawerContainerColor =
-                            MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.fillMaxWidth(0.5f).widthIn(max = 360.dp)
-                            )
-                        {
-                            Text(
-                                "Plantellect",
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(16.dp)
-                            )
-                            HorizontalDivider()
-
-                            // Menu Item: Home (changed from Discovery)
-                            NavigationDrawerItem(
-                                label = { Text("Home",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurface) },
-                                selected = false,
-                                onClick = {
-                                    scope.launch { drawerState.close() }
-                                    navController.navigate("home")
-                                }
-                            )
-
-                            // Menu Item: Plant Inventory
-                            NavigationDrawerItem(
-                                label = { Text("Plants",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurface) },
-                                selected = false,
-                                onClick = {
-                                    scope.launch { drawerState.close() }
-                                    navController.navigate("inventory")
-                                }
-                            )
-
-                            // Menu Item: Scanning Plant
-                            NavigationDrawerItem(
-                                label = { Text("Scan a Plant",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurface) },
-                                selected = false,
-                                onClick = {
-                                    scope.launch { drawerState.close() }
-                                    navController.navigate("scan")
-                                }
-                            )
-                            // Menu Item: Recording Plant
-                            NavigationDrawerItem(
-                                label = { Text("Record a Plant",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurface) },
-                                selected = false,
-                                onClick = {
-                                    scope.launch { drawerState.close() }
-                                    navController.navigate("record")
-                                }
-                            )
-                            // Menu Item: Profile
-                            NavigationDrawerItem(
-                                label = { Text("Profile",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurface) },
-                                selected = false,
-                                onClick = {
-                                    scope.launch { drawerState.close() }
-                                    navController.navigate("profile")
-                                }
-                            )
+                GradientBackground {
+                    when (val state = authState) {
+                        // /me is still being checked on launch.
+                        AuthState.Unknown -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
                         }
-                    }
-                ) {
-                    // The Screen Scaffold
-                    Scaffold(
-                        topBar = {
-                            CenterAlignedTopAppBar(
-                                title = { Text("Plantellect",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    color = MaterialTheme.colorScheme.onSurface) },
-                                navigationIcon = {
-                                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                        Icon(Icons.Default.Menu, contentDescription = "Menu")
-                                    }
-                                }
-                            )
-                        }
-                    ) { innerPadding ->
-                        // The Content Swapper (NavHost)
-                        NavHost(
-                            navController = navController,
-                            startDestination = "home",
-                            modifier = Modifier.padding(innerPadding)
-                        ) {
-                            composable("home") { HomeScreen() }
-                            composable("inventory") { PlantInventoryScreen() }
-                            composable("scan") { ScanPlantScreen() }
-                            composable("record") { RecordPlantScreen() }
-                            composable("profile") { ProfileScreen() }
-                        }
+                        // Also what the user returns to if the server drops the session.
+                        AuthState.SignedOut -> LoginScreen(auth)
+                        is AuthState.SignedIn -> AppShell(
+                            factory = factory,
+                            auth = auth,
+                            permissions = state.account.permissions
+                        )
                     }
                 }
             }
@@ -177,26 +89,147 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * The gradient sits BEHIND everything. Children must use transparent containers
+ * (the Scaffold below does) or they will paint over it.
+ */
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onBackground
-    )
+private fun GradientBackground(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.secondaryContainer,
+                        MaterialTheme.colorScheme.tertiaryContainer
+                    ),
+                    start = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
+                    end = Offset.Zero,
+                    tileMode = TileMode.Clamp
+                )
+            )
+    ) {
+        content()
+    }
 }
 
-@Preview(showBackground = true)
+/** requires = a permission string from the server; null means every signed-in user sees it. */
+private data class DrawerEntry(val label: String, val route: String, val requires: String? = null)
+
+private val drawerEntries = listOf(
+    DrawerEntry("Home", "home"),
+    DrawerEntry("Plants", "inventory"),
+    DrawerEntry("Scan a Plant", "scan"),
+    DrawerEntry("Record a Plant", "record", requires = "record_plant"),
+    DrawerEntry("Profile", "profile")
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GreetingPreview() {
-    MobilePlantellectTheme {
-        Box(modifier = Modifier.fillMaxSize().background(brush = Brush.linearGradient(colors = listOf(
-            MaterialTheme.colorScheme.primaryContainer ,
-            MaterialTheme.colorScheme.secondaryContainer,
-            MaterialTheme.colorScheme.tertiaryContainer),
-            start = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
-            end = Offset(0f, 0f)
-        )))
+private fun AppShell(
+    factory: ViewModelProvider.Factory,
+    auth: AuthViewModel,
+    permissions: List<String>
+) {
+    val navController = rememberNavController()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+
+    fun go(route: String) {
+        scope.launch { drawerState.close() }
+        navController.navigate(route) {
+            // One copy of each top-level screen; back returns to Home instead of stacking.
+            popUpTo("home") { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.fillMaxWidth(0.5f).widthIn(max = 360.dp)
+            ) {
+                Text(
+                    "Plantellect",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(16.dp)
+                )
+                HorizontalDivider()
+
+                drawerEntries
+                    .filter { it.requires == null || it.requires in permissions }
+                    .forEach { entry ->
+                        NavigationDrawerItem(
+                            label = {
+                                Text(
+                                    entry.label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            selected = currentRoute == entry.route,
+                            onClick = { go(entry.route) }
+                        )
+                    }
+
+                HorizontalDivider()
+                NavigationDrawerItem(
+                    label = {
+                        Text(
+                            "Sign out",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        auth.logout()   // state flips to SignedOut and MainActivity shows LoginScreen
+                    }
+                )
+            }
+        }
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent,   // lets the gradient show through
+            topBar = {
+                CenterAlignedTopAppBar(
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = Color.Transparent
+                    ),
+                    title = {
+                        Text(
+                            "Plantellect",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menu")
+                        }
+                    }
+                )
+            }
+        ) { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = "home",
+                modifier = Modifier.padding(innerPadding)
+            ) {
+                composable("home") { HomeScreen() }
+                composable("inventory") { PlantInventoryScreen(viewModel(factory = factory)) }
+                composable("scan") { ScanPlantScreen(viewModel(factory = factory)) }
+                composable("record") { RecordPlantScreen() }
+                composable("profile") { ProfileScreen(auth) }
+            }
+        }
     }
 }

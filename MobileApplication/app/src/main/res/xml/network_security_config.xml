@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain http only for the dev machine. Everything else must be https. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <!-- Physical phone on your LAN: add your PC's IP here, e.g. <domain>192.168.1.50</domain> -->
+    </domain-config>
+</network-security-config>
