@@ -31,35 +31,35 @@ class NetworkModule(context: Context) {
     /** Fires when any request other than login//me gets a 401: the server dropped our session. */
     val sessionExpired: SharedFlow<Unit> = _sessionExpired.asSharedFlow()
 
-    /** Also hand this to the image loader (Coil) so /mine/images/* carries the session cookie. */
-    val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .cookieJar(cookieJar)
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)     // /predict waits on the ML service
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .addInterceptor { chain ->
-            val response = chain.proceed(chain.request())
-            val path = chain.request().url.encodedPath
-            if (response.code == 401 && !path.endsWith("/login") && !path.endsWith("/me")) {
-                _sessionExpired.tryEmit(Unit)
-            }
-            response
-        }
-        .apply {
-            if (debuggable) {
-                // BASIC on purpose: BODY would print passwords into logcat.
-                addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
-            }
-        }
-        .build()
+/** Also hand this to the image loader (Coil) so /mine/images/* carries the session cookie. */
+val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+.cookieJar(cookieJar)
+.connectTimeout(15, TimeUnit.SECONDS)
+.readTimeout(60, TimeUnit.SECONDS)     // /predict waits on the ML service
+.writeTimeout(60, TimeUnit.SECONDS)
+.addInterceptor { chain ->
+val response = chain.proceed(chain.request())
+val path = chain.request().url.encodedPath
+if (response.code == 401 && !path.endsWith("/login") && !path.endsWith("/me")) {
+_sessionExpired.tryEmit(Unit)
+}
+response
+}
+.apply {
+if (debuggable) {
+// BASIC on purpose: BODY would print passwords into logcat.
+addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+}
+}
+.build()
 
-    private val retrofit = Retrofit.Builder()
-        .baseUrl(baseUrl)
-        .client(okHttpClient)
-        .addConverterFactory(json.asConverterFactory("application/json; charset=UTF-8".toMediaType()))
-        .build()
+private val retrofit = Retrofit.Builder()
+.baseUrl(baseUrl)
+.client(okHttpClient)
+.addConverterFactory(json.asConverterFactory("application/json; charset=UTF-8".toMediaType()))
+.build()
 
-    val authApi: AuthApi = retrofit.create(AuthApi::class.java)
-    val plantApi: PlantApi = retrofit.create(PlantApi::class.java)
-    val mlApi: MlApi = retrofit.create(MlApi::class.java)
+val authApi: AuthApi = retrofit.create(AuthApi::class.java)
+val plantApi: PlantApi = retrofit.create(PlantApi::class.java)
+val mlApi: MlApi = retrofit.create(MlApi::class.java)
 }

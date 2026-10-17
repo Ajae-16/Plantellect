@@ -1,7 +1,5 @@
 package com.plantellect.mobileplantellect.data.remote.dto
 
-package com.plantellect.mobileplantellect.data.remote.dto
-
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
