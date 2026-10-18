@@ -17,6 +17,7 @@ captures/
 output.json
 /shelf/
 /workspace.xml
+/debug-mobile/
 
 # IntelliJ
 *.iml

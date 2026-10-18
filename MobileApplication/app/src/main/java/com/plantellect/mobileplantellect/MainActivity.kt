@@ -38,7 +38,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -76,9 +75,10 @@ class MainActivity : ComponentActivity() {
                             CircularProgressIndicator()
                         }
                         // Also what the user returns to if the server drops the session.
-                        AuthState.SignedOut -> LoginScreen(auth)
+                        AuthState.SignedOut -> LoginScreen { identifier, password ->
+                            auth.login(identifier, password, rememberMe = false)
+                        }
                         is AuthState.SignedIn -> AppShell(
-                            factory = factory,
                             auth = auth,
                             permissions = state.account.permissions
                         )
@@ -129,7 +129,6 @@ private val drawerEntries = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppShell(
-    factory: ViewModelProvider.Factory,
     auth: AuthViewModel,
     permissions: List<String>
 ) {
@@ -225,10 +224,12 @@ private fun AppShell(
                 modifier = Modifier.padding(innerPadding)
             ) {
                 composable("home") { HomeScreen() }
-                composable("inventory") { PlantInventoryScreen(viewModel(factory = factory)) }
-                composable("scan") { ScanPlantScreen(viewModel(factory = factory)) }
+                // Each screen fetches its own ViewModel (see ui/AppViewModel.kt), so these calls keep
+                // the screens' current signatures.
+                composable("inventory") { PlantInventoryScreen() }
+                composable("scan") { ScanPlantScreen() }
                 composable("record") { RecordPlantScreen() }
-                composable("profile") { ProfileScreen(auth) }
+                composable("profile") { ProfileScreen() }
             }
         }
     }

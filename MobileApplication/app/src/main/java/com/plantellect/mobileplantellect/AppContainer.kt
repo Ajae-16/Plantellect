@@ -1,6 +1,5 @@
 package com.plantellect.mobileplantellect
 
-
 import android.app.Application
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
@@ -11,9 +10,14 @@ import com.plantellect.mobileplantellect.data.logic.ApiCaller
 import com.plantellect.mobileplantellect.data.logic.NetworkMonitor
 import com.plantellect.mobileplantellect.data.remote.NetworkModule
 import com.plantellect.mobileplantellect.data.repository.AuthRepository
+import com.plantellect.mobileplantellect.data.repository.DiscoveryRepository
 import com.plantellect.mobileplantellect.data.repository.PlantRepository
+import com.plantellect.mobileplantellect.data.repository.ProfileRepository
+import com.plantellect.mobileplantellect.data.repository.RecordRepository
 import com.plantellect.mobileplantellect.data.repository.ScanRepository
 import com.plantellect.mobileplantellect.viewmodel.AuthViewModel
+import com.plantellect.mobileplantellect.viewmodel.DiscoveryViewModel
+import com.plantellect.mobileplantellect.viewmodel.RecordPlantViewModel
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 import com.plantellect.mobileplantellect.viewmodel.ScanViewModel
 
@@ -28,11 +32,16 @@ class AppContainer(app: Application) {
     val auth = AuthRepository(network.authApi, caller, session, network.cookieJar, app.contentResolver)
     val plants = PlantRepository(network.plantApi, caller, network.baseUrl)
     val scans = ScanRepository(app, network.mlApi, caller, classifier, connectivity)
+    val records = RecordRepository(app, network.recordApi, caller, network.json, network.baseUrl)
+    val discoveries = DiscoveryRepository(app, network.discoveryApi, caller, network.json, network.baseUrl)
+    val profiles = ProfileRepository(network.botanistApi, caller)
 
     val viewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { AuthViewModel(auth, network.sessionExpired) }
         initializer { ScanViewModel(scans) }
         initializer { LibraryViewModel(plants) }
+        initializer { RecordPlantViewModel(records) }
+        initializer { DiscoveryViewModel(discoveries) { auth.hasPermission("record_plant") } }
     }
 }
 

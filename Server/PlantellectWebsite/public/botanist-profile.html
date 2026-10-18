@@ -13,22 +13,23 @@
     <div class="profile-container">
         <!-- Navigation Header with Theme Toggle Button -->
         <div class="profile-header-bar" style="justify-content: space-between;">
-            <a href="plant-profile.html" class="back-btn">
-                <span class="material-symbols-outlined" style="font-size: 18px;">arrow_back</span> Back to Plant Profile
+            <a href="plant-profile.html" class="back-btn" id="backBtn">
+                <span class="material-symbols-outlined" style="font-size: 18px;">arrow_back</span> Back
             </a>
-            
+
             <!-- Theme Toggle Icon Button -->
             <button id="themeToggleBtn" class="theme-btn" onclick="toggleTheme()" title="Toggle theme">
                 <span class="material-symbols-outlined" id="themeIcon" style="font-size: 20px;">light_mode</span>
             </button>
         </div>
 
-        <!-- Public Botanist Information -->
+        <!-- Public Botanist / Administrator Information -->
         <div class="botanist-hero">
             <div class="avatar-circle" id="botanistAvatar">—</div>
             <h1 id="botanistName">Loading…</h1>
             <div class="role-badge">
-                <span class="material-symbols-outlined" style="font-size: 16px;">verified</span> Verified Plant Expert &amp; Botanist
+                <span class="material-symbols-outlined" id="roleBadgeIcon" style="font-size: 16px;">verified</span>
+                <span id="roleBadgeText">Verified Plant Expert &amp; Botanist</span>
             </div>
             <p class="botanist-bio" id="botanistBio"></p>
 
@@ -36,26 +37,31 @@
             <div class="metrics-bar">
                 <div class="metric-item">
                     <div class="metric-value" id="botanistPlantCount">—</div>
-                    <div class="metric-label">Verified Plants</div>
+                    <div class="metric-label" id="metricLabelPlants">Verified Plants</div>
                 </div>
                 <div class="metric-item">
                     <div class="metric-value" id="botanistReportedCount">—</div>
-                    <div class="metric-label">Species Reported</div>
+                    <div class="metric-label" id="metricLabelReported">Species Reported</div>
                 </div>
-                <div class="metric-item">
+                <!-- Only meaningful for administrators (Requests Denied); the
+                     botanist layout hides it because no accuracy figure is stored. -->
+                <div class="metric-item" id="metricAccuracyItem" hidden>
                     <div class="metric-value" id="botanistAccuracy">—</div>
-                    <div class="metric-label">Avg CNN Accuracy</div>
+                    <div class="metric-label" id="metricLabelAccuracy">Requests Denied</div>
                 </div>
                 <div class="metric-item">
                     <div class="metric-value" id="botanistSpecialization">—</div>
-                    <div class="metric-label">Specialization</div>
+                    <div class="metric-label" id="metricLabelSpecialization">Specialization</div>
                 </div>
             </div>
         </div>
 
         <!-- Verified Contributions Showcase -->
         <div class="contributions-section">
-            <h3><span class="material-symbols-outlined">eco</span> Verified Plant Contributions</h3>
+            <h3>
+                <span class="material-symbols-outlined" id="contributionsIcon">eco</span>
+                <span id="contributionsTitle">Verified Plant Contributions</span>
+            </h3>
 
             <div class="plant-grid" id="contributionGrid">
                 <p class="muted">Loading contributions…</p>

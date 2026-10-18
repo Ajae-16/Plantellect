@@ -80,7 +80,15 @@ class AuthRepository(
             if (form.lastName.isNotBlank()) put("lastName", text(form.lastName.trim()))
         }
         // The server discards a certificate sent with the plain 'user' role, so don't upload one.
-        val part = if (form.role == AccountRole.BOTANIST) certificate?.let { readCertificate(it) } else null
+        val part = if (form.role == AccountRole.BOTANIST) {
+            certificate?.let {
+                try {
+                    readCertificate(it)
+                } catch (e: IllegalArgumentException) {
+                    return ApiResult.Failure(AppError.Http(400, e.message ?: "Could not use that certificate file."))
+                }
+            }
+        } else null
         return caller.call { api.register(fields, part) }
             .also { if (it is ApiResult.Success) onSignedIn(it.value.toAccount()) }
     }
@@ -113,11 +121,34 @@ class AuthRepository(
         _state.value = AuthState.SignedOut
     }
 
-    private suspend fun readCertificate(uri: Uri): MultipartBody.Part? = withContext(Dispatchers.IO) {
-        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
-        val mime = resolver.getType(uri) ?: "application/octet-stream"
-        val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "certificate"
-        MultipartBody.Part.createFormData("certificate", name, bytes.toRequestBody(mime.toMediaType()))
+    /** Throws IllegalArgumentException with a user-facing message when the file can't be accepted. */
+    private suspend fun readCertificate(uri: Uri): MultipartBody.Part = withContext(Dispatchers.IO) {
+        val mime = resolver.getType(uri)
+        val ext = UploadLimits.CERTIFICATE_TYPES[mime]
+            ?: throw IllegalArgumentException("The certificate must be a PDF, JPG or PNG file.")
+
+        var displayName: String? = null
+        var size: Long? = null
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                displayName = c.getString(0)
+                if (!c.isNull(1)) size = c.getLong(1)
+            }
+        }
+        // Check the size BEFORE reading the whole file into memory.
+        if ((size ?: 0L) > UploadLimits.MAX_CERTIFICATE_BYTES) {
+            throw IllegalArgumentException("The certificate is too large (maximum 20 MB).")
+        }
+
+        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw IllegalArgumentException("Could not read the certificate file.")
+        if (bytes.size > UploadLimits.MAX_CERTIFICATE_BYTES) {
+            throw IllegalArgumentException("The certificate is too large (maximum 20 MB).")
+        }
+
+        // The server validates the extension of the file NAME as well as the mime type, so rebuild
+        // the name from the detected type instead of trusting whatever the picker returned.
+        val base = displayName?.substringBeforeLast('.', displayName!!)?.takeIf { it.isNotBlank() } ?: "certificate"
+        MultipartBody.Part.createFormData("certificate", base + ext, bytes.toRequestBody(mime!!.toMediaType()))
     }
 }

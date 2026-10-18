@@ -35,7 +35,10 @@ function formatRange(min, max, note, unit) {
     return `${only}${unit}${note ? ' — ' + note : ''}`;
 }
 
-/** "What it looks like" is built from the botanist's measurements. */
+/**
+ * "What it looks like" is built from the botanist's measurements. Lines are
+ * joined with \n; #plantDescription uses white-space: pre-line to show them.
+ */
 function describeParts(parts) {
     if (!parts) return '';
     const lines = [];
@@ -47,6 +50,112 @@ function describeParts(parts) {
     if (parts.shape) lines.push(`Shape: ${parts.shape}`);
     if (parts.texture) lines.push(`Texture: ${parts.texture}`);
     return lines.join('\n');
+}
+
+/**
+ * Where a person's name should link, or null for plain text.
+ *
+ * The server decides via profileType, because it is the one that knows which
+ * roles are privileged:
+ *   'botanist' -> botanist-profile.html
+ *   'admin'    -> admin-profile.html (admin and superadmin)
+ *   anything else (user, system) -> no link
+ */
+function profileHref(person) {
+    if (!person || !person.accountId) return null;
+    const id = encodeURIComponent(person.accountId);
+    // An older server only sends isBotanist, so keep botanist links working.
+    const type = person.profileType || (person.isBotanist ? 'botanist' : null);
+    if (type === 'botanist') return `/botanist-profile.html?accountId=${id}`;
+    if (type === 'admin') return `/admin-profile.html?accountId=${id}`;
+    return null;
+}
+
+/**
+ * The server currently sends each row as one joined string, e.g.
+ * "Ana Cruz, Ben Lee +2 more; Carla Diaz" (names joined with ", ", roles'
+ * groups with "; "). Split it so each name is its own entry instead of one long
+ * unlinked name. A trailing "+N more" overflow marker stays attached to the
+ * name before it.
+ */
+function splitNameString(value) {
+    return String(value)
+        .split(/\s*[;,]\s*/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(name => ({ name, isBotanist: false }));
+}
+
+/**
+ * Renders a list of people into a "Recorded by / Reviewed by / Reported by" row.
+ *
+ *  - botanist:           clickable name -> botanist profile, plus Verified Botanist badge
+ *  - admin / superadmin: clickable name -> admin profile, NO badge
+ *  - user / system:      plain text, no badge
+ *
+ * An empty list hides the whole row, so "Reported by" only appears on a plant
+ * that was created from a discovery report.
+ */
+function renderPeople(rowId, listId, people) {
+    const row = document.getElementById(rowId);
+    const list = document.getElementById(listId);
+    if (!row || !list) return;
+
+    // Accept the old string shape too, so the page keeps working until the
+    // server sends the object shape.
+    let normalized;
+    if (typeof people === 'string') {
+        normalized = splitNameString(people);
+    } else {
+        normalized = (Array.isArray(people) ? people : people ? [people] : [])
+            .flatMap(p => (typeof p === 'string' ? splitNameString(p) : [p]))
+            .filter(p => p && p.name);
+    }
+
+    if (normalized.length === 0) {
+        row.hidden = true;
+        list.innerHTML = '';
+        return;
+    }
+
+    list.innerHTML = normalized.map(p => {
+        const name = escapeHtml(p.name);
+        const href = profileHref(p);
+        const badge = p.isBotanist
+            ? `<span class="verified-badge">
+                    <span class="material-symbols-outlined" style="font-size: 15px;">check_circle</span> Verified Botanist
+                </span>`
+            : '';
+        if (href) {
+            return `<span class="person"><a href="${href}">${name}</a>${badge}</span>`;
+        }
+        return `<span class="person"><span class="person-name">${name}</span>${badge}</span>`;
+    }).join('');
+    row.hidden = false;
+}
+
+/** Shows the hero photo, or the placeholder when the plant has none. */
+function setHeroImage(plant) {
+    const image = document.getElementById('plantImage');
+    const placeholder = document.getElementById('heroPlaceholder');
+    const hasPhoto = plant && plant.images && plant.images.length > 0;
+
+    if (hasPhoto) {
+        image.src = plant.images[0].imageUrl;
+        image.alt = `${plant.name} photo`;
+        image.hidden = false;
+        if (placeholder) placeholder.hidden = true;
+        // A photo that fails to load falls back to the placeholder too.
+        image.onerror = function () {
+            image.hidden = true;
+            if (placeholder) placeholder.hidden = false;
+        };
+    } else {
+        image.removeAttribute('src');
+        image.alt = '';
+        image.hidden = true;
+        if (placeholder) placeholder.hidden = false;
+    }
 }
 
 async function loadPlantProfile() {
@@ -78,14 +187,7 @@ async function loadPlantProfile() {
 
     document.title = `${plant.name} - Plantellect`;
 
-    const image = document.getElementById('plantImage');
-    if (plant.images && plant.images.length > 0) {
-        image.src = plant.images[0].imageUrl;
-        image.alt = `${plant.name} photo`;
-    } else {
-        image.removeAttribute('src');
-        image.alt = '';
-    }
+    setHeroImage(plant);
 
     titleEl.textContent = plant.name;
     document.getElementById('scientificName').textContent = plant.scientificName || '';
@@ -114,35 +216,11 @@ async function loadPlantProfile() {
     document.getElementById('datasetSource').textContent =
         `Quantity on record: ${plant.quantity != null ? plant.quantity : '—'}`;
 
-    // A verified botanist link is only meaningful when we can resolve one.
-    const author = primary && primary.author;
-    const reviewerLink = document.getElementById('reviewerLink');
-    if (author && author.accountId) {
-        reviewerLink.textContent = author.name || author.accountId;
-        reviewerLink.href = `/botanist-profile.html?accountId=${encodeURIComponent(author.accountId)}`;
-    } else {
-        const contributorInfo = reviewerLink.closest('.contributor-info');
-        if (contributorInfo) contributorInfo.style.display = 'none';
-    }
-
-    //  Text, not a link: the reporter is usually a plain `user` and has
-    // no public profile page, so a link would 404. A plant with no discovery
-    // report leaves the whole row hidden rather than showing an empty label.
-    const reportedByRow = document.getElementById('reportedByRow');
-    const reportedByText = document.getElementById('reportedByText');
-    if (reportedByRow && reportedByText) {
-        if (plant.reportedBy) {
-            // The API returns the reporter's DISPLAY name, already resolved
-            // server-side. Escaped anyway: a profile's first name is user input.
-            reportedByText.textContent = plant.reportedBy;
-            reportedByRow.hidden = false;
-        } else {
-            reportedByRow.hidden = true;
-        }
-    }
-
-    const badge = document.getElementById('confidenceBadge');
-    if (badge) badge.hidden = true;
+    // Three separate claims, three separate rows. Each is hidden when nobody is
+    // named for it (most plants have no discovery report, so no "Reported by").
+    renderPeople('recordedByRow', 'recordedByList', plant.recordedBy);
+    renderPeople('reviewedByRow', 'reviewedByList', plant.reviewedBy);
+    renderPeople('reportedByRow', 'reportedByList', plant.reportedBy);
 
     await showContributeLink(plantId);
 }

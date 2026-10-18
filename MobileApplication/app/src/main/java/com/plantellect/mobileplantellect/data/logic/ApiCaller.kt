@@ -33,7 +33,7 @@ class ApiCaller(private val json: Json) {
         val raw = runCatching { response.errorBody()?.string() }.getOrNull()
         // Non-JSON bodies (Express's plain "Something went wrong!") fall through to the default text.
         val body = raw?.let { runCatching { json.decodeFromString<ErrorBody>(it) }.getOrNull() }
-        val retry = body?.retryAfter ?: response.headers()["Retry-After"]?.toIntOrNull()
+        val retry = body?.retryAfter ?: body?.retryAfterSeconds ?: response.headers()["Retry-After"]?.toIntOrNull()
         return AppError.Http(response.code(), body?.error ?: defaultText(response.code()), retry)
     }
 

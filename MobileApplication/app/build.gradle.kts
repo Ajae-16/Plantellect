@@ -8,6 +8,9 @@ android {
     signingConfigs {
         getByName("debug") {
             storeFile = file("D:\\College\\Google_Signature\\Adrian Jae R Antonio")
+            storePassword = "Ajae12345"
+            keyAlias = "key0"
+            keyPassword = "Ajae12345"
         }
     }
     namespace = "com.plantellect.mobileplantellect"

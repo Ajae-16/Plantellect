@@ -1,8 +1,16 @@
 /**
- * Botanist profile page.
+ * Botanist / administrator profile page.
  *
- * Renders one botanist from GET /api/botanists/:accountId. The id comes from
- * the ?accountId query parameter, which is what the plant profile links to.
+ * Renders one account from GET /api/botanists/:accountId. The id comes from the
+ * ?accountId query parameter, which is what the plant profile links to.
+ *
+ * The same page serves two kinds of account. profile.role decides which:
+ *   botanist             the original profile
+ *   admin / superadmin   an administrator profile (reviewing statistics)
+ *
+ * An administrator profile is only returned to a botanist or an administrator.
+ * Everyone else gets a 404 from the server, which this page shows as "not
+ * available" rather than revealing that the account exists.
  */
 
 function escapeHtml(str) {
@@ -45,6 +53,16 @@ function toggleTheme() {
 
 window.toggleTheme = toggleTheme;
 
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+function setHidden(id, hidden) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = hidden;
+}
+
 /**
  * The verified-contributions grid, filtered to role = 'contributor'.
  *
@@ -52,18 +70,21 @@ window.toggleTheme = toggleTheme;
  * they verified, so rendering both under one heading would assert something
  * false. The reported grid below is a separate grid over role = 'reporter' for
  * the same reason — showing the distinction is better than hiding it.
+ *
+ * For an administrator the same grid lists the plants they reviewed, labelled
+ * "Reviewed".
  */
-function renderContributions(contributions) {
+function renderContributions(contributions, cardLabel, emptyText) {
     const grid = document.getElementById('contributionGrid');
     if (!grid) return;
 
     if (!contributions || contributions.length === 0) {
-        grid.innerHTML = '<p class="muted">No verified contributions yet.</p>';
+        grid.innerHTML = `<p class="muted">${escapeHtml(emptyText)}</p>`;
         return;
     }
 
     grid.innerHTML = contributions.map(function (c) {
-        return renderPlantCard(c, 'Contributed');
+        return renderPlantCard(c, cardLabel);
     }).join('');
 }
 
@@ -98,13 +119,77 @@ function renderPlantCard(c, role) {
         </a>`;
 }
 
+function formatJoined(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
+}
+
+const ADMIN_ROLE_LABELS = {
+    admin: 'Administrator',
+    superadmin: 'Superadministrator'
+};
+
+/** The original botanist layout. */
+function renderBotanist(profile) {
+    setText('roleBadgeIcon', 'verified');
+    setText('roleBadgeText', 'Verified Plant Expert & Botanist');
+    setText('metricLabelPlants', 'Verified Plants');
+    setText('metricLabelReported', 'Species Reported');
+    setText('metricLabelSpecialization', 'Specialization');
+    setText('contributionsIcon', 'eco');
+    setText('contributionsTitle', 'Verified Plant Contributions');
+
+    setText('botanistPlantCount', profile.metrics.verifiedPlants);
+    setText('botanistSpecialization', profile.specialization || '—');
+
+    // Per-plant CNN accuracy is not persisted anywhere, so the metric is hidden
+    // for botanists instead of showing a permanent dash.
+    setHidden('metricAccuracyItem', true);
+
+    // A reported species is credited, so the number counts it — and only it.
+    // It is deliberately NOT added into verifiedPlants: the two are different
+    // claims and the metrics row must not blur them.
+    setText('botanistReportedCount', profile.metrics.reportedPlants || 0);
+
+    renderContributions(profile.contributions, 'Contributed', 'No verified contributions yet.');
+    renderReported(profile.reported);
+}
+
+/** The administrator / superadmin layout: reviewing, not contributing. */
+function renderAdministrator(profile) {
+    const metrics = profile.metrics || {};
+
+    setText('roleBadgeIcon', 'shield_person');
+    setText('roleBadgeText', ADMIN_ROLE_LABELS[profile.role] || 'Administrator');
+    setText('metricLabelPlants', 'Plants Reviewed');
+    setText('metricLabelReported', 'Requests Approved');
+    setText('metricLabelAccuracy', 'Requests Denied');
+    setText('metricLabelSpecialization', 'Member Since');
+    setText('contributionsIcon', 'fact_check');
+    setText('contributionsTitle', 'Plants Reviewed');
+
+    setHidden('metricAccuracyItem', false);
+
+    setText('botanistPlantCount', metrics.reviewedPlants || 0);
+    setText('botanistReportedCount', metrics.approvedRequests || 0);
+    setText('botanistAccuracy', metrics.deniedRequests || 0);
+    setText('botanistSpecialization', formatJoined(profile.joinedAt));
+
+    renderContributions(profile.contributions, 'Reviewed', 'No reviewed plants yet.');
+
+    // Administrators report no species, so the second grid never applies.
+    setHidden('reportedSection', true);
+}
+
 async function loadBotanistProfile() {
     const params = new URLSearchParams(window.location.search);
     const accountId = params.get('accountId') || params.get('id');
     const nameEl = document.getElementById('botanistName');
 
     if (!accountId) {
-        nameEl.textContent = 'Botanist not found';
+        nameEl.textContent = 'Profile not found';
         return;
     }
 
@@ -112,7 +197,8 @@ async function loadBotanistProfile() {
     try {
         const response = await fetch(`/api/botanists/${encodeURIComponent(accountId)}`, { credentials: 'include' });
         if (response.status === 404) {
-            nameEl.textContent = 'Botanist not found';
+            // Also what a guest or plain user gets for an administrator's id.
+            nameEl.textContent = 'Profile not found or not available to you';
             return;
         }
         if (!response.ok) throw new Error('Failed to load profile');
@@ -128,24 +214,27 @@ async function loadBotanistProfile() {
     document.getElementById('botanistAvatar').textContent = initialsFor(profile.name);
     document.getElementById('botanistBio').textContent = profile.bio || 'No biography recorded yet.';
 
-    document.getElementById('botanistPlantCount').textContent = profile.metrics.verifiedPlants;
-    document.getElementById('botanistSpecialization').textContent = profile.specialization || '—';
-
-    // Per-plant CNN accuracy is still hardcoded on the design; the metric is not
-    // persisted yet, so show a dash rather than a stale number.
-    document.getElementById('botanistAccuracy').textContent = '—';
-
-    // A reported species is credited, so the number counts it — and only it.
-    // It is deliberately NOT added into verifiedPlants: the two are different
-    // claims and the metrics row must not blur them.
-    const reportedCount = document.getElementById('botanistReportedCount');
-    if (reportedCount) reportedCount.textContent = profile.metrics.reportedPlants || 0;
-
-    renderContributions(profile.contributions);
-    renderReported(profile.reported);
+    if (profile.role === 'botanist') {
+        renderBotanist(profile);
+    } else {
+        renderAdministrator(profile);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', function () {
     applyTheme(localStorage.getItem('plantellect-theme') || 'dark');
+
+    // Back goes to wherever the visitor came from (a plant page, usually), and
+    // only falls back to the link's own href when there is no history.
+    const back = document.getElementById('backBtn');
+    if (back) {
+        back.addEventListener('click', function (event) {
+            if (window.history.length > 1) {
+                event.preventDefault();
+                window.history.back();
+            }
+        });
+    }
+
     loadBotanistProfile();
 });

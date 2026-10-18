@@ -73,7 +73,7 @@ class ScanRepository(
             val image = MultipartBody.Part.createFormData(
                 "image", "scan.jpg", jpeg.toRequestBody("image/jpeg".toMediaType())
             )
-            val k = topK.toString().toRequestBody("text/plain".toMediaType())
+            val k = topK.coerceIn(1, UploadLimits.MAX_TOP_K).toString().toRequestBody("text/plain".toMediaType())
 
             when (val r = caller.call { api.predict(image, k) }) {
                 is ApiResult.Success -> ScanOutcome.Server(r.value, local)

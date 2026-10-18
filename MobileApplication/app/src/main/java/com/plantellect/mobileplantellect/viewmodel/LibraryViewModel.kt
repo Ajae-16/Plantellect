@@ -12,7 +12,8 @@ import kotlinx.coroutines.launch
 
 data class LibraryUiState(
     val query: String = "",
-    val typeId: String? = null,
+    /** PlantTypeDto.typeName, the value the server filters on. */
+    val typeName: String? = null,
     val types: List<PlantTypeDto> = emptyList(),
     val items: List<PlantSummaryDto> = emptyList(),
     val loading: Boolean = false,
@@ -48,7 +49,7 @@ class LibraryViewModel(private val repo: PlantRepository) : ViewModel() {
         loadJob = viewModelScope.launch { delay(300); fetch(reset = true) }   // debounce typing
     }
 
-    fun setType(typeId: String?) { _ui.update { it.copy(typeId = typeId) }; reload() }
+    fun setType(typeName: String?) { _ui.update { it.copy(typeName = typeName) }; reload() }
 
     fun reload() { loadJob?.cancel(); loadJob = viewModelScope.launch { fetch(reset = true) } }
 
@@ -80,10 +81,10 @@ class LibraryViewModel(private val repo: PlantRepository) : ViewModel() {
         if (reset) page = 0
         val s = _ui.value
         _ui.update { it.copy(loading = true, error = null, items = if (reset) emptyList() else it.items, endReached = if (reset) false else it.endReached) }
-        when (val r = repo.list(s.query, s.typeId, page + 1)) {
+        when (val r = repo.list(s.query, s.typeName, page + 1)) {
             is ApiResult.Success -> {
                 page += 1
-                val got = r.value.items
+                val got = r.value.plants
                 _ui.update {
                     it.copy(
                         loading = false,

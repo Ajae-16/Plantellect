@@ -35,33 +35,36 @@ class NetworkModule(context: Context) {
      *
      */
     val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-.cookieJar(cookieJar)
-.connectTimeout(15, TimeUnit.SECONDS)
-.readTimeout(60, TimeUnit.SECONDS)     // /predict waits on the ML service
-.writeTimeout(60, TimeUnit.SECONDS)
-.addInterceptor { chain ->
-val response = chain.proceed(chain.request())
-val path = chain.request().url.encodedPath
-if (response.code == 401 && !path.endsWith("/login") && !path.endsWith("/me")) {
-_sessionExpired.tryEmit(Unit)
-}
-response
-}
-.apply {
-if (debuggable) {
-// BASIC on purpose: BODY would print passwords into logcat.
-addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
-}
-}
-.build()
+        .cookieJar(cookieJar)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)     // /predict waits on the ML service
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val response = chain.proceed(chain.request())
+            val path = chain.request().url.encodedPath
+            if (response.code == 401 && !path.endsWith("/login") && !path.endsWith("/me")) {
+                _sessionExpired.tryEmit(Unit)
+            }
+            response
+        }
+        .apply {
+            if (debuggable) {
+                // BASIC on purpose: BODY would print passwords into logcat.
+                addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+            }
+        }
+        .build()
 
-private val retrofit = Retrofit.Builder()
-.baseUrl(baseUrl)
-.client(okHttpClient)
-.addConverterFactory(json.asConverterFactory("application/json; charset=UTF-8".toMediaType()))
-.build()
+    private val retrofit = Retrofit.Builder()
+        .baseUrl(baseUrl)
+        .client(okHttpClient)
+        .addConverterFactory(json.asConverterFactory("application/json; charset=UTF-8".toMediaType()))
+        .build()
 
-val authApi: AuthApi = retrofit.create(AuthApi::class.java)
-val plantApi: PlantApi = retrofit.create(PlantApi::class.java)
-val mlApi: MlApi = retrofit.create(MlApi::class.java)
+    val authApi: AuthApi = retrofit.create(AuthApi::class.java)
+    val plantApi: PlantApi = retrofit.create(PlantApi::class.java)
+    val mlApi: MlApi = retrofit.create(MlApi::class.java)
+    val recordApi: RecordApi = retrofit.create(RecordApi::class.java)
+    val discoveryApi: DiscoveryApi = retrofit.create(DiscoveryApi::class.java)
+    val botanistApi: BotanistApi = retrofit.create(BotanistApi::class.java)
 }

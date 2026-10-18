@@ -10,6 +10,8 @@ object ApiConfig {
     const val AUTH = "api/auth"
     const val PLANTS = "api/plants"
     const val ML = "api/ml"
+    const val DISCOVERIES = "api/discoveries"
+    const val BOTANISTS = "api/botanists"
 
     fun absolute(baseUrl: String, path: String?): String? = when {
         path.isNullOrBlank() -> null

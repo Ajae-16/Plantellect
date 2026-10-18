@@ -1412,15 +1412,23 @@
 
 
 /* ==========================================================================
-   BACK BUTTON LOCATION
-   It used to float in the page corner (pushed down by the 64px header margin
-   this page does not have), far from the card. Now it sits in the page flow
-   directly above the card, lined up with the card's left edge.
+   BACK BUTTON + CARD PLACEMENT (auth.html and forgot-pass.html)
+   The button sits in the page flow directly above the card, lined up with the
+   card's left edge. `margin: auto` on the card used to centre it vertically
+   inside the flex column, which left a gap under the button; vertical margins
+   are now 0 and the card is centred horizontally with align-self instead.
    Keep this block last.
    ========================================================================== */
 .hero-container {
     margin-top: 0;
     padding-top: 24px;
+    align-items: stretch;          /* children position themselves with align-self */
+}
+
+.auth-container {
+    margin-top: 0;
+    margin-bottom: 0;
+    align-self: center;            /* card stays centred horizontally */
 }
 
 .auth-back-btn {
@@ -1429,8 +1437,17 @@
     left: auto;
     align-self: flex-start;
     flex: 0 0 auto;
+    width: fit-content;
     /* line up with the card: it is centred and at most 1100px wide */
     margin: 0 0 14px max(0px, calc((100% - 1100px) / 2));
+}
+
+/* 480-767px the card is capped at 900px but the viewport is narrower, so it
+   fills the width and the button needs no offset */
+@media (min-width: 480px) and (max-width: 767px) {
+    .auth-back-btn {
+        margin-left: 0;
+    }
 }
 
 @media (max-width: 479px) {

@@ -70,6 +70,24 @@
             left: 0;
         }
 
+        /* An <img> with no src can render a broken-image icon, so it is hidden
+           when the plant has no approved photo. `position: absolute` above does
+           not override the hidden attribute, but this keeps that explicit. */
+        .profile-hero img[hidden] { display: none; }
+
+        .hero-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-green);
+            opacity: 0.5;
+        }
+
+        .hero-placeholder[hidden] { display: none; }
+        .hero-placeholder .material-symbols-outlined { font-size: 96px; }
+
         .header-controls {
             position: absolute;
             top: 20px;
@@ -115,20 +133,6 @@
 
         body.light-mode .back-btn:hover,
         body.light-mode .theme-btn:hover { background: #fff; }
-
-        .confidence-badge {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(76, 175, 80, 0.9);
-            color: #fff;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-            letter-spacing: 0.5px;
-            z-index: 10;
-        }
 
         .profile-content { padding: 30px; }
 
@@ -187,6 +191,11 @@
         .info-card ul { padding-left: 18px; }
         .info-card p + p { margin-top: 8px; }
 
+        /* describeParts() joins Height / Width / Color / Shape / Texture with
+           newlines and the text is set via textContent, so without this the
+           lines collapse into one run-on sentence. */
+        #plantDescription { white-space: pre-line; }
+
         .full-width-card { grid-column: 1 / -1; }
 
         .botanist-meta {
@@ -220,6 +229,30 @@
             gap: 2px;
         }
 
+        /* `display` above would override the hidden attribute, so restore it */
+        .contributor-info[hidden],
+        .verified-badge[hidden] { display: none; }
+
+        /* Recorded by / Reviewed by / Reported by. Each row is its own claim, so
+           they stack rather than sharing one line. Plain text for anyone who is
+           not a botanist; a link plus the Verified Botanist badge for one. */
+        .people-rows {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 100%;
+        }
+
+        .people-list {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 6px 12px;
+            align-items: center;
+        }
+
+        .person { display: inline-flex; align-items: center; gap: 4px; }
+        .person-name { color: var(--text-light); font-weight: 600; }
+
         /* Shown only when /api/auth/me includes record_plant. Styled here rather
            than in a shared stylesheet because this page has no sidebar and no
            shared theme — it keeps its own inline block on purpose. */
@@ -237,7 +270,7 @@
             text-decoration: none;
         }
 
-        .contribute-btn:hover { filter: brightness(0.92); }
+        .contribute-btn:hover { filter: brightness(0.92); text-decoration: none; }
         .contribute-btn[hidden] { display: none; }
     </style>
 </head>
@@ -245,7 +278,10 @@
 
     <div class="profile-container">
         <div class="profile-hero">
-            <img src="" alt="" id="plantImage">
+            <img src="" alt="" id="plantImage" hidden>
+            <div class="hero-placeholder" id="heroPlaceholder" aria-hidden="true">
+                <span class="material-symbols-outlined">eco</span>
+            </div>
 
             <div class="header-controls">
                 <button class="back-btn" onclick="history.back()">
@@ -256,8 +292,6 @@
                     <span class="material-symbols-outlined" id="themeIcon" style="font-size: 20px;">light_mode</span>
                 </button>
             </div>
-
-            <div class="confidence-badge" id="confidenceBadge"></div>
         </div>
 
         <div class="profile-content">
@@ -290,32 +324,43 @@
 
             <div class="botanist-meta">
                 <span id="datasetSource"></span>
+
+                <!-- Revealed by plant-profile.js only for a session holding
+                     record_plant. Note this page keeps its own theme key
+                     (plantellect-theme), so following the link can flip the
+                     theme across the navigation. That is a known, accepted
+                     one-off: converting the key is not worth it for one
+                     jump, and it is not a bug. -->
                 <div class="contributor-info">
-                    <!-- Revealed by plant-profile.js only for a session holding
-                         record_plant. Note this page keeps its own theme key
-                         (plantellect-theme), so following the link can flip the
-                         theme across the navigation. That is a known, accepted
-                         one-off: converting the key is not worth it for one
-                         jump, and it is not a bug. -->
                     <a href="#" id="contributeLink" class="contribute-btn" hidden>
                         <span class="material-symbols-outlined" style="font-size: 15px;">edit_note</span>
                         Contribute
                     </a>
-                    <span>Reviewed by:</span>
-                    <a href="#" id="reviewerLink"></a>
-                    <span class="verified-badge">
-                        <span class="material-symbols-outlined" style="font-size: 15px;">check_circle</span> Verified Botanist
-                    </span>
                 </div>
 
-                <!--  reporter credit. Its OWN row rather than a third
-                     name in the reviewer line — "Reported by" and "Reviewed by"
-                     are different claims, and a `user` is credited here while
-                     never being a reviewer. Hidden when the plant had no
-                     discovery report, which is most plants. -->
-                <div class="contributor-info" id="reportedByRow" hidden>
-                    <span>Reported by:</span>
-                    <span id="reportedByText"></span>
+                <!-- Three separate claims, three rows, each filled by
+                     renderPeople() in plant-profile.js and hidden when nobody is
+                     named for it.
+                       - botanist: link to botanist-profile.html + Verified Botanist badge
+                       - admin / superadmin: link to admin-profile.html, no badge
+                       - user / system: plain text, no badge
+                     "Reported by" is credit for the discovery report, not
+                     authorship. It only has someone in it when the plant was
+                     created from a discovery report, so on every other plant
+                     that row stays hidden. -->
+                <div class="people-rows full-width-card">
+                    <div class="contributor-info" id="recordedByRow" hidden>
+                        <span>Recorded by:</span>
+                        <span id="recordedByList" class="people-list"></span>
+                    </div>
+                    <div class="contributor-info" id="reviewedByRow" hidden>
+                        <span>Reviewed by:</span>
+                        <span id="reviewedByList" class="people-list"></span>
+                    </div>
+                    <div class="contributor-info" id="reportedByRow" hidden>
+                        <span>Reported by:</span>
+                        <span id="reportedByList" class="people-list"></span>
+                    </div>
                 </div>
             </div>
         </div>

@@ -3,8 +3,8 @@ package com.plantellect.mobileplantellect.data.local
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
-import com.google.ai.edge.litert.DataType
-import com.google.ai.edge.litert.Interpreter
+import org.tensorflow.lite.DataType
+import org.tensorflow.lite.Interpreter   // LiteRT keeps the org.tensorflow.lite package for the Interpreter API
 import org.json.JSONObject
 import java.nio.ByteBuffer
 import java.nio.ByteOrder

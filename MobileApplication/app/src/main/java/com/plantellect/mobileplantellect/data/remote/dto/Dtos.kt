@@ -48,61 +48,113 @@ data class RegisterResponse(
 data class ErrorBody(
     val error: String? = null,
     val retryAfter: Int? = null,
+    val retryAfterSeconds: Int? = null,   // discovery filing cooldown uses this name
     val limit: Int? = null
 )
 
-// ---------------------------------------------------------------- library (routes/plants.js)
-// NOTE: plants.js only shows the ROUTES; the JSON comes from listPublicPlants /
-// getPublicPlantDetail in config/mysql.js. These field names are a best guess, every
-// field is defaulted so a mismatch shows up as empty values, not a crash. Compare with a
-// real response (curl /api/plants) and rename.
+// ---------------------------------------------------------------- library (routes/plants.js -> mysql.js)
 
-@Serializable data class PlantTypeDto(val typeId: String = "", val name: String = "")
+@Serializable
+data class PlantTypeDto(
+    val typeId: String = "",
+    /** The value the library filter expects: GET /plants?type=<typeName>, NOT typeId. */
+    val typeName: String = "",
+    val label: String = "",
+    val icon: String? = null,
+    val isMedicinal: Boolean = false,
+    val isHarmful: Boolean = false,
+    val toxicityLevel: String? = null,
+    val cautionNote: String? = null
+)
+
 @Serializable data class PlantTypesResponse(val types: List<PlantTypeDto> = emptyList())
 
 @Serializable
 data class PlantSummaryDto(
-    val plantId: String,
-    val commonName: String = "",
+    val id: String,
+    val name: String = "",
     val scientificName: String = "",
-    val typeId: String? = null,
-    val typeName: String? = null,
-    val heroImageId: String? = null,
+    val quantity: Int? = null,
+    val type: String = "",
+    val typeLabel: String = "",
+    val typeIcon: String? = null,
+    val isMedicinal: Boolean = false,
+    val isHarmful: Boolean = false,
+    val toxicityLevel: String? = null,
+    val cautionNote: String? = null,
+    /** Relative path to the primary approved photo, or null. */
     val imageUrl: String? = null
 )
 
-@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class PlantPageDto(
-    @JsonNames("plants", "results") val items: List<PlantSummaryDto> = emptyList(),
+    val plants: List<PlantSummaryDto> = emptyList(),
     val total: Int = 0,
     val page: Int = 1,
     val pageSize: Int = 20
 )
 
 @Serializable
-data class PlantImageDto(val imageId: String = "", val url: String? = null)
+data class PlantImageDto(
+    val imageId: String = "",
+    val imageUrl: String? = null,
+    val originalFilename: String? = null
+)
+
+/** Measurements as stored. Values arrive as numbers or decimal strings, so they are kept as text. */
+@Serializable
+data class PlantPartsDto(
+    val heightMinCm: String? = null,
+    val heightMaxCm: String? = null,
+    val heightNote: String? = null,
+    val widthMinCm: String? = null,
+    val widthMaxCm: String? = null,
+    val widthNote: String? = null,
+    val color: String? = null,
+    val shape: String? = null,
+    val texture: String? = null
+)
 
 @Serializable
-data class PlantDetailDto(
-    val plantId: String,
-    val commonName: String = "",
-    val scientificName: String = "",
-    val typeId: String? = null,
-    val typeName: String? = null,
-    val quantity: Int? = null,
-    val kingdom: String? = null,
-    val phylum: String? = null,
-    val plantClass: String? = null,
-    val order: String? = null,
-    val family: String? = null,
-    val genus: String? = null,
-    val species: String? = null,
-    val parts: JsonElement? = null,
+data class DescriptionAuthorDto(
+    val accountId: String = "",
+    val name: String = "",
+    val specialization: String? = null
+)
+
+@Serializable
+data class PlantDescriptionDto(
+    val descriptionId: String = "",
+    val isPrimary: Boolean = false,
     val uses: String? = null,
     val benefits: String? = null,
     val harmful: String? = null,
-    val images: List<PlantImageDto> = emptyList()
+    val author: DescriptionAuthorDto = DescriptionAuthorDto(),
+    /** null when the description has no measurements. */
+    val parts: PlantPartsDto? = null,
+    val createdAt: String? = null
+)
+
+@Serializable
+data class PlantDetailDto(
+    val id: String,
+    val name: String = "",
+    val scientificName: String = "",
+    val quantity: Int? = null,
+    val type: String = "",
+    val typeLabel: String = "",
+    val typeIcon: String? = null,
+    val isMedicinal: Boolean = false,
+    val isHarmful: Boolean = false,
+    val toxicityLevel: String? = null,
+    val cautionNote: String? = null,
+    val createdAt: String? = null,
+    val images: List<PlantImageDto> = emptyList(),
+    val descriptions: List<PlantDescriptionDto> = emptyList(),
+    /** Display names joined with "; ". */
+    val recordedBy: String = "",
+    val reviewedBy: String = "",
+    val reportedBy: String = ""
 )
 
 // ---------------------------------------------------------------- scan (routes/ml.js)
@@ -134,8 +186,33 @@ data class PredictResponse(
     @SerialName("inference_ms") val inferenceMs: Double? = null,
     /** What the model's #1 guess was: species | non_plant | other_plant. */
     @SerialName("top_kind") val topKind: String? = null,
-    /** Present only when the admin runs confidence in 'enforce' mode: e.g. "unrecognized", "uncertain". */
+    /** Only when the admin runs confidence in 'enforce' mode: identified | uncertain | unrecognized. */
     val outcome: String? = null,
+    /** species | non_plant | other_plant | low_confidence | close_call (enforce mode only). */
     val reason: String? = null,
     val error: String? = null
-)
+) {
+    /** One decision for the UI, whether or not the admin has confidence enforcement switched on. */
+    fun verdict(): ScanVerdict = when {
+        outcome == "identified" -> ScanVerdict.IDENTIFIED
+        outcome == "uncertain" -> ScanVerdict.UNCERTAIN
+        outcome == "unrecognized" -> when (reason) {
+            "non_plant" -> ScanVerdict.NOT_A_PLANT
+            "other_plant" -> ScanVerdict.UNSUPPORTED_PLANT
+            else -> ScanVerdict.NOT_RECOGNIZED
+        }
+        // Enforcement off: fall back on what the model's #1 guess was.
+        topKind == "non_plant" -> ScanVerdict.NOT_A_PLANT
+        topKind == "other_plant" -> ScanVerdict.UNSUPPORTED_PLANT
+        predictions.isNotEmpty() -> ScanVerdict.IDENTIFIED
+        else -> ScanVerdict.NOT_RECOGNIZED
+    }
+}
+
+enum class ScanVerdict {
+    /** Show the species. */ IDENTIFIED,
+    /** "Possible X: take another photo". Predictions are a short list. */ UNCERTAIN,
+    /** "No plant detected". */ NOT_A_PLANT,
+    /** "Plant detected, but the species is not supported". A good moment to offer a discovery report. */ UNSUPPORTED_PLANT,
+    /** Blurry or too weak to name anything: ask for a clearer photo. */ NOT_RECOGNIZED
+}

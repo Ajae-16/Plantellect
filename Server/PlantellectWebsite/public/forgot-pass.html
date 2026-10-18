@@ -11,10 +11,16 @@
 <body class="forgot-page">
     <div class="background-image"></div>
     <div class="hero-container">
+        <!-- Back to home: direct child of .hero-container, right before the card -->
+        <a href="home.html" class="auth-back-btn" aria-label="Back to home">
+            <span class="material-symbols-outlined">arrow_back</span>
+            <span class="auth-back-text">Back to Home</span>
+        </a>
+
         <!-- Starts with 'active' class so the right side (Forgot Password / Email) is visible initially -->
         <div class="auth-container active" id="authContainer">
             <div class="forms-wrapper">
-                
+
                 <!-- LEFT SIDE: NEW PASSWORD CONTAINER (Shown after code verification) -->
                 <div class="form-container login-container">
                     <h2>NEW PASSWORD</h2>
@@ -39,7 +45,7 @@
                                     <li id="req-number">One number</li>
                                 </ul>
                             </div>
-                            
+
                             <div class="input-group password-group">
                                 <div class="password-wrapper">
                                     <input type="password" id="confirmNewPassword" placeholder=" " required>
@@ -55,10 +61,10 @@
                                 </ul>
                             </div>
                         </div>
-                        
+
                         <button type="submit" class="login-btn" id="updatePasswordBtn" style="margin-top: 15px;" disabled>UPDATE PASSWORD</button>
 
-                        <p class="form-footer" style="margin-top: 10px;">Remember your password? 
+                        <p class="form-footer" style="margin-top: 10px;">Remember your password?
                             <a href="#" class="link" onclick="backToSignIn(event)">Sign In</a>
                         </p>
                     </form>
@@ -66,7 +72,7 @@
                 </div>
 
                 <div class="form-container-dummy"><!-- dummy --></div>
-                
+
                 <!-- RIGHT SIDE: EMAIL & 6-DIGIT CODE CONTAINER -->
                 <div class="form-container register-container">
                     <h2>FORGOT PASSWORD</h2>
@@ -87,7 +93,7 @@
                                 <span class="material-symbols-outlined input-icon">pin</span>
                             </div>
                         </div>
-                        
+
                         <button type="submit" class="signup-btn" id="actionButton" style="margin-top: 20px;">SEND A CODE</button>
 
                         <p class="form-footer" style="margin-top: 15px;" id="formFooterText">
@@ -244,7 +250,7 @@
                             fpCode.setAttribute('required', 'true');
                             fpEmail.setAttribute('readonly', 'true');
                             actionButton.textContent = 'VERIFY CODE';
-                            
+
                             startCooldown(); // Triggers the 30s timer
                         }
                     } else {

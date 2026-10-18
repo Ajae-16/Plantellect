@@ -14,8 +14,9 @@ class PlantRepository(
 ) {
     suspend fun types(): ApiResult<List<PlantTypeDto>> = caller.call { api.types() }.map { it.types }
 
-    suspend fun list(search: String?, typeId: String?, page: Int, pageSize: Int = 20): ApiResult<PlantPageDto> =
-        caller.call { api.list(search?.trim()?.takeIf { it.isNotEmpty() }, typeId, page, pageSize) }
+    /** [typeName] is PlantTypeDto.typeName (e.g. "herb"), NOT typeId. */
+    suspend fun list(search: String?, typeName: String?, page: Int, pageSize: Int = 20): ApiResult<PlantPageDto> =
+        caller.call { api.list(search?.trim()?.takeIf { it.isNotEmpty() }, typeName, page, pageSize) }
 
     suspend fun detail(plantId: String): ApiResult<PlantDetailDto> = caller.call { api.detail(plantId) }
 
@@ -26,6 +27,6 @@ class PlantRepository(
     /** Resolves the relative imageUrl the scan endpoint returns. */
     fun absoluteUrl(path: String?): String? = ApiConfig.absolute(baseUrl, path)
 
-    fun heroUrl(p: PlantSummaryDto): String? =
-        absoluteUrl(p.imageUrl) ?: p.heroImageId?.let { imageUrl(p.plantId, it) }
+    /** Primary photo of a list item (already a relative path from the server). */
+    fun heroUrl(p: PlantSummaryDto): String? = absoluteUrl(p.imageUrl)
 }
