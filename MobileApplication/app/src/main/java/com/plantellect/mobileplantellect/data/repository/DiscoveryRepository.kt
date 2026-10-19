@@ -11,6 +11,7 @@ import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 
 class DiscoveryRepository(
@@ -86,9 +87,17 @@ class DiscoveryRepository(
 
     // ---------------------------------------------------------------- photos (need the session cookie: load with the shared OkHttpClient)
 
-    /** The reporter's own photo. */
+    /** The reporter's own photo URL — for Coil. */
     fun ownerImageUrl(imageId: String) = "${baseUrl.trimEnd('/')}/${ApiConfig.DISCOVERIES}/images/$imageId"
 
-    /** A report's photo as a botanist sees it. */
+    /** A report's photo as a botanist sees it URL — for Coil. */
     fun reportImageUrl(imageId: String) = "${baseUrl.trimEnd('/')}/${ApiConfig.DISCOVERIES}/report-images/$imageId"
+
+    /** Fetches the owner's discovery image via Retrofit (programmatic: headers, retry, cancellation). */
+    suspend fun ownerImage(imageId: String): ApiResult<Response<ResponseBody>> =
+        caller.call { api.ownerImage(imageId) }
+
+    /** Fetches a report image (botanist view) via Retrofit (programmatic: headers, retry, cancellation). */
+    suspend fun reportImage(imageId: String): ApiResult<Response<ResponseBody>> =
+        caller.call { api.reportImage(imageId) }
 }

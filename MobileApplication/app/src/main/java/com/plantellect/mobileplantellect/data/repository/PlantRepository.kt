@@ -6,6 +6,8 @@ import com.plantellect.mobileplantellect.data.logic.map
 import com.plantellect.mobileplantellect.data.remote.ApiConfig
 import com.plantellect.mobileplantellect.data.remote.PlantApi
 import com.plantellect.mobileplantellect.data.remote.dto.*
+import okhttp3.ResponseBody
+import retrofit2.Response
 
 class PlantRepository(
     private val api: PlantApi,
@@ -20,9 +22,17 @@ class PlantRepository(
 
     suspend fun detail(plantId: String): ApiResult<PlantDetailDto> = caller.call { api.detail(plantId) }
 
-    /** Full URL for an approved plant photo (public, cacheable). */
+    /** Full URL for an approved plant photo (public, cacheable) — for Coil. */
     fun imageUrl(plantId: String, imageId: String): String =
         "${baseUrl.trimEnd('/')}/${ApiConfig.PLANTS}/$plantId/images/$imageId"
+
+    /** Fetches a public plant image via Retrofit (programmatic: headers, retry, cancellation). */
+    suspend fun plantImage(plantId: String, imageId: String): ApiResult<Response<ResponseBody>> =
+        caller.call { api.plantImage(plantId, imageId) }
+
+    /** Fetches the owner's plant image via Retrofit (programmatic: headers, retry, cancellation). */
+    suspend fun myPlantImage(imageId: String): ApiResult<Response<ResponseBody>> =
+        caller.call { api.myPlantImage(imageId) }
 
     /** Resolves the relative imageUrl the scan endpoint returns. */
     fun absoluteUrl(path: String?): String? = ApiConfig.absolute(baseUrl, path)

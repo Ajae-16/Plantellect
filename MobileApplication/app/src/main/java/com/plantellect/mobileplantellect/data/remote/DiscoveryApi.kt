@@ -3,6 +3,7 @@ package com.plantellect.mobileplantellect.data.remote
 import com.plantellect.mobileplantellect.data.remote.dto.*
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -45,4 +46,13 @@ interface DiscoveryApi {
 
     @POST("${ApiConfig.DISCOVERIES}/{id}/disqualify")
     suspend fun disqualify(@Path("id") id: String, @Body body: DisqualifyRequest): Response<MessageDto>
+
+    // ---- images (binary, need session cookie)
+    @GET("${ApiConfig.DISCOVERIES}/images/{imageId}")
+    @Streaming
+    suspend fun ownerImage(@Path("imageId") imageId: String): Response<ResponseBody>
+
+    @GET("${ApiConfig.DISCOVERIES}/report-images/{imageId}")
+    @Streaming
+    suspend fun reportImage(@Path("imageId") imageId: String): Response<ResponseBody>
 }

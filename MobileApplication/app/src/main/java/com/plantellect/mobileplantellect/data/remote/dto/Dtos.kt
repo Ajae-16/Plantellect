@@ -216,3 +216,21 @@ enum class ScanVerdict {
     /** "Plant detected, but the species is not supported". A good moment to offer a discovery report. */ UNSUPPORTED_PLANT,
     /** Blurry or too weak to name anything: ask for a clearer photo. */ NOT_RECOGNIZED
 }
+
+// ---------------------------------------------------------------- ML model info (GET /api/ml/model/info)
+
+@Serializable
+data class ModelInfoDto(
+    val modelId: String? = null,
+    val modelVersion: String? = null,
+    val availableModels: List<AvailableModelDto> = emptyList(),
+    val activeModelId: String? = null
+)
+
+@Serializable
+data class AvailableModelDto(
+    val modelId: String = "",
+    val version: String = "",
+    val isActive: Boolean = false,
+    val description: String? = null
+)

@@ -1,5 +1,6 @@
 package com.plantellect.mobileplantellect.data.remote
 
+import com.plantellect.mobileplantellect.data.remote.dto.ModelInfoDto
 import com.plantellect.mobileplantellect.data.remote.dto.PredictResponse
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -14,4 +15,8 @@ interface MlApi {
         @Part image: MultipartBody.Part,
         @Part("top_k") topK: RequestBody
     ): Response<PredictResponse>
+
+    /** Returns the active ML model info (modelId, version, availableModels). Needs scan_plant permission. */
+    @GET("${ApiConfig.ML}/model/info")
+    suspend fun modelInfo(): Response<ModelInfoDto>
 }
