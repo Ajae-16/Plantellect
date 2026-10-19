@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
 import org.tensorflow.lite.DataType
-import org.tensorflow.lite.Interpreter   // LiteRT keeps the org.tensorflow.lite package for the Interpreter API
+import org.tensorflow.lite.Interpreter
 import org.json.JSONObject
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -14,65 +14,108 @@ data class LocalPrediction(val scientificName: String, val kind: String, val con
 
 data class LocalResult(val top: List<LocalPrediction>) {
     val best: LocalPrediction get() = top.first()
-    /** other_plant counts as a plant: the model knows it's a plant, just not which species. */
     val looksLikePlant: Boolean get() = best.kind != KIND_NON_PLANT
 
     companion object { const val KIND_NON_PLANT = "non_plant" }
 }
 
-/**
- * On-device MobileNet. Reads from assets/mobilenet/:
- *   plantellect_model.tflite  - the converted model
- *   classes.json              - same format the training notebook writes: {"0": {"scientific","kind",...}}
- *   preprocessing.json        - OPTIONAL {"mode": "raw" | "zero_one" | "minus_one_one"}
- *
- * The input size comes from the model itself. If the .tflite is missing, every call
- * returns null and ScanRepository simply skips the on-device step.
- */
+enum class Variant { FP16, FP32 }
+
+private class ClassInfo(val scientific: String, val kind: String)
+
+private enum class Mode { RAW, ZERO_ONE, MINUS_ONE_ONE }
+
 class LocalPlantClassifier(
     private val context: Context,
     private val assetDir: String = "mobilenet"
 ) {
-    private enum class Mode { RAW, ZERO_ONE, MINUS_ONE_ONE }
-    private class ClassInfo(val scientific: String, val kind: String)
-
     private val lock = Any()
-    private var interpreter: Interpreter? = null
+    private var interpreterFp16: Interpreter? = null
+    private var interpreterFp32: Interpreter? = null
+    private var loadAttemptedFp16 = false
+    private var loadAttemptedFp32 = false
     private var classes: List<ClassInfo> = emptyList()
     private var mode = Mode.RAW
-    private var loadAttempted = false
 
-    val isAvailable: Boolean get() = ensureLoaded()
+    /** Returns true if the requested variant is loaded and ready. Does NOT trigger loading. */
+    fun isAvailable(online: Boolean, variant: Variant = preferredVariant(online)): Boolean {
+        return when (variant) {
+            Variant.FP16 -> interpreterFp16 != null
+            Variant.FP32 -> interpreterFp32 != null
+        }
+    }
 
-    private fun ensureLoaded(): Boolean = synchronized(lock) {
+    /** Tries to load the requested variant. Returns true on success. Call off the main thread. */
+    fun ensureLoaded(variant: Variant = Variant.FP32): Boolean = synchronized(lock) {
+        return when (variant) {
+            Variant.FP16 -> ensureLoadedVariant(Variant.FP16) { loadAttemptedFp16 = true }
+            Variant.FP32 -> ensureLoadedVariant(Variant.FP32) { loadAttemptedFp32 = true }
+        }
+    }
+
+    private fun ensureLoadedVariant(variant: Variant, markAttempted: () -> Unit): Boolean {
+        val interpreter = when (variant) {
+            Variant.FP16 -> interpreterFp16
+            Variant.FP32 -> interpreterFp32
+        }
         if (interpreter != null) return true
-        if (loadAttempted) return false
-        loadAttempted = true
+
+        val attempted = when (variant) {
+            Variant.FP16 -> loadAttemptedFp16
+            Variant.FP32 -> loadAttemptedFp32
+        }
+        if (attempted) return false
+
+        markAttempted()
+
         try {
-            val bytes = context.assets.open("$assetDir/plantellect_model.tflite").use { it.readBytes() }
+            val modelFile = when (variant) {
+                Variant.FP16 -> "plantellect_model_fp16.tflite"
+                Variant.FP32 -> "plantellect_model_fp32.tflite"
+            }
+            val bytes = context.assets.open("$assetDir/$modelFile").use { it.readBytes() }
             val model = ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).put(bytes)
             model.rewind()
-            classes = readClasses()
-            mode = readMode()
-            val interp = Interpreter(model, Interpreter.Options().setNumThreads(4))
+
+            if (classes.isEmpty()) {
+                classes = readClasses()
+                mode = readMode()
+            }
+
+            val options = Interpreter.Options().apply {
+                try { setNumThreads(4) } catch (_: Exception) { /* fall back to default */ }
+            }
+            val interp = Interpreter(model, options)
+
             val outputs = interp.getOutputTensor(0).shape().last()
             if (outputs != classes.size) {
                 Log.e(TAG, "Model has $outputs outputs but classes.json has ${classes.size} entries")
-                interp.close(); return false
+                interp.close()
+                return false
             }
-            interpreter = interp
+
+            when (variant) {
+                Variant.FP16 -> interpreterFp16 = interp
+                Variant.FP32 -> interpreterFp32 = interp
+            }
             true
         } catch (e: Exception) {
-            Log.w(TAG, "On-device model unavailable: ${e.message}")
+            Log.w(TAG, "On-device model ($variant) unavailable: ${e.message}")
             false
         }
     }
 
-    /** Blocking; call off the main thread. Returns null when no model is bundled. */
-    fun classify(bitmap: Bitmap, topK: Int = 3): LocalResult? {
-        if (!ensureLoaded()) return null
+    /** Classifies using the given variant (or preferred for online state). Returns null if unavailable. */
+    fun classify(bitmap: Bitmap, topK: Int = 3, variant: Variant = preferredVariant(true)): LocalResult? {
+        val effectiveVariant = if (!ensureLoaded(variant)) fallbackVariant(variant) else variant
+        if (!ensureLoaded(effectiveVariant)) return null
+
         synchronized(lock) {
-            val interp = interpreter ?: return null
+            val interp = when (effectiveVariant) {
+                Variant.FP16 -> interpreterFp16
+                Variant.FP32 -> interpreterFp32
+            } ?: return null
+
             val inTensor = interp.getInputTensor(0)
             val h = inTensor.shape()[1]
             val w = inTensor.shape()[2]
@@ -85,6 +128,15 @@ class LocalPlantClassifier(
             }
             return LocalResult(top)
         }
+    }
+
+    private fun preferredVariant(online: Boolean): Variant = Variant.FP32
+
+    fun preferredVariantForOnline(online: Boolean): Variant = preferredVariant(online)
+
+    fun fallbackVariant(variant: Variant): Variant = when (variant) {
+        Variant.FP32 -> Variant.FP16
+        Variant.FP16 -> Variant.FP32
     }
 
     private fun toInput(src: Bitmap, w: Int, h: Int, type: DataType): ByteBuffer {
@@ -110,7 +162,6 @@ class LocalPlantClassifier(
         return buf
     }
 
-    /** Keras models usually end in softmax already; apply it only if the output isn't a distribution. */
     private fun normalise(raw: FloatArray): FloatArray {
         val sum = raw.sum()
         if (raw.all { it in 0f..1f } && sum in 0.98f..1.02f) return raw
@@ -137,5 +188,5 @@ class LocalPlantClassifier(
         }
     } catch (e: Exception) { Mode.RAW }
 
-    private companion object { const val TAG = "LocalPlantClassifier" }
+    companion object { private const val TAG = "LocalPlantClassifier" }
 }

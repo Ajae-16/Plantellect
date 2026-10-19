@@ -8,6 +8,7 @@ import com.plantellect.mobileplantellect.data.logic.*
 import com.plantellect.mobileplantellect.data.remote.MlApi
 import com.plantellect.mobileplantellect.data.remote.dto.PredictResponse
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -16,29 +17,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 enum class OnDeviceReason { NO_CONNECTION, SERVER_UNREACHABLE }
 
 sealed interface ScanOutcome {
-    /** The server's (more accurate) answer. [local] is the on-device check that ran first, if any. */
     data class Server(val response: PredictResponse, val local: LocalResult?) : ScanOutcome
-
-    /** Best-effort answer from the phone's MobileNet because the server was not usable. */
     data class OnDevice(val local: LocalResult, val reason: OnDeviceReason) : ScanOutcome
-
-    /** MobileNet is confident this isn't a plant; nothing was uploaded and no quota was spent. */
     data class NotAPlant(val local: LocalResult) : ScanOutcome
-
-    /** HTTP 429 from the per-account scan quota. */
     data class RateLimited(val retryAfterSeconds: Int?, val message: String) : ScanOutcome
-
     data class Failed(val error: AppError) : ScanOutcome
 }
 
-/**
- * Scan pipeline:
- *   1. MobileNet on the phone: plant / not a plant (and a species guess).
- *   2. Confident non_plant      -> stop (NotAPlant). Saves the upload and the quota.
- *   3. Offline                  -> OnDevice result.
- *   4. Online                   -> upload to /ml/predict -> Server result.
- *   5. Server down / timeout    -> OnDevice result instead of an error.
- */
 class ScanRepository(
     private val context: Context,
     private val api: MlApi,
@@ -46,10 +31,6 @@ class ScanRepository(
     private val classifier: com.plantellect.mobileplantellect.data.local.LocalPlantClassifier,
     private val network: NetworkMonitor
 ) {
-    /**
-     * @param skipLocalGate true for a "scan anyway" retry after NotAPlant: the on-device model
-     *   can be wrong, so the user always gets a way past it.
-     */
     suspend fun scan(uri: Uri, topK: Int = 5, skipLocalGate: Boolean = false): ScanOutcome =
         withContext(Dispatchers.Default) {
             val bitmap = try {
@@ -58,13 +39,14 @@ class ScanRepository(
                 return@withContext ScanOutcome.Failed(AppError.Unexpected("Could not read that photo"))
             }
 
-            val local = classifier.classify(bitmap)
+            val online = network.isOnline()
+            val local = classifier.classify(bitmap, variant = classifier.preferredVariantForOnline(online))
 
             if (local != null && !skipLocalGate &&
                 !local.looksLikePlant && local.best.confidence >= NOT_PLANT_MIN_CONFIDENCE
             ) return@withContext ScanOutcome.NotAPlant(local)
 
-            if (!network.isOnline()) {
+            if (!online) {
                 return@withContext local?.let { ScanOutcome.OnDevice(it, OnDeviceReason.NO_CONNECTION) }
                     ?: ScanOutcome.Failed(AppError.Network)
             }
@@ -75,24 +57,39 @@ class ScanRepository(
             )
             val k = topK.coerceIn(1, UploadLimits.MAX_TOP_K).toString().toRequestBody("text/plain".toMediaType())
 
-            when (val r = caller.call { api.predict(image, k) }) {
-                is ApiResult.Success -> ScanOutcome.Server(r.value, local)
-                is ApiResult.Failure -> {
-                    val e = r.error
-                    when {
-                        e is AppError.Http && e.code == 429 -> ScanOutcome.RateLimited(e.retryAfterSeconds, e.message)
-                        // Server unreachable, ML service down (502) or timed out (504): fall back.
-                        e is AppError.Network || (e is AppError.Http && (e.code == 502 || e.code == 504)) ->
-                            local?.let { ScanOutcome.OnDevice(it, OnDeviceReason.SERVER_UNREACHABLE) }
-                                ?: ScanOutcome.Failed(e)
-                        else -> ScanOutcome.Failed(e)   // 401 / 403 / 400 / 5xx: the UI must say why
+            var lastError: AppError? = null
+            var succeeded: PredictResponse? = null
+            for (attempt in 0 until 3) {
+                val r = caller.call { api.predict(image, k) }
+                when (r) {
+                    is ApiResult.Success -> {
+                        succeeded = r.value
+                        break
+                    }
+                    is ApiResult.Failure -> {
+                        lastError = r.error
+                        val e = r.error
+                        if (e is AppError.Http && e.code == 429) {
+                            return@withContext ScanOutcome.RateLimited(e.retryAfterSeconds, e.message)
+                        }
+                        val retryable = e is AppError.Network || (e is AppError.Http && (e.code == 502 || e.code == 504))
+                        if (retryable && attempt < 2) {
+                            delay(1000L * (attempt + 1))
+                            continue
+                        }
+                        if (!retryable) {
+                            return@withContext ScanOutcome.Failed(e)
+                        }
                     }
                 }
             }
+
+            succeeded?.let { ScanOutcome.Server(it, local) }
+                ?: local?.let { ScanOutcome.OnDevice(it, OnDeviceReason.SERVER_UNREACHABLE) }
+                ?: ScanOutcome.Failed(lastError ?: AppError.Network)
         }
 
     private companion object {
-        /** High on purpose: wrongly blocking a real plant is worse than wasting one upload. */
         const val NOT_PLANT_MIN_CONFIDENCE = 0.85f
     }
 }

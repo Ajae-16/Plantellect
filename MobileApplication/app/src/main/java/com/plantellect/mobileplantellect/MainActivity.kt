@@ -52,7 +52,6 @@ import com.plantellect.mobileplantellect.ui.screen.RecordPlantScreen
 import com.plantellect.mobileplantellect.ui.screen.ScanPlantScreen
 import com.plantellect.mobileplantellect.ui.theme.MobilePlantellectTheme
 import com.plantellect.mobileplantellect.viewmodel.AuthViewModel
-import com.plantellect.mobileplantellect.viewmodel.ScanViewModel
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -228,10 +227,7 @@ private fun AppShell(
                 // Each screen fetches its own ViewModel (see ui/AppViewModel.kt), so these calls keep
                 // the screens' current signatures.
                 composable("inventory") { PlantInventoryScreen() }
-                composable("scan") {
-                    val vm: ScanViewModel = viewModel(factory = factory)
-                    ScanPlantScreen()
-                }
+                composable("scan") { ScanPlantScreen() }
                 composable("record") { RecordPlantScreen() }
                 composable("profile") { ProfileScreen() }
             }

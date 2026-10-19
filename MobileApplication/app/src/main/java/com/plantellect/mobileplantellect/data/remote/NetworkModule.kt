@@ -32,8 +32,6 @@ class NetworkModule(context: Context) {
     val sessionExpired: SharedFlow<Unit> = _sessionExpired.asSharedFlow()
 
     /** Also hand this to the image loader (Coil) so /mine/images/* carries the session cookie. */
-     *
-     */
     val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
         .connectTimeout(15, TimeUnit.SECONDS)

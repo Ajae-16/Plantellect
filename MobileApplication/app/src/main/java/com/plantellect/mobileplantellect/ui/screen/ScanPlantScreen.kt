@@ -125,6 +125,10 @@ fun ScanPlantScreen() {
     val lastAnalysisTime = remember { mutableStateOf(0L) }
     val isAnalyzerActive = remember { AtomicBoolean(false) }
 
+    /** Classifier availability computed off the main thread; updated when online state changes. */
+    var classifierAvailable by remember { mutableStateOf(false) }
+    val online by app.container.connectivity.onlineFlow.collectAsStateWithLifecycle(initial = false)
+
     DisposableEffect(Unit) {
         onDispose {
             analyzerExecutor.shutdown()
@@ -142,6 +146,15 @@ fun ScanPlantScreen() {
                 Thread.currentThread().interrupt()
             }
         }
+    }
+
+    LaunchedEffect(online) {
+        val classifier = app.container.classifier
+        val variant = classifier.preferredVariantForOnline(online)
+        val available = withContext(Dispatchers.Default) {
+            classifier.ensureLoaded(variant) || classifier.ensureLoaded(classifier.fallbackVariant(variant))
+        }
+        classifierAvailable = available
     }
 
     val previewView = remember { PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.PERFORMANCE } }
@@ -213,7 +226,7 @@ fun ScanPlantScreen() {
         val classifier: LocalPlantClassifier = app.container.classifier
         val result: LocalResult? = withContext(Dispatchers.Default) {
             try {
-                classifier.classify(bitmap)
+                classifier.classify(bitmap, variant = classifier.preferredVariantForOnline(online))
             } catch (e: Exception) {
                 Log.e("ScanPlantScreen", "Classification failed", e)
                 null
@@ -301,7 +314,7 @@ fun ScanPlantScreen() {
                             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                             liveResult = liveResult,
                             analyzing = analyzing,
-                            classifierAvailable = app.container.classifier.isAvailable
+                            classifierAvailable = classifierAvailable
                         )
                     }
                 }
