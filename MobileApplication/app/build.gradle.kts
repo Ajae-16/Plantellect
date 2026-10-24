@@ -1,16 +1,28 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
 
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(FileInputStream(localPropertiesFile))
+}
+
 android {
     signingConfigs {
         getByName("debug") {
-            storeFile = file("D:\\College\\Google_Signature\\Adrian Jae R Antonio")
-            storePassword = "Ajae12345"
-            keyAlias = "key0"
-            keyPassword = "Ajae12345"
+            val keystoreFile = localProperties.getProperty("DEBUG_KEYSTORE_FILE")
+            if (!keystoreFile.isNullOrEmpty()) {
+                storeFile = file(keystoreFile)
+                storePassword = localProperties.getProperty("DEBUG_KEYSTORE_PASSWORD")
+                keyAlias = localProperties.getProperty("DEBUG_KEY_ALIAS")
+                keyPassword = localProperties.getProperty("DEBUG_KEY_PASSWORD")
+            }
         }
     }
     namespace = "com.plantellect.mobileplantellect"
@@ -62,6 +74,8 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.navigation.compose)
     implementation(libs.androidx.material.icons.core)
+    implementation(libs.androidx.material.icons.extended)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     // Camera
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.camera.camera2)

@@ -62,8 +62,27 @@ module.exports = {
         // maxSizeBytes apply unchanged — a report cannot become a way to upload
         // something the library would reject.
         discoverySubdir: 'discoveries',
+        // Subfolder under storageDir for plant photos. Both subdirs split into one
+        // folder per review state (statusFolders below), so the tree is
+        //   plant-images/plants/{pending,approved,denied}/<key>/<file>
+        //   plant-images/discoveries/{pending,approved,denied}/<requestId>/<file>
+        plantSubdir: 'plants',
+        // Review state -> folder. plant_images.status 'rejected' and a discovery
+        // report that is 'denied' or 'rejected' all land in 'denied'.
+        statusFolders: { pending: 'pending', approved: 'approved', denied: 'denied' },
+        // A file is COPIED to its new folder and the copy is verified (same bytes,
+        // readable image). Only then is the source deleted. A failed copy is
+        // retried up to this many times before the admin is told on the plants page.
+        copyMaxAttempts: Math.max(1, numberSetting('IMAGE_COPY_MAX_ATTEMPTS', 5)),
+        copyRetryDelayMs: numberSetting('IMAGE_COPY_RETRY_DELAY_MS', 200),
         maxSizeBytes: maxPlantImageSize * 1024 * 1024, // per file
-        maxFilesPerRequest: 20,
+        // Per-submission photo cap. This is the FALLBACK: the live value is the
+        // admin-editable system_settings key 'plantImages' (see
+        // getPlantImageLimits in setting-mysql.js). MAX_PLANT_IMAGES_PER_REQUEST
+        // seeds the default for a fresh install; hardMaxFilesPerRequest is the
+        // ceiling the admin form will accept, so a typo cannot lift the cap off.
+        maxFilesPerRequest: Math.max(1, numberSetting('MAX_PLANT_IMAGES_PER_REQUEST', 20)),
+        hardMaxFilesPerRequest: 100,
         // A report is evidence, not a photo album: three is enough to identify a
         // plant and few enough that the per-account open-report cap bounds disk.
         maxDiscoveryFiles: 3,
@@ -116,6 +135,16 @@ module.exports = {
         // The image is the most intrusive artefact; the row plus the ballot is the
         // audit. Cancel differs only in timing: it deletes at once.
         discoveryClosedPhotoDays: parseInt(process.env.DISCOVERY_CLOSED_PHOTO_DAYS, 10) || 90
+    },
+    // Every plant OWNS exactly one plant_types row. The name is free text and may
+    // repeat across plants; only typeId is unique. Editing one plant's type can
+    // never touch another plant. The toxicity level is the badge colour (green =
+    // none, then yellow / orange / red; see public/javascript/badges.js).
+    plantTypes: {
+        nameMaxLength: 50,
+        cautionMaxLength: 1000,
+        // Weakest to strongest; the order is the order of the badge colours.
+        toxicityLevels: ['none', 'mild', 'moderate', 'severe']
     },
     ml: {
         serviceUrl: process.env.ML_SERVICE_URL || 'http://localhost:8001',

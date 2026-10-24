@@ -13,6 +13,9 @@ services:
       MYSQL_DATABASE: plantellectdb
       MYSQL_USER: superadmin
       MYSQL_PASSWORD: plantpassword
+      TZ: Asia/Manila
+    # Server-wide default zone, so NOW() and TIMESTAMP columns are Manila time.
+    command: --default-time-zone=+08:00
     ports:
       - "3306:3306"
     volumes:

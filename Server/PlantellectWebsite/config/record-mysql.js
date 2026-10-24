@@ -7,22 +7,13 @@ const fs = require('fs');
 const settings = require('./settings');
 const { insertRow } = require('./ids.js');
 const { mysqlPool } = require('./pool-mysql');
-const { normalizeName, normalizeScientificName, PARTS_FIELDS, hasAnyPartValue, loadModelClasses, parsePaging, parsePayload } = require('./shared-mysql');
-const { assertDiscoveryClaim, linkDiscoveryRecord } = require('./discovery-mysql');
-
-// ---------------------------------------------------------------------------
-// Botanist submissions
-// ---------------------------------------------------------------------------
+const { normalizeName, normalizeRichText, normalizeScientificName, PARTS_FIELDS, hasAnyPartValue, loadModelClasses, parsePaging, parsePayload, TAXONOMY_LEVELS, UNSPECIFIED_TAXONOMY, normalizeTypeSpec } = require('./shared-mysql');
+const { assertDiscoveryClaim, linkDiscoveryRecord, DISCOVERY_STORAGE_ROOT } = require('./discovery-mysql');
+const imageFiles = require('./image-files');
 
 /**
- * Validates a new-plant draft. Duplicate species is allowed on purpose.
- *
- * Returns { errors, warnings, clean }. The caller must store `clean`, not the
- * raw body: scientificName is a machine identifier, matched by equality against
- * the model's class list and by `WHERE scientificName IN (...)` in
- * resolveScientificNames. A leading space alone is enough to break both —
- * verified on this server (utf8mb4_0900_ai_ci): `' Ocimum basilicum' =
- * 'Ocimum basilicum'` is 0. `warnings` never blocks a submission.
+ * Validates a new-plant draft. Returns { errors, warnings, clean }.
+ * The caller must store `clean`, not the raw body.
  */
 function validatePlantDraft(body) {
     const errors = [];
@@ -31,7 +22,6 @@ function validatePlantDraft(body) {
     const clean = {
         commonName: normalizeName(body.commonName),
         scientificName: normalizeScientificName(body.scientificName),
-        quantity: body.quantity === '' || body.quantity === undefined ? null : body.quantity,
         kingdom: normalizeName(body.kingdom),
         phylum: normalizeName(body.phylum),
         plantClass: normalizeName(body.plantClass),
@@ -40,17 +30,19 @@ function validatePlantDraft(body) {
         genus: normalizeName(body.genus),
         species: normalizeName(body.species),
         parts: {},
-        uses: normalizeName(body.uses) || null,
-        benefits: normalizeName(body.benefits) || null,
-        harmful: normalizeName(body.harmful) || null
+        uses: normalizeRichText(body.uses) || null,
+        benefits: normalizeRichText(body.benefits) || null,
+        harmful: normalizeRichText(body.harmful) || null
     };
 
     if (!clean.commonName) errors.push('commonName is required');
     if (!clean.scientificName) errors.push('scientificName is required');
-    if (!body.typeId) errors.push('typeId is required');
-    if (clean.quantity !== null && Number.isNaN(Number(clean.quantity))) {
-        errors.push('quantity must be a number');
-    }
+    // The plant's own type: free text name, flags, toxicity level, caution note. Only
+    // a SPEC here; the plant_types row is created when an admin approves, so a
+    // rejected request never leaves a stray row behind.
+    const typeCheck = normalizeTypeSpec(body);
+    errors.push(...typeCheck.errors);
+    clean.typeSpec = typeCheck.spec;
 
     const parts = body.parts || {};
     for (const key of ['heightMinCm', 'heightMaxCm', 'widthMinCm', 'widthMaxCm']) {
@@ -69,24 +61,15 @@ function validatePlantDraft(body) {
         clean.parts[key] = parts[key] === undefined ? null : parts[key];
     }
 
-    // Public visibility requires an approved primary description, so a
-    // names-only submission would be "Approved" in My Submissions and never
-    // listed. Same rule validateContribution already applies.
     if (!hasAnyPartValue(clean.parts) && !clean.uses && !clean.benefits && !clean.harmful) {
-        errors.push('A plant needs at least a description, some measurements, or one photo');
+        errors.push('A plant needs a description or some measurements — photos alone are never published');
     }
 
-    // Model-class match. While ml/model/main/classes.json is absent there is
-    // nothing to check against, so the name is accepted as typed — the model is
-    // still being trained and failing every submission would be worse than an
-    // unverified name.
     const classes = loadModelClasses();
     if (classes && clean.scientificName) {
         const wanted = clean.scientificName.toLowerCase();
         const match = classes.find((c) => c.scientific.toLowerCase() === wanted);
         if (match) {
-            // Rewrite to the class's exact casing so the join key is a real
-            // model class, not a near-miss.
             clean.scientificName = match.scientific;
         } else {
             warnings.push(
@@ -109,19 +92,121 @@ function validateContribution(body, imageCount) {
     return errors;
 }
 
+// ---------------------------------------------------------------------------
+// Shared pieces of a submission
+// ---------------------------------------------------------------------------
+
+function isSafeType(type) {
+    return Boolean(type) && !type.isHarmful && (type.toxicityLevel || 'none') === 'none';
+}
+
+function draftHasContent(draft) {
+    return Boolean(draft.uses || draft.benefits || draft.harmful || hasAnyPartValue(draft.parts || {}));
+}
+
+/** A failure the submitter can act on, thrown from inside a transaction. */
+function userError(message, code) {
+    const err = new Error(message);
+    err.userFacing = true;
+    err.code = code;
+    return err;
+}
+
 /**
- * Creates the plant_addition request; the draft stays in `payload` only.
- *
- * When the draft came from a claimed discovery report the payload carries
- * `discoveryRequestId`, and two things happen in the SAME transaction as the
- * insert: the claim is verified (so any botanist cannot attach a record to a
- * report another botanist is working on — the client hides the control with
- * "view only" but the client is not the authority), and the report's
- * recordRequestId is set, so a report can never point at a record that was not
- * created.
+ * Resolves the discovery-report photos a botanist chose to attach to a record.
+ * Attaching is a COPY; every id must belong to the claimed report.
  */
-async function createPlantAdditionRequest(accountId, draft) {
+async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
+    const unique = [...new Set((ids || []).filter((id) => typeof id === 'string' && id))];
+    if (unique.length === 0) return [];
+    if (!discoveryRequestId) {
+        throw userError('Report photos can only be attached to a record made from a discovery report', 400);
+    }
+    const [rows] = await conn.query(
+        `SELECT imageId, originalFilename, storedPath, mimeType, size
+         FROM discovery_images
+         WHERE requestId = ? AND imageId IN (${unique.map(() => '?').join(',')})`,
+        [discoveryRequestId, ...unique]
+    );
+    if (rows.length !== unique.length) {
+        throw userError('One of the chosen report photos does not belong to that report', 400);
+    }
+    return rows;
+}
+
+/**
+ * Files uploaded photos and chosen report photos into the plant-image store,
+ * inserting one PENDING plant_images row for each. Everything lands in
+ * plants/pending/<requestId>/ (the folder is the request's, because a brand-new
+ * species has no plantId yet).
+ *
+ * COPY, verify, then delete the source (see image-files.js). The upload's temp
+ * file is deleted by plan.finalize() after the commit; a report photo is copied
+ * and its original stays with the report. If a photo cannot be copied cleanly
+ * after the retry limit the whole submission fails with a message the botanist
+ * can act on: nothing has been approved yet, so there is no admin to tell.
+ */
+async function stageImages(conn, { accountId, plantId, requestId, files, photos, plan }) {
+    const storageDir = settings.plantImages.storageDir;
+    const relativeDir = imageFiles.plantRelativeDir('pending', requestId);
+    const dir = path.join(storageDir, relativeDir);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    const columns = ['plantId', 'accountId', 'originalFilename', 'storedFilename', 'storedPath', 'mimeType', 'size', 'status', 'isPrimary'];
+    const imageIds = [];
+
+    const failed = (name, result) => userError(
+        `The photo "${name}" could not be saved cleanly after ${result.attempts || 1} attempts (${result.error}). ` +
+            'Nothing was submitted. Please try again, or use a different copy of the photo.',
+        500
+    );
+
+    for (const file of files) {
+        const ext = path.extname(file.originalname).toLowerCase();
+        const storedFilename = `${crypto.randomUUID()}${ext}`;
+        const relativePath = path.join(relativeDir, storedFilename);
+        const destination = path.join(storageDir, relativePath);
+        const copied = await plan.stage(file.path, destination, { mimeType: file.mimetype });
+        if (!copied.ok) throw failed(file.originalname, copied);
+        imageIds.push(await insertRow(
+            conn, 'plant_images', columns,
+            [plantId || null, accountId, file.originalname, storedFilename, relativePath, file.mimetype, file.size, 'pending', false]
+        ));
+    }
+
+    const discoveryRoot = path.resolve(DISCOVERY_STORAGE_ROOT);
+    for (const photo of photos) {
+        const source = path.resolve(path.join(DISCOVERY_STORAGE_ROOT, photo.storedPath));
+        if (!source.startsWith(discoveryRoot + path.sep) || !fs.existsSync(source)) {
+            throw userError('A report photo is no longer on the server, so it could not be attached', 409);
+        }
+        const ext = path.extname(photo.storedPath).toLowerCase();
+        const storedFilename = `${crypto.randomUUID()}${ext}`;
+        const relativePath = path.join(relativeDir, storedFilename);
+        const destination = path.join(storageDir, relativePath);
+        // deleteSource: false. The report keeps its own photo.
+        const copied = await plan.stage(source, destination, { mimeType: photo.mimeType, deleteSource: false });
+        if (!copied.ok) throw failed(photo.originalFilename, copied);
+        imageIds.push(await insertRow(
+            conn, 'plant_images', columns,
+            [plantId || null, accountId, photo.originalFilename, storedFilename, relativePath, photo.mimeType, photo.size, 'pending', false]
+        ));
+    }
+
+    return imageIds;
+}
+
+// ---------------------------------------------------------------------------
+// Creating requests
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates the plant_addition request, with its photos.
+ * A species already in the library is refused with the existing plantId.
+ */
+async function createPlantAdditionRequest(accountId, draft, files = [], discoveryImageIds = []) {
     const conn = await mysqlPool.getConnection();
+    const plan = new imageFiles.FileMovePlan();
     try {
         await conn.beginTransaction();
         const claimError = await assertDiscoveryClaim(conn, draft.discoveryRequestId, accountId);
@@ -129,29 +214,97 @@ async function createPlantAdditionRequest(accountId, draft) {
             await conn.rollback();
             return claimError;
         }
-        const [typeRows] = await conn.query('SELECT typeId, typeName, label FROM plant_types WHERE typeId = ?', [draft.typeId]);
-        if (typeRows.length === 0) {
+
+        /*
+         * ARCHIVE-OFF:
+         * The archivedAt column and archived-plant check are disabled.
+         *
+         * Original query:
+         * SELECT plantId, commonName, archivedAt
+         * FROM plants
+         * WHERE scientificName = ?
+         */
+        const [existing] = await conn.query(
+            'SELECT plantId, commonName FROM plants WHERE scientificName = ?',
+            [draft.scientificName]
+        );
+
+        if (existing.length > 0) {
             await conn.rollback();
-            return { error: 'Unknown plant type', code: 400 };
+
+            /*
+             * ARCHIVE-OFF:
+             * if (existing[0].archivedAt) {
+             *     return {
+             *         error: `"${draft.scientificName}" exists as ${existing[0].commonName} but is archived. ` +
+             *             'Ask an admin to restore it instead of recording it again.',
+             *         code: 409
+             *     };
+             * }
+             */
+
+            return {
+                error: `"${draft.scientificName}" is already in the library as ${existing[0].commonName}. ` +
+                    'Add to that plant instead of recording it again.',
+                code: 409,
+                existingPlantId: existing[0].plantId
+            };
         }
+
+        const payloadDraft = { ...draft };
+        delete payloadDraft.quantity;
+        let strippedHarmful = false;
+        const spec = draft.typeSpec;
+        if (isSafeType(spec) && payloadDraft.harmful) {
+            payloadDraft.harmful = null;
+            strippedHarmful = true;
+        }
+        if (!draftHasContent(payloadDraft)) {
+            await conn.rollback();
+            return {
+                error: 'A plant needs a description or some measurements. ' +
+                    'This type is marked safe, so a caution on its own does not count.',
+                code: 400
+            };
+        }
+
+        const photos = await loadDiscoveryPhotos(conn, draft.discoveryRequestId, discoveryImageIds);
+
+        const basePayload = { ...payloadDraft, typeName: spec.typeName, typeLabel: spec.typeName, imageIds: [] };
         const requestId = await insertRow(
             conn,
             'approval_requests',
             ['accountId', 'requestType', 'payload', 'status'],
-            [
-                accountId,
-                'plant_addition',
-                JSON.stringify({ ...draft, typeName: typeRows[0].typeName, typeLabel: typeRows[0].label }),
-                'pending'
-            ]
+            [accountId, 'plant_addition', JSON.stringify(basePayload), 'pending']
         );
+
+        const imageIds = await stageImages(conn, {
+            accountId,
+            plantId: null,
+            requestId,
+            files,
+            photos,
+            plan
+        });
+        if (imageIds.length > 0) {
+            await conn.query(
+                'UPDATE approval_requests SET payload = ? WHERE requestId = ?',
+                [JSON.stringify({ ...basePayload, imageIds }), requestId]
+            );
+        }
+
         if (draft.discoveryRequestId) {
             await linkDiscoveryRecord(conn, requestId, draft.discoveryRequestId);
         }
         await conn.commit();
-        return { requestId };
+        // The copies are verified and the rows point at them: now the temp
+        // uploads can go.
+        await plan.finalize();
+        return { requestId, imageIds, strippedHarmful };
     } catch (err) {
-        await conn.rollback();
+        await conn.rollback().catch(() => {});
+        await plan.rollback();
+        if (err && err.userFacing) return { error: err.message, code: err.code };
         throw err;
     } finally {
         conn.release();
@@ -159,13 +312,9 @@ async function createPlantAdditionRequest(accountId, draft) {
 }
 
 /** Stores uploaded files and creates the pending plant_contribution request. */
-async function createPlantContributionRequest(accountId, plantId, draft, files) {
+async function createPlantContributionRequest(accountId, plantId, draft, files, discoveryImageIds = []) {
     const conn = await mysqlPool.getConnection();
-    // The route's discardFiles() unlinks the pre-move path, which no longer
-    // exists once a file has been renamed into place — so a mid-batch failure
-    // would orphan files no query can ever reach. These are the real
-    // destinations, tracked so the rollback can remove them.
-    const movedPaths = [];
+    const plan = new imageFiles.FileMovePlan();
     try {
         await conn.beginTransaction();
 
@@ -175,54 +324,73 @@ async function createPlantContributionRequest(accountId, plantId, draft, files) 
             return claimError;
         }
 
-        const [plantRows] = await conn.query('SELECT plantId FROM plants WHERE plantId = ? FOR UPDATE', [plantId]);
+        /*
+         * ARCHIVE-OFF:
+         * The archivedAt filter is disabled until that column exists.
+         *
+         * Original condition:
+         * WHERE p.plantId = ? AND p.archivedAt IS NULL FOR UPDATE OF p
+         */
+        const [plantRows] = await conn.query(
+            `SELECT p.plantId, t.isHarmful, t.toxicityLevel
+             FROM plants p JOIN plant_types t ON p.typeId = t.typeId
+             WHERE p.plantId = ? FOR UPDATE OF p`,
+            [plantId]
+        );
         if (plantRows.length === 0) {
             await conn.rollback();
             return { error: 'Plant not found', code: 404 };
         }
 
-        const dir = path.join(settings.plantImages.storageDir, plantId);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-        const imageIds = [];
-        for (const file of files) {
-            const ext = path.extname(file.originalname).toLowerCase();
-            // Never reuse the client-supplied name on disk.
-            const storedFilename = `${crypto.randomUUID()}${ext}`;
-            const relativePath = path.join(plantId, storedFilename);
-            const destination = path.join(settings.plantImages.storageDir, relativePath);
-            fs.renameSync(file.path, destination);
-            movedPaths.push(destination);
-            imageIds.push(await insertRow(
-                conn,
-                'plant_images',
-                ['plantId', 'accountId', 'originalFilename', 'storedFilename', 'storedPath', 'mimeType', 'size', 'status', 'isPrimary'],
-                [plantId, accountId, file.originalname, storedFilename, relativePath, file.mimetype, file.size, 'pending', false]
-            ));
+        const payloadDraft = { ...draft };
+        let strippedHarmful = false;
+        if (isSafeType(plantRows[0]) && payloadDraft.harmful) {
+            payloadDraft.harmful = null;
+            strippedHarmful = true;
         }
 
+        const photos = await loadDiscoveryPhotos(conn, draft.discoveryRequestId, discoveryImageIds);
+        if (!draftHasContent(payloadDraft) && files.length + photos.length === 0) {
+            await conn.rollback();
+            return { error: 'A contribution needs at least a description, some measurements, or one photo', code: 400 };
+        }
+
+        // The request row comes first now: the photos are filed under
+        // plants/pending/<requestId>/, so the id has to exist before they do
+        // (same order as createPlantAdditionRequest).
         const requestId = await insertRow(
             conn,
             'approval_requests',
             ['accountId', 'requestType', 'targetPlantId', 'payload', 'status'],
-            [accountId, 'plant_contribution', plantId, JSON.stringify({ ...draft, imageIds }), 'pending']
+            [accountId, 'plant_contribution', plantId, JSON.stringify({ ...payloadDraft, imageIds: [] }), 'pending']
         );
+
+        const imageIds = await stageImages(conn, {
+            accountId,
+            plantId,
+            requestId,
+            files,
+            photos,
+            plan
+        });
+        if (imageIds.length > 0) {
+            await conn.query(
+                'UPDATE approval_requests SET payload = ? WHERE requestId = ?',
+                [JSON.stringify({ ...payloadDraft, imageIds }), requestId]
+            );
+        }
 
         if (draft.discoveryRequestId) {
             await linkDiscoveryRecord(conn, requestId, draft.discoveryRequestId);
         }
 
         await conn.commit();
-        return { requestId, imageIds };
+        await plan.finalize();
+        return { requestId, imageIds, strippedHarmful };
     } catch (err) {
-        await conn.rollback();
-        for (const destination of movedPaths) {
-            try {
-                if (fs.existsSync(destination)) fs.unlinkSync(destination);
-            } catch (cleanupErr) {
-                console.error('Could not remove rolled-back upload:', destination, cleanupErr.message);
-            }
-        }
+        await conn.rollback().catch(() => {});
+        await plan.rollback();
+        if (err && err.userFacing) return { error: err.message, code: err.code };
         throw err;
     } finally {
         conn.release();
@@ -230,24 +398,141 @@ async function createPlantContributionRequest(accountId, plantId, draft, files) 
 }
 
 /**
- * The caller's own plant submissions and where each one stands.
- *
- * EXCLUDES plant_discovery on purpose. This selects WHERE ar.accountId = ? across
- * every request type, and lets a botanist file reports — so their own
- * reports would surface here, contradicting the plan's own validation and
- * breaking the existing submissions-status whitelist (which covers only
- * pending/approved/denied) the moment a report reached cancelled or rejected.
- *
- * An INCLUSION LIST, in BOTH queries, rather than `!= 'plant_discovery'`: it
- * fails closed, so a request type added later does not appear in a user's
- * submissions until someone remembers this line. It also mirrors
- * listPlantRequests, which hardcodes its own two-type list. The COUNT is the
- * easy one to forget, and omitting it leaves the pagination total counting rows
- * the page never shows.
- *
- * A botanist's own reports stay reachable through GET /api/discoveries/mine,
- * which is accountId-scoped and is where report states belong.
+ * A request to change the taxonomy of a plant that already has one.
+ * One pending request per plant.
  */
+async function createPlantTaxonomyRequest(accountId, plantId, body) {
+    const errors = [];
+    const proposed = {};
+    for (const level of TAXONOMY_LEVELS) {
+        const raw = level === 'class' ? (body.plantClass ?? body.class) : body[level];
+        const value = normalizeName(raw);
+        if (!value) continue;
+        if (value.length > 100) {
+            errors.push(`${level} is longer than 100 characters`);
+            continue;
+        }
+        if (value.toLowerCase() === UNSPECIFIED_TAXONOMY.toLowerCase()) {
+            errors.push(`${level}: "${UNSPECIFIED_TAXONOMY}" marks a gap and cannot be proposed as a value`);
+            continue;
+        }
+        proposed[level] = value;
+    }
+    const reason = normalizeName(body.reason).slice(0, 500) || null;
+    if (errors.length > 0) return { error: errors.join('; '), code: 400 };
+    if (Object.keys(proposed).length === 0) {
+        return { error: 'Enter at least one taxonomy level to change', code: 400 };
+    }
+
+    const conn = await mysqlPool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        /*
+         * ARCHIVE-OFF:
+         * The archivedAt filter is disabled until that column exists.
+         *
+         * Original condition:
+         * WHERE p.plantId = ? AND p.archivedAt IS NULL FOR UPDATE OF p
+         */
+        const [rows] = await conn.query(
+            `SELECT p.plantId, tx.\`kingdom\`, tx.\`phylum\`, tx.\`class\`, tx.\`order\`, tx.\`family\`, tx.\`genus\`, tx.\`species\`
+             FROM plants p JOIN taxonomy tx ON tx.taxonomyId = p.taxonomyId
+             WHERE p.plantId = ? FOR UPDATE OF p`,
+            [plantId]
+        );
+        if (rows.length === 0) {
+            await conn.rollback();
+            return { error: 'Plant not found', code: 404 };
+        }
+
+        const changes = {};
+        for (const [level, to] of Object.entries(proposed)) {
+            if (rows[0][level] !== to) changes[level] = { from: rows[0][level], to };
+        }
+        if (Object.keys(changes).length === 0) {
+            await conn.rollback();
+            return { error: 'That is what the plant already records, so there is nothing to change', code: 400 };
+        }
+
+        const [pending] = await conn.query(
+            `SELECT requestId FROM approval_requests
+             WHERE requestType = 'plant_taxonomy' AND targetPlantId = ? AND status = 'pending' LIMIT 1`,
+            [plantId]
+        );
+        if (pending.length > 0) {
+            await conn.rollback();
+            return {
+                error: `A taxonomy update for this plant is already waiting for review (${pending[0].requestId}).`,
+                code: 409
+            };
+        }
+
+        const requestId = await insertRow(
+            conn,
+            'approval_requests',
+            ['accountId', 'requestType', 'targetPlantId', 'payload', 'status'],
+            [accountId, 'plant_taxonomy', plantId, JSON.stringify({ changes, reason }), 'pending']
+        );
+        await conn.commit();
+        return { requestId, changes };
+    } catch (err) {
+        await conn.rollback().catch(() => {});
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Recording lookups
+// ---------------------------------------------------------------------------
+
+/**
+ * One plant as the record form needs it, found by plantId or by scientific name.
+ * Botanist-only at the route. (This query never touched archivedAt.)
+ */
+async function getRecordingPlant({ plantId, scientificName }) {
+    const where = plantId ? 'p.plantId = ?' : 'p.scientificName = ?';
+    const key = plantId || normalizeScientificName(scientificName);
+    if (!key) return null;
+
+    const [rows] = await mysqlPool.query(
+        `SELECT p.plantId, p.commonName, p.scientificName, p.typeId,
+                t.typeName, t.typeName AS typeLabel, t.isHarmful, t.toxicityLevel,
+                tx.\`kingdom\`, tx.\`phylum\`, tx.\`class\`, tx.\`order\`, tx.\`family\`, tx.\`genus\`, tx.\`species\`,
+                (SELECT COUNT(*) FROM approval_requests ar
+                 WHERE ar.targetPlantId = p.plantId AND ar.requestType = 'plant_taxonomy' AND ar.status = 'pending') AS pendingTaxonomy
+         FROM plants p
+         JOIN plant_types t ON t.typeId = p.typeId
+         JOIN taxonomy tx ON tx.taxonomyId = p.taxonomyId
+         WHERE ${where}`,
+        [key]
+    );
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    const taxonomy = {};
+    for (const level of TAXONOMY_LEVELS) taxonomy[level] = r[level];
+    return {
+        id: r.plantId,
+        name: r.commonName,
+        scientificName: r.scientificName,
+        typeId: r.typeId,
+        type: r.typeName,
+        typeLabel: r.typeLabel,
+        isSafeType: isSafeType(r),
+        taxonomy,
+        unspecifiedLevels: TAXONOMY_LEVELS.filter((level) => r[level] === UNSPECIFIED_TAXONOMY),
+        hasPendingTaxonomyRequest: Number(r.pendingTaxonomy) > 0
+    };
+}
+
+/**
+ * The caller's own plant submissions and where each one stands.
+ * An INCLUSION list in both queries: it fails closed.
+ */
+const MY_REQUEST_TYPES = "('plant_addition','plant_contribution','plant_taxonomy','plant_change')";
+
 async function listMyRequests(accountId, { page, pageSize } = {}) {
     const paging = parsePaging({ page, pageSize });
     const [rows] = await mysqlPool.query(
@@ -262,22 +547,16 @@ async function listMyRequests(accountId, { page, pageSize } = {}) {
          LEFT JOIN accounts rev ON ar.reviewedBy = rev.accountId
          LEFT JOIN profiles revp ON revp.accountId = rev.accountId
          WHERE ar.accountId = ?
-           AND ar.requestType IN ('plant_addition','plant_contribution')
+           AND ar.requestType IN ${MY_REQUEST_TYPES}
          ORDER BY ar.createdAt DESC
          LIMIT ? OFFSET ?`,
         [accountId, paging.pageSize, paging.offset]
     );
     const [countRows] = await mysqlPool.query(
-        "SELECT COUNT(*) AS total FROM approval_requests WHERE accountId = ? " +
-        "AND requestType IN ('plant_addition','plant_contribution')",
+        `SELECT COUNT(*) AS total FROM approval_requests WHERE accountId = ? AND requestType IN ${MY_REQUEST_TYPES}`,
         [accountId]
     );
 
-    // Only a plant_contribution ever carries imageIds; a plant_addition has none
-    // by design, because its photos are submitted later as a separate
-    // contribution and appear on that row. The ids in payload are not trusted —
-    // this read is scoped to the caller's own accountIds, and the owner route
-    // re-checks them.
     const imageIdsByRequest = new Map();
     const allImageIds = new Set();
     for (const r of rows) {
@@ -308,38 +587,33 @@ async function listMyRequests(accountId, { page, pageSize } = {}) {
                 requestType: r.requestType,
                 status: r.status,
                 targetPlantId: r.targetPlantId,
-                targetPlantName: r.targetCommonName,
+                targetPlantName: r.targetCommonName || (r.requestType === 'plant_addition' ? (payload.commonName || null) : null),
+                taxonomyChanges: r.requestType === 'plant_taxonomy' ? (payload.changes || {}) : null,
+                changes: r.requestType === 'plant_change' ? (payload.changes || {}) : null,
+                changeReason: r.requestType === 'plant_change' ? (payload.reason || null) : null,
+                changeScope: r.requestType === 'plant_change' ? (payload.scope || 'legacy') : null,
+                changeDescriptionId: r.requestType === 'plant_change' ? (payload.descriptionId || null) : null,
                 note: r.note,
                 createdAt: r.createdAt,
                 reviewedAt: r.reviewedAt,
                 reviewerName: r.reviewerName,
-                // The human-readable reviewer. `reviewerName` is the username, which
-                // for an automatic approval would read "system" in lower case while
-                // every other page says "System" — so the submission list uses the
-                // profile label, the same join the public plant page uses.
                 reviewerLabel: r.reviewerLabel || r.reviewerName,
-                // Lets the submissions list say AUTO instead of naming a person.
                 approvalMode: r.approvalMode || 'manual',
-                // The report this record was made from, when there was one. The
-                // client renders the line only when the field is present, so a
-                // submission with no report is unchanged.
                 discoveryRequestId: payload.discoveryRequestId || null,
-            // The owner route, never the public one: a pending photo must not
-            // become a public, cacheable response.
-            images: (imageIdsByRequest.get(r.requestId) || [])
-                .map((imageId) => {
-                    const img = imageById.get(imageId);
-                    if (!img) return null;
-                    return {
-                        imageId: img.imageId,
-                        url: `/api/plants/mine/images/${encodeURIComponent(img.imageId)}`,
-                        status: img.status,
-                        mimeType: img.mimeType,
-                        size: img.size,
-                        originalFilename: img.originalFilename
-                    };
-                })
-                .filter(Boolean)
+                images: (imageIdsByRequest.get(r.requestId) || [])
+                    .map((imageId) => {
+                        const img = imageById.get(imageId);
+                        if (!img) return null;
+                        return {
+                            imageId: img.imageId,
+                            url: `/api/plants/mine/images/${encodeURIComponent(img.imageId)}`,
+                            status: img.status,
+                            mimeType: img.mimeType,
+                            size: img.size,
+                            originalFilename: img.originalFilename
+                        };
+                    })
+                    .filter(Boolean)
             };
         }),
         total: countRows[0].total,
@@ -353,5 +627,8 @@ module.exports = {
     validateContribution,
     createPlantAdditionRequest,
     createPlantContributionRequest,
+    createPlantTaxonomyRequest,
+    getRecordingPlant,
+    isSafeType,
     listMyRequests
 };

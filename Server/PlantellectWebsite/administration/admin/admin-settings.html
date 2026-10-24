@@ -302,6 +302,7 @@
                 <a href="#confidenceSection" class="admin-tab settings-tab" data-target="confidenceSection">Confidence</a>
                 <a href="#approvalModesSection" class="admin-tab settings-tab" data-target="approvalModesSection">Approval Modes</a>
                 <a href="#discoveriesSection" class="admin-tab settings-tab" data-target="discoveriesSection">Discoveries</a>
+                <a href="#plantImagesSection" class="admin-tab settings-tab" data-target="plantImagesSection">Plant Photos</a>
                 <a href="#mlRequestSection" class="admin-tab settings-tab" data-target="mlRequestSection">ML Request</a>
                 <a href="#spamQuotasSection" class="admin-tab settings-tab" data-target="spamQuotasSection">Spam Quotas</a>
             </nav>
@@ -368,6 +369,22 @@
                     </details>
                 </section>
 
+                <!-- Plant photo limit. Self-contained: javascript/admin/admin-plant-images.js
+                     talks to GET/POST /admin/api/settings (key plantImages) on its own. -->
+                <section class="admin-section" id="plantImagesSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Plant Photo Limit</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">How many photos one botanist submission may carry. Applies to new plants and to contributions, and takes effect on the next upload.</p>
+                            <div class="plant-images-editor"></div>
+                            <p class="admin-notice" id="plantImagesNotice" hidden></p>
+                        </div>
+                    </details>
+                </section>
+
                 <!-- 5. ML Request Settings -->
                 <section class="admin-section" id="mlRequestSection">
                     <details class="collapse">
@@ -406,6 +423,8 @@
 
     <!-- Shared topbar: scroll tracking + tab clicks (replaces initSettingsTopbar) -->
     <script src="/javascript/admin/admin-topbar.js"></script>
+
+    <script src="/javascript/admin/admin-plant-images.js"></script>
 
     <script type="module">
         import { initSettingsPage, addTopbarTab, initAdminUser } from '/javascript/admin/admin-settings.js';

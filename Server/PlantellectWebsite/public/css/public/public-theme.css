@@ -1,4 +1,6 @@
 @import '../core/variables.css';
+@import '../core/badges.css';
+@import '../core/richtext.css';
 
 /* =========================================================
    public-theme.css
@@ -9,6 +11,8 @@
    Light-mode styling of each page lives in that page's own CSS
    (library.css, capture-plant.css, profile.css). This file only
    holds: the shared page background, the nav fix, and dark rules.
+   The two profile pages (plant-profile.html, botanist-profile.html) are
+   styled at the END of this file, for both themes. Nothing else to load.
 
    Load this LAST in <head>, after the page's own stylesheet.
    The theme is set by sidebar.js via <html data-theme="...">
@@ -32,8 +36,9 @@ html[data-theme="dark"] {
 /* =========================================================
    PAGE BACKGROUND
    Home / About keep the flat colour (they sit behind a photo).
-   Library, Scan and Profile (anything with .library-container)
-   share one soft gradient. Change it here and all three follow.
+   Library, Scan, Profile and the plant / botanist profile pages
+   (anything with .library-container or .profile-page) share one
+   soft gradient. Change it here and all of them follow.
    ========================================================= */
 html[data-theme="light"] { --page-bg: var(--color-light-light-green); }
 html[data-theme="dark"]  { --page-bg: var(--dk-bg); }
@@ -43,15 +48,17 @@ body {
     background-color: var(--page-bg, var(--color-library-green));
 }
 
-html[data-theme="light"]:has(.library-container) {
-    --page-bg: #eaf3dc;
+html[data-theme="light"]:has(.library-container),
+html[data-theme="light"]:has(.profile-page) {
+    --page-bg: #d9e3c8;
     --page-bg-image:
-        radial-gradient(900px 520px at 8% -8%,  rgba(198, 231, 143, 0.60), transparent 62%),
-        radial-gradient(800px 520px at 100% 0%, rgba(120, 179, 94, 0.22),  transparent 58%),
-        linear-gradient(180deg, #f2f8e8 0%, #e2eed0 100%);
+        radial-gradient(900px 520px at 8% -8%,  rgba(176, 208, 124, 0.38), transparent 62%),
+        radial-gradient(800px 520px at 100% 0%, rgba(110, 160, 84, 0.16),  transparent 58%),
+        linear-gradient(180deg, #e4ecd5 0%, #d0dcbb 100%);
 }
 
-html[data-theme="dark"]:has(.library-container) {
+html[data-theme="dark"]:has(.library-container),
+html[data-theme="dark"]:has(.profile-page) {
     --page-bg: #1b2118;
     --page-bg-image:
         radial-gradient(900px 520px at 8% -8%,  rgba(110, 160, 80, 0.18),  transparent 62%),
@@ -59,7 +66,8 @@ html[data-theme="dark"]:has(.library-container) {
         linear-gradient(180deg, #1d241a 0%, #161c14 100%);
 }
 
-html:has(.library-container) {
+html:has(.library-container),
+html:has(.profile-page) {
     background-color: var(--page-bg);
     background-image: var(--page-bg-image);
     background-repeat: no-repeat;
@@ -68,7 +76,8 @@ html:has(.library-container) {
 }
 
 /* body must be see-through or it hides the html gradient */
-html:has(.library-container) body {
+html:has(.library-container) body,
+html:has(.profile-page) body {
     background: transparent;
 }
 
@@ -85,6 +94,17 @@ body,
     transition: background-color var(--transition-normal) ease,
                 color var(--transition-normal) ease,
                 border-color var(--transition-normal) ease;
+}
+
+/* ---------- Theme change without animation ----------
+   sidebar.js adds .theme-instant to <html> for a theme change that was NOT a
+   click on the toggle (for example a page restored with the back button), so
+   it appears at once instead of fading across the whole page. */
+html.theme-instant,
+html.theme-instant *,
+html.theme-instant *::before,
+html.theme-instant *::after {
+    transition: none !important;
 }
 
 /* ---------- Top bar (dark theme) ----------
@@ -207,8 +227,8 @@ html[data-theme="dark"] .slider-track .plant-card .image-box {
 }
 
 html[data-theme="light"] .plant-grid .plant-card {
-    background-color: var(--color-white);
-    border: 1px solid rgba(46, 100, 23, 0.12);
+    background-color: #f6f8ef;
+    border: 1px solid rgba(46, 100, 23, 0.16);
     box-shadow: 0 1px 2px rgba(35, 76, 17, 0.06),
                 0 8px 20px rgba(35, 76, 17, 0.08);
 }
@@ -459,6 +479,76 @@ html[data-theme="dark"] .record-submission-image {
 
 html[data-theme="dark"] .record-badge { color: var(--color-dark-jungle-green); }
 
+/* ---- record page: photo lists, taxonomy, warnings, picker ---- */
+
+html[data-theme="dark"] .record-notice.warning {
+    background-color: rgba(245, 158, 11, 0.16);
+    color: #f6d58f;
+}
+
+html[data-theme="dark"] .record-hint {
+    background-color: var(--dk-surface-2);
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .record-carried {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-accent);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .record-details,
+html[data-theme="dark"] .record-picker {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .record-details summary { color: var(--dk-accent); }
+
+html[data-theme="dark"] .record-picker-item {
+    color: var(--dk-text);
+    border-bottom-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .record-picker-item:hover { background-color: var(--dk-hover); }
+html[data-theme="dark"] .record-picker-item em { color: var(--dk-text-muted); }
+
+html[data-theme="dark"] .record-thumb-open {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+}
+
+html[data-theme="dark"] .record-thumb-label { color: var(--dk-text-muted); }
+
+html[data-theme="dark"] .record-taxonomy {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .record-taxonomy-head h3 { color: var(--dk-accent); }
+html[data-theme="dark"] .record-taxonomy-request { border-top-color: var(--dk-border); }
+
+/* A locked level reads as a fact, not an input waiting for text. */
+html[data-theme="dark"] .record-field input[readonly] {
+    background-color: var(--dk-surface);
+    color: var(--dk-text-muted);
+}
+
+html[data-theme="dark"] .record-btn-secondary {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .record-btn-secondary:hover:not(:disabled) { background-color: var(--dk-hover); }
+
+html[data-theme="dark"] .record-note {
+    background-color: var(--dk-surface-2);
+    color: var(--dk-text);
+}
+
 /* ---- discoveries page ---- */
 
 html[data-theme="dark"] .discoveries-container h1,
@@ -622,3 +712,595 @@ html[data-theme="dark"] .record-discovery-title { color: var(--dk-accent); }
 html[data-theme="dark"] .record-discovery-note { color: var(--dk-text); }
 
 html[data-theme="dark"] .record-discovery-photos img { border-color: var(--dk-border); }
+
+/* =========================================================
+   PROFILE PAGES
+   plant-profile.html + botanist-profile.html (botanist AND administrator).
+   Tokens per theme, then shared pieces, then each page's own components.
+   Everything is scoped to .profile-page. The page gradient above and the
+   --dk-* palette are what these rules build on.
+   ========================================================= */
+
+/* ---------- Tokens ---------- */
+html[data-theme="light"] .profile-page {
+    --pf-surface:     #f5f8ee;
+    --pf-surface-2:   #e7eed8;
+    --pf-text:        #1f2d1c;
+    --pf-muted:       #4b5c45;
+    --pf-accent:      #2e6417;
+    --pf-accent-soft: rgba(46, 100, 23, 0.11);
+    --pf-on-accent:   #ffffff;
+    --pf-border:      rgba(46, 100, 23, 0.20);
+    --pf-danger:      #b3261e;
+    --pf-shadow:      0 1px 2px rgba(35, 76, 17, 0.06), 0 8px 20px rgba(35, 76, 17, 0.08);
+}
+
+html[data-theme="dark"] .profile-page {
+    --pf-surface:     var(--dk-surface);
+    --pf-surface-2:   var(--dk-surface-2);
+    --pf-text:        var(--dk-text);
+    --pf-muted:       var(--dk-text-muted);
+    --pf-accent:      var(--dk-accent);
+    --pf-accent-soft: rgba(198, 231, 143, 0.12);
+    --pf-on-accent:   var(--color-dark-jungle-green);
+    --pf-border:      var(--dk-border);
+    --pf-danger:      #f0a19e;
+    --pf-shadow:      0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- Shared base ---------- */
+.profile-page {
+    margin: 0;
+    padding: 24px 20px 40px;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--pf-text);
+}
+.profile-page *, .profile-page *::before, .profile-page *::after { box-sizing: border-box; }
+.profile-page h1, .profile-page h3, .profile-page h4,
+.profile-page p, .profile-page ul { margin: 0; }
+.profile-page .muted { color: var(--pf-muted); }
+
+.profile-page :is(a, button):focus-visible {
+    outline: 2px solid var(--pf-accent);
+    outline-offset: 2px;
+}
+
+.profile-page .profile-container {
+    max-width: 820px;
+    margin: 0 auto;
+    overflow: hidden;
+    background: var(--pf-surface);
+    border: 1px solid var(--pf-border);
+    border-radius: 18px;
+    box-shadow: var(--pf-shadow);
+}
+
+/* ---------- Shared: back + theme buttons ---------- */
+.profile-page .back-btn,
+.profile-page .theme-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 8px 16px;
+    border: 1px solid var(--pf-border);
+    border-radius: 999px;
+    background: var(--pf-surface-2);
+    color: var(--pf-text);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color .2s ease, transform .2s ease;
+}
+.profile-page .theme-btn { width: 40px; padding: 0; }
+.profile-page .back-btn:hover,
+.profile-page .theme-btn:hover { border-color: var(--pf-accent); }
+.profile-page .back-btn:active,
+.profile-page .theme-btn:active { transform: scale(.97); }
+.profile-page .back-btn .material-symbols-outlined { font-size: 18px; }
+.profile-page .theme-btn .material-symbols-outlined { font-size: 20px; }
+
+/* =========================================================
+   PLANT PROFILE (plant-profile.html)
+   ========================================================= */
+
+/* ---------- Hero ---------- */
+.profile-page .profile-hero {
+    position: relative;
+    height: clamp(240px, 46vw, 380px);
+    background: linear-gradient(135deg, var(--pf-surface-2), var(--pf-accent-soft));
+}
+.profile-page .profile-hero img {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+}
+.profile-page .profile-hero img[hidden],
+.profile-page .hero-placeholder[hidden] { display: none; }
+
+/* shade at the top for the buttons, fade at the bottom into the card */
+.profile-page .profile-hero::before,
+.profile-page .profile-hero::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0;
+    pointer-events: none;
+}
+.profile-page .profile-hero::before {
+    top: 0; height: 90px;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, .30), transparent);
+    z-index: 1;
+}
+.profile-page .profile-hero::after {
+    bottom: 0; height: 70px;
+    background: linear-gradient(to top, var(--pf-surface), transparent);
+    z-index: 1;
+}
+
+.profile-page .hero-placeholder {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--pf-accent); opacity: .45;
+}
+.profile-page .hero-placeholder .material-symbols-outlined { font-size: 96px; }
+
+.profile-page .header-controls {
+    position: absolute; top: 16px; left: 16px; right: 16px; z-index: 3;
+    display: flex; justify-content: space-between; align-items: center;
+}
+/* Over a photo the buttons need their own backing in both themes. */
+.profile-page .profile-hero .back-btn,
+.profile-page .profile-hero .theme-btn {
+    background: color-mix(in srgb, var(--pf-surface) 85%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+
+/* ---------- Content ---------- */
+.profile-page .profile-content {
+    position: relative;
+    z-index: 2;
+    margin-top: -24px;
+    padding: 0 32px 32px;
+}
+
+.profile-page .plant-titles { margin-bottom: 24px; }
+.profile-page .plant-titles h1 {
+    font-size: clamp(24px, 5vw, 32px);
+    line-height: 1.15;
+    letter-spacing: -.01em;
+    overflow-wrap: anywhere;
+}
+.profile-page .plant-titles h3 {
+    margin-top: 6px;
+    font-size: 16px;
+    font-style: italic;
+    font-weight: 400;
+    color: var(--pf-accent);
+}
+
+/* ---------- Info cards ---------- */
+.profile-page .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+.profile-page .full-width-card { grid-column: 1 / -1; }
+
+.profile-page .info-card {
+    min-width: 0;
+    padding: 18px 20px;
+    background: var(--pf-surface-2);
+    border: 1px solid var(--pf-border);
+    border-radius: 14px;
+}
+.profile-page .info-card h4 {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 12px;
+    font-size: 15px; font-weight: 700;
+}
+.profile-page .info-card h4 .material-symbols-outlined {
+    display: grid; place-items: center;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--pf-accent-soft);
+    color: var(--pf-accent);
+    font-size: 18px;
+}
+.profile-page .info-card p,
+.profile-page .info-card ul {
+    font-size: 14px; line-height: 1.65; color: var(--pf-muted);
+}
+.profile-page .info-card ul { padding-left: 20px; }
+.profile-page .info-card li + li { margin-top: 4px; }
+.profile-page .info-card li::marker { color: var(--pf-accent); }
+.profile-page .info-card p + p { margin-top: 8px; }
+.profile-page .info-card strong { color: var(--pf-text); }
+.profile-page #plantDescription { white-space: pre-line; }
+
+/* warning card: tinted, not just a coloured edge */
+.profile-page .info-card.warning {
+    background: color-mix(in srgb, var(--pf-danger) 8%, var(--pf-surface-2));
+    border-color: color-mix(in srgb, var(--pf-danger) 35%, var(--pf-border));
+}
+.profile-page .info-card.warning h4 .material-symbols-outlined {
+    background: color-mix(in srgb, var(--pf-danger) 15%, transparent);
+    color: var(--pf-danger);
+}
+.profile-page .info-card.warning li::marker { color: var(--pf-danger); }
+
+/* ---------- Meta: dataset chip, Contribute button, people rows ---------- */
+.profile-page .botanist-meta {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 12px;
+    margin-top: 24px; padding-top: 20px;
+    border-top: 1px solid var(--pf-border);
+    font-size: 13px; color: var(--pf-muted);
+}
+.profile-page #datasetSource {
+    display: inline-flex; align-items: center;
+    padding: 6px 12px;
+    background: var(--pf-surface-2);
+    border: 1px solid var(--pf-border);
+    border-radius: 999px;
+    font-size: 12px; font-weight: 600;
+}
+.profile-page #datasetSource:empty { display: none; }
+
+.profile-page .contribute-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 18px;
+    border: 1px solid var(--pf-accent);
+    border-radius: 999px;
+    background: var(--pf-accent);
+    color: var(--pf-on-accent);
+    font-size: 13px; font-weight: 700; text-decoration: none;
+    transition: filter .2s ease, transform .2s ease;
+}
+.profile-page .contribute-btn[hidden] { display: none; }
+.profile-page .contribute-btn:hover { filter: brightness(.92); }
+.profile-page .contribute-btn:active { transform: scale(.97); }
+.profile-page .contribute-btn .material-symbols-outlined { font-size: 16px; }
+
+/* people rows always take the full line under the chip + button */
+.profile-page .people-rows {
+    order: 3;
+    display: flex; flex-direction: column; gap: 12px;
+    width: 100%;
+    padding-top: 14px;
+    border-top: 1px dashed var(--pf-border);
+}
+.profile-page .people-rows:not(:has(.contributor-info:not([hidden]))) { display: none; }
+
+.profile-page .contributor-info { display: flex; align-items: flex-start; gap: 12px; }
+.profile-page .contributor-info[hidden] { display: none; }
+.profile-page .people-label {
+    flex: 0 0 6.5rem;
+    padding-top: 7px;                 /* lines the label up with the first chip */
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase;
+}
+
+/* one chip per person, wrapping onto new lines when there are many */
+.profile-page .people-list { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.profile-page .person {
+    display: inline-flex; align-items: center; flex-wrap: wrap;
+    gap: 4px 10px;
+    min-width: 0;
+    padding: 5px 12px;
+    background: var(--pf-surface-2);
+    border: 1px solid var(--pf-border);
+    border-radius: 999px;
+}
+.profile-page .person-name,
+.profile-page .person-link { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+/* Plain text: no link look, no pointer, no hover effect. */
+.profile-page .person-name { color: var(--pf-text); cursor: default; }
+.profile-page .person-link {
+    color: var(--pf-accent);
+    text-decoration: underline;               /* underline = this name is clickable */
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    border-radius: 3px;
+}
+.profile-page .person-link:hover { text-decoration-thickness: 2px; }
+.profile-page .verified-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    white-space: nowrap;
+    font-size: 12px; font-weight: 700; color: var(--pf-accent);
+}
+.profile-page .verified-badge .material-symbols-outlined { font-size: 15px; }
+.profile-page .role-tag {
+    white-space: nowrap;
+    padding: 1px 8px;
+    background: var(--pf-accent-soft);
+    border-radius: 999px;
+    font-size: 11px; font-weight: 700; color: var(--pf-accent);
+}
+
+/* =========================================================
+   BOTANIST / ADMINISTRATOR PROFILE (botanist-profile.html)
+   ========================================================= */
+
+.profile-page .profile-header-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px 0;
+}
+
+/* ---------- Hero ---------- */
+.profile-page .botanist-hero {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 12px 24px 28px;
+    text-align: center;
+    background: linear-gradient(180deg, var(--pf-accent-soft) 0%, transparent 70%);
+}
+.profile-page .avatar-circle {
+    display: grid; place-items: center;
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    background: var(--pf-accent);
+    color: var(--pf-on-accent);
+    font-size: 32px; font-weight: 700;
+    box-shadow: 0 0 0 4px var(--pf-surface), 0 0 0 6px var(--pf-accent), var(--pf-shadow);
+}
+.profile-page .botanist-hero h1 {
+    margin-top: 8px;
+    font-size: clamp(22px, 5vw, 28px);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+.profile-page .role-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 14px;
+    background: var(--pf-accent-soft);
+    border: 1px solid var(--pf-accent);
+    border-radius: 999px;
+    color: var(--pf-accent);
+    font-size: 13px; font-weight: 600;
+}
+.profile-page .role-badge .material-symbols-outlined { font-size: 16px; }
+.profile-page .botanist-bio {
+    max-width: 56ch;
+    font-size: 14px; line-height: 1.65;
+    color: var(--pf-muted);
+}
+.profile-page .botanist-bio:empty { display: none; }
+
+/* ---------- Metrics ---------- */
+.profile-page .metrics-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    width: 100%;
+    margin-top: 12px;
+}
+.profile-page .metric-item {
+    display: flex; flex-direction: column; justify-content: center;
+    min-width: 0;
+    padding: 14px 10px;
+    background: var(--pf-surface);
+    border: 1px solid var(--pf-border);
+    border-radius: 12px;
+    box-shadow: var(--pf-shadow);
+}
+.profile-page .metric-item[hidden] { display: none; }
+.profile-page .metric-value {
+    font-size: clamp(16px, 4.5vw, 22px);
+    line-height: 1.25;
+    font-weight: 700;
+    color: var(--pf-accent);
+    overflow-wrap: anywhere;
+}
+.profile-page .metric-label {
+    margin-top: 4px;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: .05em; text-transform: uppercase;
+    color: var(--pf-muted);
+}
+
+/* ---------- Contribution sections ---------- */
+.profile-page .contributions-section { padding: 4px 24px 28px; }
+.profile-page .contributions-section[hidden] { display: none; }
+.profile-page .contributions-section + .contributions-section {
+    padding-top: 24px;
+    border-top: 1px solid var(--pf-border);
+}
+.profile-page .contributions-section h3 {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 14px;
+    font-size: 17px;
+}
+.profile-page .contributions-section h3 .material-symbols-outlined { color: var(--pf-accent); }
+.profile-page .contributions-section > .muted { margin: -6px 0 14px; font-size: 13px; }
+
+.profile-page .plant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 14px;
+}
+.profile-page .plant-grid > .muted { grid-column: 1 / -1; font-size: 14px; }
+
+/* ---------- Plant cards (own class, never shared with the library) ---------- */
+.profile-page .profile-plant-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    text-decoration: none;
+    color: var(--pf-text);
+    background: var(--pf-surface-2);
+    border: 1px solid var(--pf-border);
+    border-radius: 12px;
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.profile-page .profile-plant-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--pf-accent);
+    box-shadow: var(--pf-shadow);
+}
+.profile-page .profile-plant-card__media {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    background: var(--pf-surface);
+}
+.profile-page .profile-plant-card__placeholder {
+    display: grid; place-items: center;
+    font-size: 36px;
+}
+.profile-page .profile-plant-card__body {
+    flex: 1;
+    padding: 10px 12px 12px;
+    text-align: left;
+}
+.profile-page .profile-plant-card__body h4 {
+    font-size: 15px;
+    color: var(--pf-accent);
+    overflow-wrap: anywhere;
+}
+.profile-page .profile-plant-card__sci {
+    margin-top: 2px;
+    font-size: 12px; font-style: italic;
+    color: var(--pf-muted);
+}
+.profile-page .profile-plant-card__body small {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--pf-muted);
+}
+
+/* A failed or restricted load: show the message only. */
+.profile-page.profile-unavailable .role-badge,
+.profile-page.profile-unavailable .metrics-bar,
+.profile-page.profile-unavailable .botanist-bio,
+.profile-page.profile-unavailable .contributions-section { display: none; }
+
+/* ---------- Profile pages: responsive ---------- */
+@media (max-width: 600px) {
+    .profile-page { padding: 12px 12px 28px; }
+
+    /* plant profile */
+    .profile-page .profile-content { padding: 0 18px 24px; }
+    .profile-page .info-grid { grid-template-columns: 1fr; }
+    .profile-page .botanist-meta { flex-direction: column; align-items: flex-start; }
+    .profile-page .contribute-btn { width: 100%; justify-content: center; }
+    .profile-page .contributor-info { flex-direction: column; gap: 6px; }
+    .profile-page .people-label { flex-basis: auto; padding-top: 0; }
+
+    /* botanist profile */
+    .profile-page .botanist-hero { padding: 8px 16px 22px; }
+    .profile-page .metrics-bar { grid-template-columns: 1fr 1fr; }
+    .profile-page .contributions-section { padding: 4px 16px 22px; }
+    .profile-page .plant-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .profile-page * { transition: none !important; }
+}
+
+/* =========================================================
+   PLANT PHOTO VIEWER (zoom + full screen), plant-profile.html
+   Built by plant-profile.js. The scrim is dark in both themes on purpose:
+   a photo reads best against a dark backdrop.
+   ========================================================= */
+
+.profile-page .profile-hero img.is-zoomable { cursor: zoom-in; }
+
+.profile-page .zoom-btn {
+    position: absolute; right: 16px; bottom: 28px; z-index: 3;
+    display: inline-flex; align-items: center; gap: 6px;
+    min-height: 36px;
+    padding: 7px 14px;
+    border: 1px solid var(--pf-border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--pf-surface) 85%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    color: var(--pf-text);
+    font: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: border-color .2s ease, transform .2s ease;
+}
+.profile-page .zoom-btn[hidden] { display: none; }
+.profile-page .zoom-btn:hover { border-color: var(--pf-accent); }
+.profile-page .zoom-btn:active { transform: scale(.97); }
+.profile-page .zoom-btn .material-symbols-outlined { font-size: 18px; }
+
+.profile-page.lightbox-open { overflow: hidden; }
+
+.profile-page .lightbox {
+    position: fixed; inset: 0; z-index: 1000;
+    display: flex; flex-direction: column;
+    background: rgba(8, 12, 7, 0.94);
+}
+.profile-page .lightbox[hidden] { display: none; }
+
+.profile-page .lightbox__stage {
+    flex: 1;
+    min-height: 0;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    cursor: zoom-in;
+    touch-action: none;          /* the viewer handles pinch and pan itself */
+}
+.profile-page .lightbox__stage.is-zoomed { cursor: grab; }
+.profile-page .lightbox__stage.is-zoomed:active { cursor: grabbing; }
+
+.profile-page .lightbox__img {
+    max-width: 100%; max-height: 100%;
+    object-fit: contain;
+    user-select: none; -webkit-user-drag: none;
+    transform-origin: center center;
+    will-change: transform;
+}
+
+.profile-page .lightbox__bar {
+    position: absolute; left: 50%; bottom: max(16px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px 6px 14px;
+    background: rgba(27, 33, 24, 0.85);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(220, 215, 201, 0.18);
+    border-radius: 999px;
+}
+.profile-page .lightbox__zoom {
+    min-width: 3.2em;
+    font-size: 12px; font-weight: 700;
+    color: rgba(234, 230, 213, 0.8);
+}
+.profile-page .lightbox__btn {
+    display: grid; place-items: center;
+    width: 38px; height: 38px;
+    padding: 0;
+    border: 0; border-radius: 50%;
+    background: transparent;
+    color: #eae6d5;
+    cursor: pointer;
+    transition: background-color .2s ease;
+}
+.profile-page .lightbox__btn:hover { background: rgba(255, 255, 255, 0.12); }
+.profile-page .lightbox__btn:focus-visible { outline: 2px solid #c6e78f; outline-offset: 2px; }
+.profile-page .lightbox__btn .material-symbols-outlined { font-size: 22px; }
+
+@media (max-width: 600px) {
+    .profile-page .zoom-btn { right: 12px; bottom: 24px; }
+}
+
+/* ---- primary byline and the colour-coded "more details" boxes (colours: core/richtext.css) ---- */
+.primary-byline { margin: 8px 0 0; }
+.byline-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 4px 12px; border-radius: 999px; font-size: 0.85rem;
+}
+.more-details { margin: 22px 0 8px; }
+.more-details h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 1.1rem; }
+.more-details-intro { margin: 0 0 12px; font-size: 0.88rem; opacity: 0.75; }

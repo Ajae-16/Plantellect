@@ -18,6 +18,7 @@ output.json
 /shelf/
 /workspace.xml
 /debug-mobile/
+/mobile-zip/
 
 # IntelliJ
 *.iml

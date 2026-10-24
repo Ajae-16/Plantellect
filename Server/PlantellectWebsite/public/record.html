@@ -36,7 +36,7 @@
         <div class="record-header">
             <a href="library.html" class="scan-back-link">&larr; Back to library</a>
             <h1>Record Plants</h1>
-            <p class="record-muted">Submit a species, add to one already recorded, or track what you have sent.</p>
+            <p class="record-muted">Submit a species, add to one already recorded, request a change, or track what you have sent.</p>
         </div>
 
         <!-- Shown instead of every form when the session has no record_plant. There
@@ -68,6 +68,8 @@
                         data-tab="new" aria-controls="panel-new" aria-selected="true">NEW PLANT</button>
                 <button type="button" class="record-tab" id="tab-contribute" role="tab"
                         data-tab="contribute" aria-controls="panel-contribute" aria-selected="false">ADD TO EXISTING</button>
+                <button type="button" class="record-tab" id="tab-change" role="tab"
+                        data-tab="change" aria-controls="panel-change" aria-selected="false">REQUEST CHANGE</button>
                 <button type="button" class="record-tab" id="tab-mine" role="tab"
                         data-tab="mine" aria-controls="panel-mine" aria-selected="false">MY SUBMISSIONS</button>
             </div>
@@ -80,8 +82,9 @@
 
                     <h2 class="record-section-title">Record a brand-new species</h2>
                     <p class="record-muted">
-                        Text first. Photos come after an admin approves the plant, from the
-                        &ldquo;Add photos&rdquo; action in My Submissions.
+                        Send the description and the photos together, so the admin approves the
+                        plant with its evidence. Each photo is approved on its own, and the plant&rsquo;s
+                        photo count grows by the photos that are approved.
                     </p>
 
                     <!-- A scan -> record handoff shows the prediction as a HINT only.
@@ -100,18 +103,40 @@
                                    autocomplete="off" spellcheck="false">
                         </div>
                         <div class="record-field">
-                            <label for="newTypeId">Type *</label>
-                            <select id="newTypeId" name="typeId" required>
-                                <option value="">Loading types…</option>
-                            </select>
-                        </div>
-                        <div class="record-field">
-                            <label for="newQuantity">Quantity on record</label>
-                            <input type="number" id="newQuantity" name="quantity" min="0" step="1">
+                            <label for="newTypeName">Type *</label>
+                            <input type="text" id="newTypeName" name="typeName" required autocomplete="off"
+                                   spellcheck="false" maxlength="50"
+                                   placeholder="Click to see the names already in use…">
+                            <!-- Opens on click, narrows as you type. A name that is not listed is
+                                 simply a new one; nothing here is locked. -->
+                            <div id="newTypeSuggest" class="record-picker" hidden></div>
                         </div>
                     </div>
 
-                    <!-- Shown when GET /api/plants?search= finds the name already. -->
+                    <!-- The type belongs to THIS plant alone (every plant owns its own row), so
+                         editing it later can never change another plant. newIsHarmful keeps its
+                         id on purpose: record-script.js already shows "Things to watch out for"
+                         from it. The caution note is always available, harmful or not. -->
+                    <fieldset class="record-field record-checklist">
+                        <legend>This plant&rsquo;s type</legend>
+                        <label><input type="checkbox" id="newTypeMedicinal"> Medicinal plant</label>
+                        <label><input type="checkbox" id="newIsHarmful"> Harmful plant</label>
+                        <div id="newToxicityField" hidden>
+                            <label for="newToxicityLevel">Toxicity level *</label>
+                            <select id="newToxicityLevel">
+                                <option value="">Select…</option>
+                                <option value="mild">Mild (yellow)</option>
+                                <option value="moderate">Moderate (orange)</option>
+                                <option value="severe">Severe (red)</option>
+                            </select>
+                        </div>
+                        <label for="newCautionNote">Caution note</label>
+                        <textarea data-richtext id="newCautionNote" name="cautionNote" rows="2" maxlength="1000"></textarea>
+                        <p class="record-muted" id="newTypeHint" hidden></p>
+                    </fieldset>
+
+                    <!-- Shown when GET /api/plants/lookup finds the species already. The
+                         submission is then turned into a contribution, never a second plant. -->
                     <p id="newDuplicateWarning" class="record-notice warning" hidden></p>
 
                     <details class="record-details">
@@ -164,19 +189,52 @@
 
                     <details class="record-details" open>
                         <summary>Description (optional, but names alone are not publishable)</summary>
+                        <p class="rt-hint">Your Enter key is kept, and you can use bold, bullets and highlights.
+                            <button type="button" class="rt-guide-link" data-rt-guide>Open the formatting guide</button></p>
                         <div class="record-field">
                             <label for="newUses">Uses</label>
-                            <textarea id="newUses" name="uses" rows="3"></textarea>
+                            <textarea data-richtext id="newUses" name="uses" rows="3"></textarea>
                         </div>
                         <div class="record-field">
                             <label for="newBenefits">Benefits</label>
-                            <textarea id="newBenefits" name="benefits" rows="3"></textarea>
+                            <textarea data-richtext id="newBenefits" name="benefits" rows="3"></textarea>
                         </div>
-                        <div class="record-field">
-                            <label for="newHarmful">Harmful / caution</label>
-                            <textarea id="newHarmful" name="harmful" rows="3"></textarea>
+
+                        <!-- "Things to watch out for" only appears while "Harmful plant" is
+                             ticked in the type section above (record-script.js). -->
+                        <div class="record-field" id="newHarmfulField" hidden>
+                            <label for="newHarmful">Things to watch out for</label>
+                            <textarea data-richtext id="newHarmful" name="harmful" rows="3"></textarea>
                         </div>
                     </details>
+
+                    <!-- Photos travel with the new species. The scan photo and the report's
+                         photos are offered here; neither is sent unless the botanist adds it. -->
+                    <div id="newCarriedPhoto" class="record-carried" hidden>
+                        <img id="newCarriedImg" alt="The photo you scanned">
+                        <div>
+                            <p>Use the photo you scanned</p>
+                            <button type="button" class="btn record-btn-secondary" id="newUseCarried">Use this photo</button>
+                            <button type="button" class="btn record-btn-secondary" id="newDropCarried">Discard it</button>
+                        </div>
+                    </div>
+
+                    <div id="newDiscoveryPhotos" class="record-field" hidden>
+                        <label>Photos from the discovery report</label>
+                        <p class="record-muted">
+                            Optional. Each photo you tick is copied into this submission as a
+                            <em>pending</em> photo, so an admin still approves it. The report keeps its own copy.
+                        </p>
+                        <ul class="record-thumbs" id="newDiscoveryList"></ul>
+                    </div>
+
+                    <div class="record-field">
+                        <label for="newImages">Photos (optional)</label>
+                        <input type="file" id="newImages" name="images" multiple
+                               accept="image/jpeg,image/png,image/webp">
+                        <p class="record-muted" id="newFileHint"></p>
+                        <ul class="record-thumbs" id="newThumbs" hidden></ul>
+                    </div>
 
                     <button type="submit" class="btn record-submit" id="newPlantSubmit">Submit for review</button>
                 </form>
@@ -190,11 +248,50 @@
 
                     <div class="record-field">
                         <label for="contributeSearch">Find a plant</label>
-                        <input type="text" id="contributeSearch" autocomplete="off"
-                               placeholder="Type a common or scientific name…">
+                        <div class="record-search-row">
+                            <select id="contributeTypeFilter" aria-label="Filter by plant type">
+                                <option value="">All types</option>
+                            </select>
+                            <input type="text" id="contributeSearch" autocomplete="off"
+                                   placeholder="Click to browse, or type a common or scientific name…">
+                        </div>
                         <div id="contributeResults" class="record-picker" hidden></div>
                         <input type="hidden" id="contributePlantId">
                         <p id="contributeSelected" class="record-muted" hidden></p>
+                    </div>
+
+                    <!-- The plant's taxonomy, read-only. It belongs to the plant (plants.taxonomyId),
+                         so no description or photo submission can change it; a correction is its
+                         own request, reviewed on its own. Its controls are type="button" and are
+                         never part of the contribution. -->
+                    <div id="taxonomyPanel" class="record-taxonomy" hidden>
+                        <div class="record-taxonomy-head">
+                            <h3>Taxonomy</h3>
+                            <span class="record-badge">Locked</span>
+                        </div>
+                        <p class="record-muted">
+                            Already recorded for this plant, so it is not editable here. If a level is
+                            wrong or missing, ask for an update &mdash; that is sent and reviewed
+                            separately from your description and photos.
+                        </p>
+                        <div class="record-grid" id="taxonomyGrid"></div>
+                        <p class="record-notice warning" id="taxonomyPendingNote" hidden>
+                            A taxonomy update for this plant is already waiting for review.
+                        </p>
+                        <button type="button" class="btn record-btn-secondary" id="taxonomyToggle">Request a taxonomy update</button>
+
+                        <div class="record-taxonomy-request" id="taxonomyRequest" hidden>
+                            <p class="record-muted">
+                                Change only what is wrong. A blank level stays as recorded.
+                            </p>
+                            <div class="record-grid" id="taxonomyEditGrid"></div>
+                            <div class="record-field">
+                                <label for="taxonomyReason">Why (optional)</label>
+                                <textarea id="taxonomyReason" rows="2" maxlength="500"></textarea>
+                            </div>
+                            <button type="button" class="btn record-submit" id="taxonomySubmit">Send taxonomy update</button>
+                            <button type="button" class="btn record-btn-secondary" id="taxonomyCancel">Cancel</button>
+                        </div>
                     </div>
 
                     <!-- The photo carried across from capture-plant.html. Without
@@ -211,18 +308,28 @@
 
                     <details class="record-details" open>
                         <summary>Description and measurements</summary>
+                        <p class="rt-hint">Your Enter key is kept, and you can use bold, bullets and highlights.
+                            <button type="button" class="rt-guide-link" data-rt-guide>Open the formatting guide</button></p>
                         <div class="record-field">
                             <label for="contributeUses">Uses</label>
-                            <textarea id="contributeUses" name="uses" rows="3"></textarea>
+                            <textarea data-richtext id="contributeUses" name="uses" rows="3"></textarea>
                         </div>
                         <div class="record-field">
                             <label for="contributeBenefits">Benefits</label>
-                            <textarea id="contributeBenefits" name="benefits" rows="3"></textarea>
+                            <textarea data-richtext id="contributeBenefits" name="benefits" rows="3"></textarea>
                         </div>
-                        <div class="record-field">
-                            <label for="contributeHarmful">Harmful / caution</label>
-                            <textarea id="contributeHarmful" name="harmful" rows="3"></textarea>
+
+                        <div class="record-check">
+                            <label><input type="checkbox" id="contributeIsHarmful"> This plant is harmful</label>
                         </div>
+                        <div class="record-field" id="contributeHarmfulField" hidden>
+                            <label for="contributeHarmful">Things to watch out for</label>
+                            <textarea data-richtext id="contributeHarmful" name="harmful" rows="3"></textarea>
+                        </div>
+                        <p class="record-muted" id="contributeHarmfulNote" hidden>
+                            This plant&rsquo;s type is marked safe, so there is no caution to record.
+                        </p>
+
                         <div class="record-grid">
                             <div class="record-field"><label for="contributeHeightMinCm">Height min (cm)</label>
                                 <input type="number" id="contributeHeightMinCm" step="0.01"></div>
@@ -250,10 +357,92 @@
                         <input type="file" id="contributeImages" name="images" multiple
                                accept="image/jpeg,image/png,image/webp">
                         <p class="record-muted" id="contributeFileHint"></p>
+                        <ul class="record-thumbs" id="contributeThumbs" hidden></ul>
+                    </div>
+
+                    <div id="contributeDiscoveryPhotos" class="record-field" hidden>
+                        <label>Photos from the discovery report</label>
+                        <p class="record-muted">
+                            Optional. Each photo you tick is copied in as a <em>pending</em> photo for admin approval.
+                        </p>
+                        <ul class="record-thumbs" id="contributeDiscoveryList"></ul>
                     </div>
 
                     <button type="submit" class="btn record-submit" id="contributeSubmit">Submit contribution</button>
                 </form>
+            </section>
+
+            <!-- ---------------- REQUEST CHANGE ---------------- -->
+            <!-- The picker sits OUTSIDE the form so Enter in the search box submits
+                 nothing. #changeBaseFields and #changeDescFields are filled by renderChangeForm() from
+                 GET /api/plants/:plantId/editable, so the field containers stay empty
+                 here. The form starts hidden and resetChangeForm() hides it again. -->
+            <section id="panel-change" class="record-panel" role="tabpanel" aria-labelledby="tab-change" hidden>
+                <div class="record-card">
+                    <h2 class="record-section-title">Request a change to a plant</h2>
+                    <p class="record-muted">
+                        Pick a plant, then choose what to change: the plant info, your own description, or
+                        both. Each one is a separate request with its own reason, and an admin decides each
+                        on its own. Nothing changes until then. A blank field means &ldquo;no change&rdquo;,
+                        so to remove a value, explain that in the reason.
+                    </p>
+
+                    <div class="record-field">
+                        <label for="changeSearch">Find a plant</label>
+                        <div class="record-search-row">
+                            <select id="changeTypeFilter" aria-label="Filter by plant type">
+                                <option value="">All types</option>
+                            </select>
+                            <input type="text" id="changeSearch" autocomplete="off"
+                                   placeholder="Click to browse, or type a common or scientific name…">
+                        </div>
+                        <div id="changeResults" class="record-picker" hidden></div>
+                        <p id="changeSelected" class="record-muted" hidden></p>
+                    </div>
+
+                    <form id="changeForm" novalidate hidden>
+                        <!-- Two independent requests. Tick one or both: a section that is not
+                             ticked is not sent and the record it covers stays untouched. -->
+                        <fieldset class="record-field record-field-wide record-checklist" id="changeBaseSection">
+                            <legend>
+                                <label><input type="checkbox" id="changeBaseToggle"> Change the plant info</label>
+                            </legend>
+                            <p class="record-muted" id="changeBaseHint">
+                                Common name, scientific name, plant type and taxonomy. This is the plant&rsquo;s shared record.
+                            </p>
+                            <div id="changeBaseBody" hidden>
+                                <div class="record-grid" id="changeBaseFields"></div>
+                                <div class="record-field record-field-wide">
+                                    <label for="changeBaseReason">Why does the plant info need changing? *</label>
+                                    <textarea id="changeBaseReason" rows="3" maxlength="500"></textarea>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="record-field record-field-wide record-checklist" id="changeDescSection">
+                            <legend>
+                                <label><input type="checkbox" id="changeDescToggle"> Change my description</label>
+                            </legend>
+                            <p class="record-muted" id="changeDescHint">
+                                Uses, benefits, things to watch out for and measurements. Each botanist&rsquo;s description is separate,
+                                so this only changes one you wrote.
+                            </p>
+                            <div id="changeDescBody" hidden>
+                                <div class="record-field" id="changeDescPickWrap" hidden>
+                                    <label for="changeDescPick">Which of your descriptions?</label>
+                                    <select id="changeDescPick"></select>
+                                </div>
+                                <div class="record-grid" id="changeDescFields"></div>
+                                <div class="record-field record-field-wide">
+                                    <label for="changeDescReason">Why does your description need changing? *</label>
+                                    <textarea id="changeDescReason" rows="3" maxlength="500"></textarea>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <button type="submit" class="btn record-submit" id="changeSubmit">Send change request</button>
+                    </form>
+                </div>
             </section>
 
             <!-- ---------------- MY SUBMISSIONS ---------------- -->
@@ -271,6 +460,14 @@
         </div>
     </div>
 
+    <!-- One preview dialog for every thumbnail on the page. Closes with the cross,
+         Escape or a click on the backdrop, and returns focus to the thumbnail that
+         opened it. -->
+    <div class="record-modal" id="imageModal" role="dialog" aria-modal="true" aria-label="Photo preview" hidden>
+        <button type="button" class="record-modal-close" id="imageModalClose" aria-label="Close preview">&times;</button>
+        <img id="imageModalImg" alt="">
+    </div>
+
     <div class="sidebar-scrim"></div>
     <!-- Same sidebar as the other pages, at body level. Filled in by sidebar.js according to the signed-in role -->
     <aside class="sidebar" id="librarySidebar" aria-label="Sidebar"></aside>
@@ -282,6 +479,8 @@
     <!-- ml-client.js before record-script.js: both pages depend on the load order,
          and record-script.js uses the same photo/prediction handoff. -->
     <script src="javascript/ml-client.js"></script>
+    <script src="javascript/badges.js"></script>
+    <script src="javascript/richtext.js"></script>
     <script src="javascript/record-script.js"></script>
 
 </body>

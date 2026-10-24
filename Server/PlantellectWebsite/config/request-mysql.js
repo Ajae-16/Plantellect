@@ -55,11 +55,17 @@ async function listPendingRoleRequests() {
 
 /**
  * Plant-facing view of the queue. A plant_addition draft lives in `payload`, so
- * its name and type are read from there; a contribution points at targetPlantId.
+ * its name and type are read from there; a contribution, a taxonomy update and a
+ * change request point at targetPlantId. A taxonomy update carries
+ * `taxonomyChanges`; a plant_change carries `changes` (field -> { from, to }) and
+ * the botanist's `changeReason`, for the diff view.
  */
 async function listPlantRequests({ requestType, page, pageSize }) {
     const paging = parsePaging({ page, pageSize });
-    const where = ["ar.status = 'pending'", "ar.requestType IN ('plant_addition','plant_contribution')"];
+    const where = [
+        "ar.status = 'pending'",
+        "ar.requestType IN ('plant_addition','plant_contribution','plant_taxonomy','plant_change')"
+    ];
     const params = [];
 
     if (requestType) {
@@ -71,11 +77,12 @@ async function listPlantRequests({ requestType, page, pageSize }) {
     const [rows] = await mysqlPool.query(
         `SELECT ar.requestId, ar.requestType, ar.targetPlantId, ar.payload, ar.createdAt, ar.note,
                 ar.approvalMode,
-                a.accountId AS submitterId, a.username AS submitterName,
+                a.accountId AS submitterId, a.username AS submitterName, rl.roleName AS submitterRole,
                 pr.firstName AS submitterFirstName, pr.lastName AS submitterLastName,
-                p.commonName AS targetCommonName, t.typeName AS targetType, t.label AS targetTypeLabel
+                p.commonName AS targetCommonName, t.typeName AS targetType, t.toxicityLevel AS targetToxicity
          FROM approval_requests ar
          JOIN accounts a ON ar.accountId = a.accountId
+         JOIN roles rl ON rl.roleId = a.roleId
          LEFT JOIN profiles pr ON pr.accountId = a.accountId
          LEFT JOIN plants p ON ar.targetPlantId = p.plantId
          LEFT JOIN plant_types t ON p.typeId = t.typeId
@@ -101,6 +108,7 @@ async function listPlantRequests({ requestType, page, pageSize }) {
                 payload = {};
             }
             const isAddition = r.requestType === 'plant_addition';
+            const isChange = r.requestType === 'plant_change';
             const fullName = [r.submitterFirstName, r.submitterLastName].filter(Boolean).join(' ');
             const imageIds = Array.isArray(payload.imageIds) ? payload.imageIds : [];
             return {
@@ -108,11 +116,19 @@ async function listPlantRequests({ requestType, page, pageSize }) {
                 requestType: r.requestType,
                 plantName: isAddition ? (payload.commonName || '(unnamed draft)') : r.targetCommonName,
                 type: isAddition ? (payload.typeName || null) : r.targetType,
-                typeLabel: isAddition ? (payload.typeLabel || null) : r.targetTypeLabel,
+                typeLabel: isAddition ? (payload.typeName || null) : r.targetType,   // the name IS the label
+                // The badge colour. An addition has no plant yet, so it comes from the
+                // type the botanist described.
+                toxicityLevel: isAddition
+                    ? ((payload.typeSpec && payload.typeSpec.toxicityLevel) || 'none')
+                    : (r.targetToxicity || 'none'),
                 targetPlantId: r.targetPlantId,
                 submittedBy: r.submitterId,
                 // Full name when the profile has one, username as the fallback.
                 submittedByName: fullName || r.submitterName,
+                // Current role (superadmin / admin / botanist / user), for the badge.
+                submittedByRole: r.submitterRole,
+                submittedByUsername: r.submitterName,
                 requestedAt: r.createdAt,
                 note: r.note,
                 // Always present so the row shape is stable, and read from SQL
@@ -122,6 +138,14 @@ async function listPlantRequests({ requestType, page, pageSize }) {
                 // nothing has decided it yet.
                 approvalMode: r.approvalMode || 'manual',
                 hasDescription: Boolean(payload.uses || payload.benefits || payload.harmful || payload.parts),
+                taxonomyChanges: r.requestType === 'plant_taxonomy' ? (payload.changes || {}) : null,
+                taxonomyReason: r.requestType === 'plant_taxonomy' ? (payload.reason || null) : null,
+                changes: isChange ? (payload.changes || {}) : null,
+                changeReason: isChange ? (payload.reason || null) : null,
+                // 'base' (plant info) or 'description' (one botanist's own description);
+                // 'legacy' for a request filed before the split.
+                changeScope: isChange ? (payload.scope || 'legacy') : null,
+                changeDescriptionId: isChange ? (payload.descriptionId || null) : null,
                 images: imageIds.map((imageId) => ({
                     imageId,
                     url: `/admin/api/plant-images/${encodeURIComponent(imageId)}`
@@ -138,9 +162,16 @@ async function listPlantRequests({ requestType, page, pageSize }) {
 /** Everything the admin needs to review one plant request, including files. */
 async function getRequestDetail(requestId) {
     const [rows] = await mysqlPool.query(
-        `SELECT ar.*, a.username AS submitterName, a.email AS submitterEmail
+        `SELECT ar.*, a.username AS submitterName, a.email AS submitterEmail, rl.roleName AS submitterRole,
+                pr.firstName AS submitterFirstName, pr.lastName AS submitterLastName,
+                p.commonName AS targetCommonName, p.scientificName AS targetScientificName,
+                t.typeName AS targetType, t.toxicityLevel AS targetToxicity
          FROM approval_requests ar
          JOIN accounts a ON ar.accountId = a.accountId
+         JOIN roles rl ON rl.roleId = a.roleId
+         LEFT JOIN profiles pr ON pr.accountId = a.accountId
+         LEFT JOIN plants p ON p.plantId = ar.targetPlantId
+         LEFT JOIN plant_types t ON t.typeId = p.typeId
          WHERE ar.requestId = ?`,
         [requestId]
     );
@@ -175,8 +206,18 @@ async function getRequestDetail(requestId) {
         createdAt: row.createdAt,
         reviewedAt: row.reviewedAt,
         submittedBy: row.accountId,
-        submittedByName: row.submitterName,
+        submittedByName: [row.submitterFirstName, row.submitterLastName].filter(Boolean).join(' ') || row.submitterName,
+        submittedByUsername: row.submitterName,
         submittedByEmail: row.submitterEmail,
+        submittedByRole: row.submitterRole,
+        // The plant this request is about, so the reviewer sees what it applies to.
+        targetPlant: row.targetPlantId ? {
+            id: row.targetPlantId,
+            commonName: row.targetCommonName,
+            scientificName: row.targetScientificName,
+            typeName: row.targetType,
+            toxicityLevel: row.targetToxicity
+        } : null,
         payload,
         images
     };

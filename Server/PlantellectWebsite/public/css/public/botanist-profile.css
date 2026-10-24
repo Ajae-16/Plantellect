@@ -1,0 +1,254 @@
+/* =========================================================
+   botanist-profile.css  (botanist-profile.html only)
+
+   Serves both the botanist and the administrator layouts.
+   Load AFTER public-theme.css, which supplies the page gradient and the
+   --dk-* dark palette this file reads. Everything is scoped to .profile-page.
+   ========================================================= */
+
+/* ---------- Tokens ---------- */
+html[data-theme="light"] .profile-page {
+    --pf-surface:   #ffffff;
+    --pf-surface-2: #f1f7e6;
+    --pf-text:      #1f2d1c;
+    --pf-muted:     #51634b;
+    --pf-accent:    #2e6417;
+    --pf-accent-soft: rgba(46, 100, 23, 0.10);
+    --pf-on-accent: #ffffff;
+    --pf-border:    rgba(46, 100, 23, 0.16);
+    --pf-shadow:    0 1px 2px rgba(35, 76, 17, 0.06), 0 8px 20px rgba(35, 76, 17, 0.08);
+}
+
+html[data-theme="dark"] .profile-page {
+    --pf-surface:   var(--dk-surface);
+    --pf-surface-2: var(--dk-surface-2);
+    --pf-text:      var(--dk-text);
+    --pf-muted:     var(--dk-text-muted);
+    --pf-accent:    var(--dk-accent);
+    --pf-accent-soft: rgba(198, 231, 143, 0.12);
+    --pf-on-accent: var(--color-dark-jungle-green);
+    --pf-border:    var(--dk-border);
+    --pf-shadow:    0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- Base ---------- */
+.profile-page {
+    margin: 0;
+    padding: 24px 20px 40px;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--pf-text);
+}
+.profile-page *, .profile-page *::before, .profile-page *::after { box-sizing: border-box; }
+.profile-page h1, .profile-page h3, .profile-page h4,
+.profile-page p, .profile-page ul { margin: 0; }
+.profile-page .muted { color: var(--pf-muted); }
+
+.profile-page :is(a, button):focus-visible {
+    outline: 2px solid var(--pf-accent);
+    outline-offset: 2px;
+}
+
+.profile-page .profile-container {
+    max-width: 820px;
+    margin: 0 auto;
+    overflow: hidden;
+    background: var(--pf-surface);
+    border: 1px solid var(--pf-border);
+    border-radius: 18px;
+    box-shadow: var(--pf-shadow);
+}
+
+/* ---------- Top bar: back + theme ---------- */
+.profile-page .profile-header-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px 0;
+}
+.profile-page .back-btn,
+.profile-page .theme-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 8px 16px;
+    border: 1px solid var(--pf-border);
+    border-radius: 999px;
+    background: var(--pf-surface-2);
+    color: var(--pf-text);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color .2s ease, transform .2s ease;
+}
+.profile-page .theme-btn { width: 40px; padding: 0; }
+.profile-page .back-btn:hover,
+.profile-page .theme-btn:hover { border-color: var(--pf-accent); }
+.profile-page .back-btn:active,
+.profile-page .theme-btn:active { transform: scale(.97); }
+.profile-page .back-btn .material-symbols-outlined { font-size: 18px; }
+.profile-page .theme-btn .material-symbols-outlined { font-size: 20px; }
+
+/* ---------- Hero ---------- */
+.profile-page .botanist-hero {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 12px 24px 28px;
+    text-align: center;
+    background: linear-gradient(180deg, var(--pf-accent-soft) 0%, transparent 70%);
+}
+.profile-page .avatar-circle {
+    display: grid; place-items: center;
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    background: var(--pf-accent);
+    color: var(--pf-on-accent);
+    font-size: 32px; font-weight: 700;
+    box-shadow: 0 0 0 4px var(--pf-surface), 0 0 0 6px var(--pf-accent), var(--pf-shadow);
+}
+.profile-page .botanist-hero h1 {
+    margin-top: 8px;
+    font-size: clamp(22px, 5vw, 28px);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+.profile-page .role-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 14px;
+    background: var(--pf-accent-soft);
+    border: 1px solid var(--pf-accent);
+    border-radius: 999px;
+    color: var(--pf-accent);
+    font-size: 13px; font-weight: 600;
+}
+.profile-page .role-badge .material-symbols-outlined { font-size: 16px; }
+.profile-page .botanist-bio {
+    max-width: 56ch;
+    font-size: 14px; line-height: 1.65;
+    color: var(--pf-muted);
+}
+.profile-page .botanist-bio:empty { display: none; }
+
+/* ---------- Metrics ---------- */
+.profile-page .metrics-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    width: 100%;
+    margin-top: 12px;
+}
+.profile-page .metric-item {
+    display: flex; flex-direction: column; justify-content: center;
+    min-width: 0;
+    padding: 14px 10px;
+    background: var(--pf-surface);
+    border: 1px solid var(--pf-border);
+    border-radius: 12px;
+    box-shadow: var(--pf-shadow);
+}
+.profile-page .metric-item[hidden] { display: none; }
+.profile-page .metric-value {
+    font-size: clamp(16px, 4.5vw, 22px);
+    line-height: 1.25;
+    font-weight: 700;
+    color: var(--pf-accent);
+    overflow-wrap: anywhere;
+}
+.profile-page .metric-label {
+    margin-top: 4px;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: .05em; text-transform: uppercase;
+    color: var(--pf-muted);
+}
+
+/* ---------- Contribution sections ---------- */
+.profile-page .contributions-section { padding: 4px 24px 28px; }
+.profile-page .contributions-section[hidden] { display: none; }
+.profile-page .contributions-section + .contributions-section {
+    padding-top: 24px;
+    border-top: 1px solid var(--pf-border);
+}
+.profile-page .contributions-section h3 {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 14px;
+    font-size: 17px;
+}
+.profile-page .contributions-section h3 .material-symbols-outlined { color: var(--pf-accent); }
+.profile-page .contributions-section > .muted { margin: -6px 0 14px; font-size: 13px; }
+
+.profile-page .plant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 14px;
+}
+.profile-page .plant-grid > .muted { grid-column: 1 / -1; font-size: 14px; }
+
+/* ---------- Plant cards (own class, never shared with the library) ---------- */
+.profile-page .profile-plant-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    text-decoration: none;
+    color: var(--pf-text);
+    background: var(--pf-surface-2);
+    border: 1px solid var(--pf-border);
+    border-radius: 12px;
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.profile-page .profile-plant-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--pf-accent);
+    box-shadow: var(--pf-shadow);
+}
+.profile-page .profile-plant-card__media {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    background: var(--pf-surface);
+}
+.profile-page .profile-plant-card__placeholder {
+    display: grid; place-items: center;
+    font-size: 36px;
+}
+.profile-page .profile-plant-card__body {
+    flex: 1;
+    padding: 10px 12px 12px;
+    text-align: left;
+}
+.profile-page .profile-plant-card__body h4 {
+    font-size: 15px;
+    color: var(--pf-accent);
+    overflow-wrap: anywhere;
+}
+.profile-page .profile-plant-card__sci {
+    margin-top: 2px;
+    font-size: 12px; font-style: italic;
+    color: var(--pf-muted);
+}
+.profile-page .profile-plant-card__body small {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--pf-muted);
+}
+
+/* A failed or restricted load: show the message only. */
+.profile-page.profile-unavailable .role-badge,
+.profile-page.profile-unavailable .metrics-bar,
+.profile-page.profile-unavailable .botanist-bio,
+.profile-page.profile-unavailable .contributions-section { display: none; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 600px) {
+    .profile-page { padding: 12px 12px 28px; }
+    .profile-page .botanist-hero { padding: 8px 16px 22px; }
+    .profile-page .metrics-bar { grid-template-columns: 1fr 1fr; }
+    .profile-page .contributions-section { padding: 4px 16px 22px; }
+    .profile-page .plant-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .profile-page * { transition: none !important; }
+}

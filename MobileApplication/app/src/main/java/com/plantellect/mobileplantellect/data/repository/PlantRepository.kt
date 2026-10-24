@@ -27,11 +27,11 @@ class PlantRepository(
         "${baseUrl.trimEnd('/')}/${ApiConfig.PLANTS}/$plantId/images/$imageId"
 
     /** Fetches a public plant image via Retrofit (programmatic: headers, retry, cancellation). */
-    suspend fun plantImage(plantId: String, imageId: String): ApiResult<Response<ResponseBody>> =
+    suspend fun plantImage(plantId: String, imageId: String): ApiResult<ResponseBody> =
         caller.call { api.plantImage(plantId, imageId) }
 
     /** Fetches the owner's plant image via Retrofit (programmatic: headers, retry, cancellation). */
-    suspend fun myPlantImage(imageId: String): ApiResult<Response<ResponseBody>> =
+    suspend fun myPlantImage(imageId: String): ApiResult<ResponseBody> =
         caller.call { api.myPlantImage(imageId) }
 
     /** Resolves the relative imageUrl the scan endpoint returns. */

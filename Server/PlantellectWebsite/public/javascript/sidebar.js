@@ -19,6 +19,11 @@
    desktop icon rail, mobile off-canvas drawer, item badges and the
    "Sign in to unlock" popup.
 
+   Profile pages (plant-profile.html, botanist-profile.html) have no sidebar but
+   load this file for the shared theme: any [data-theme-toggle] button controls
+   the same <html data-theme> / 'siteTheme' state as every other public page,
+   and any [data-profile-back] link goes back only within the site.
+
    A page must NOT fetch /api/auth/me or render .auth-links itself. Doing so is
    what left record.html, capture-plant.html and discoveries.html with a
    permanently signed-out header: the session was fine, the header was simply
@@ -65,6 +70,18 @@
        0. Apply saved theme + collapsed state immediately
        --------------------------------------------------------- */
     (function applySavedState() {
+        // One-time: fold the old profile-page key ('plantellect-theme') into the
+        // shared one without overwriting a valid shared preference, then drop it
+        // so there is a single theme preference.
+        try {
+            var legacy = localStorage.getItem('plantellect-theme');
+            var existing = localStorage.getItem(THEME_KEY);
+            if (existing !== 'dark' && existing !== 'light' && (legacy === 'dark' || legacy === 'light')) {
+                localStorage.setItem(THEME_KEY, legacy);
+            }
+            localStorage.removeItem('plantellect-theme');
+        } catch (e) {}
+
         var saved = readStore(THEME_KEY);
         rootEl.setAttribute(
             'data-theme',
@@ -84,6 +101,16 @@
 
     function updateThemeSwitch() {
         var theme = currentTheme();
+
+        // Profile-page toggle buttons: icon, tooltip and aria-label show the mode
+        // you would switch TO.
+        document.querySelectorAll('[data-theme-toggle]').forEach(function (btn) {
+            var icon = btn.querySelector('.material-symbols-outlined');
+            var label = theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+            if (icon) icon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
+            btn.title = label;
+            btn.setAttribute('aria-label', label);
+        });
 
         // Floating theme button (guests only): shows the mode you would switch TO
         var fab = document.getElementById('guestThemeToggle');
@@ -110,6 +137,23 @@
         updateThemeSwitch();
     }
 
+    /* A theme change that did not come from a click on a toggle (the page came
+       back from the back/forward cache, or another tab changed it) must show at
+       once. Going through setTheme alone made the whole page fade between
+       themes, which read as a delay: the library appeared dark for a moment and
+       then slowly turned light.
+
+       html.theme-instant switches every transition off (public-theme.css). It is
+       removed two frames later, after the new theme has been painted, so the
+       toggle buttons keep their normal fade. */
+    function setThemeInstant(theme) {
+        rootEl.classList.add('theme-instant');
+        setTheme(theme, false);
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () { rootEl.classList.remove('theme-instant'); });
+        });
+    }
+
     // Follow the OS setting until the user picks a theme manually
     function onSystemThemeChange(e) {
         var saved = readStore(THEME_KEY);
@@ -118,6 +162,19 @@
     }
     if (darkQuery.addEventListener) darkQuery.addEventListener('change', onSystemThemeChange);
     else if (darkQuery.addListener) darkQuery.addListener(onSystemThemeChange);
+
+    /* The browser can restore a page from its back/forward cache exactly as it
+       was left. Going back from a profile page after changing the theme there
+       therefore showed the library in the OLD theme until something re-applied
+       it. `persisted` is true only for that kind of restore, and the saved theme
+       is the one source of truth. */
+    window.addEventListener('pageshow', function (e) {
+        if (!e.persisted) return;
+        var saved = readStore(THEME_KEY);
+        if ((saved === 'dark' || saved === 'light') && saved !== currentTheme()) {
+            setThemeInstant(saved);
+        }
+    });
 
     function setCollapsed(collapsed) {
         rootEl.classList.toggle('sidebar-collapsed', collapsed);
@@ -575,6 +632,33 @@
         modal.addEventListener('click', function (e) {
             if (e.target === modal) modal.style.display = 'none';
         });
+
+        // Profile pages: theme button, back links, cross-tab theme sync.
+        document.querySelectorAll('[data-theme-toggle]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                setTheme(currentTheme() === 'dark' ? 'light' : 'dark', true);
+            });
+        });
+        document.querySelectorAll('[data-profile-back]').forEach(function (back) {
+            back.addEventListener('click', function (event) {
+                var fromThisSite = false;
+                try {
+                    fromThisSite = !!document.referrer &&
+                        new URL(document.referrer).origin === window.location.origin;
+                } catch (e) {}
+                if (fromThisSite && window.history.length > 1) {
+                    event.preventDefault();
+                    window.history.back();
+                }
+                // otherwise the link's own href (library.html) is followed
+            });
+        });
+        window.addEventListener('storage', function (e) {
+            if (e.key === THEME_KEY && (e.newValue === 'dark' || e.newValue === 'light')) {
+                setThemeInstant(e.newValue);
+            }
+        });
+        updateThemeSwitch();
 
         var navHamburger = document.querySelector('.nav-hamburger');
         var librarySidebar = document.getElementById('librarySidebar');

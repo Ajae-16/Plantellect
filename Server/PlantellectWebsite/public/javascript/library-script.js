@@ -74,17 +74,53 @@ function renderPlantCards(plants) {
         const image = p.imageUrl
             ? `<img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.name)} Plant">`
             : '<div class="image-box image-placeholder" aria-hidden="true">🌿</div>';
-        const caution = p.toxicityLevel && p.toxicityLevel !== 'none'
-            ? `<p class="plant-card-caution">⚠ ${escapeHtml(p.cautionNote || 'Handle with care')}</p>`
-            : '';
+
+        // Harmful: the recorded "things to watch out for" text, or the type's
+        // caution note if no text was recorded. Otherwise: the benefits.
+        const d = p.description || {};
+        const harmfulText = RichText.plain(d.harmful);   // card snippet: no paragraph marks
+        const benefitsText = RichText.plain(d.benefits);
+        const typeIsHarmful = Boolean(p.isHarmful) ||
+            (p.toxicityLevel && p.toxicityLevel !== 'none');
+        const isHarmful = harmfulText !== '' || typeIsHarmful;
+
+        // The caution note belongs to the plant and shows whether or not it is
+        // harmful. A harmful plant puts its own warning first; a safe plant with
+        // a caution shows that; otherwise the benefits.
+        const cautionText = RichText.plain(p.cautionNote);
+        let noteText = '';
+        let noteClass = 'is-benefit';
+        let noteLabel = 'Benefits';
+        if (isHarmful) {
+            noteText = harmfulText || cautionText || 'Handle with care.';
+            noteClass = 'is-harmful';
+            noteLabel = '⚠ Things to watch out for';
+        } else if (cautionText) {
+            noteText = cautionText;
+            noteClass = 'is-caution';
+            noteLabel = 'Caution';
+        } else {
+            noteText = benefitsText;
+        }
+
+        const note = noteText
+            ? `<div class="plant-note ${noteClass}">
+                   <span class="plant-note-label">${noteLabel}</span>
+                   <div class="plant-note-text">${escapeHtml(noteText)}</div>
+                   <span class="plant-more">More <span aria-hidden="true">&rarr;</span></span>
+               </div>`
+            : `<div class="plant-note">
+                   <span class="plant-more">More <span aria-hidden="true">&rarr;</span></span>
+               </div>`;
 
         return `
-        <a href="plant-profile.html?plantId=${encodeURIComponent(p.id)}" style="text-decoration: none; color: inherit;">
+        <a class="plant-link" href="plant-profile.html?plantId=${encodeURIComponent(p.id)}"
+           aria-label="${escapeHtml(p.name)} - view plant profile">
             <div class="plant-card">
                 <div class="image-box">${image}</div>
                 <h3>${escapeHtml(name)}</h3>
-                <p class="plant-card-type">${escapeHtml(p.typeLabel || p.type)}</p>
-                ${caution}
+                <p class="plant-card-type">${PlantBadge.html(p.typeLabel || p.type, p.toxicityLevel)}</p>
+                ${note}
             </div>
         </a>`;
     }).join('');

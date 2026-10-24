@@ -113,3 +113,43 @@
     --spacing-nav-gap: 100px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Plant type badge. ONE badge per plant, coloured by its toxicity level:
+   green = none, yellow = mild, orange = moderate, red = severe.
+   Change a colour here and every page (library, home, profile, admin) follows.
+   The markup comes from public/javascript/badges.js; the rules from core/badges.css.
+   --------------------------------------------------------------------------- */
+:root {
+  --badge-none-bg: rgba(0, 153, 79, 0.15);
+  --badge-none-fg: #00703a;
+  --badge-mild-bg: rgba(234, 179, 8, 0.24);
+  --badge-mild-fg: #7a5a00;
+  --badge-moderate-bg: rgba(249, 115, 22, 0.18);
+  --badge-moderate-fg: #b3470a;
+  --badge-severe-bg: rgba(220, 38, 38, 0.15);
+  --badge-severe-fg: #b01e1e;
+}
+
+/* ---------------------------------------------------------------------------
+   Rich text (css/core/richtext.css, javascript/richtext.js) and the colour-coded
+   contributor boxes on the plant profile. Eight colours; box number 9 repeats
+   colour 1, so a plant with any number of botanists still gets a colour per box.
+   Each colour is a soft background, a stronger border/accent and a readable text
+   colour. Dark values are set under html[data-theme="dark"] in richtext.css.
+   --------------------------------------------------------------------------- */
+:root {
+  --rt-highlight-bg: #fff3a3;
+  --rt-highlight-fg: #4a3b00;
+  --rt-important-bg: rgba(220, 38, 38, 0.12);
+  --rt-important-fg: #a61b1b;
+
+  --contrib-1-bg: #eaf6e1; --contrib-1-accent: #4c9a2a; --contrib-1-fg: #1f4d0e;
+  --contrib-2-bg: #e4f1fb; --contrib-2-accent: #2f86c8; --contrib-2-fg: #0e3f66;
+  --contrib-3-bg: #fdeede; --contrib-3-accent: #e0801f; --contrib-3-fg: #6b3a07;
+  --contrib-4-bg: #f3e8fa; --contrib-4-accent: #8e4fc2; --contrib-4-fg: #46206b;
+  --contrib-5-bg: #fde8ee; --contrib-5-accent: #d6406b; --contrib-5-fg: #6e1530;
+  --contrib-6-bg: #e0f5f3; --contrib-6-accent: #1e9c8f; --contrib-6-fg: #0b4741;
+  --contrib-7-bg: #fbf4d6; --contrib-7-accent: #b89a14; --contrib-7-fg: #574600;
+  --contrib-8-bg: #e9eaf8; --contrib-8-accent: #5a62c9; --contrib-8-fg: #23286e;
+}

@@ -43,7 +43,7 @@ async function listPlants({ search, type, taxonomyGap, page, pageSize }) {
 
     const [rows] = await mysqlPool.query(
         `SELECT p.plantId, p.commonName, p.scientificName, p.quantity, p.createdAt,
-                t.typeName, t.label AS typeLabel, t.icon AS typeIcon, t.badgeClass AS typeBadgeClass,
+                t.typeName, t.toxicityLevel, t.isHarmful,
                 ${gapSelect},
                 (SELECT COUNT(*) FROM plant_images i WHERE i.plantId = p.plantId AND i.status = 'approved') AS imageCount,
                 (SELECT COUNT(*) FROM plant_images i WHERE i.plantId = p.plantId AND i.status = 'pending') AS pendingImageCount,
@@ -86,9 +86,9 @@ async function listPlants({ search, type, taxonomyGap, page, pageSize }) {
             name: row.commonName,
             scientificName: row.scientificName,
             type: row.typeName,
-            typeLabel: row.typeLabel,
-            typeIcon: row.typeIcon,
-            typeBadgeClass: row.typeBadgeClass,
+            typeLabel: row.typeName,   // kept for older clients; the name IS the label now
+            toxicityLevel: row.toxicityLevel,
+            isHarmful: Boolean(row.isHarmful),
             quantity: row.quantity,
             dateUploaded: row.createdAt,
             imageCount: row.imageCount,
@@ -135,6 +135,9 @@ async function listPlants({ search, type, taxonomyGap, page, pageSize }) {
  * The COALESCE back to the username is NOT new and must not be dropped: many
  * accounts have no profile row at all, and without the fallback every one of them
  * would vanish from Recorded By / Reviewed By / Reported By.
+ *
+ * Returns joined STRINGS, for the admin plants table. The public plant page uses
+ * getContributorPeople below, which returns objects with an accountId and role.
  */
 async function getContributorSummary(plantId) {
     const [rows] = await mysqlPool.query(
@@ -164,6 +167,50 @@ async function getContributorSummary(plantId) {
         reviewedBy: summary.reviewedBy.join('; '),
         reportedBy: summary.reportedBy.join('; ')
     };
+}
+
+/**
+ * Who is named on a plant, as objects, for the PUBLIC plant page.
+ *
+ * getContributorSummary returns joined strings for the admin table and must stay
+ * as it is. The public page needs an accountId and a role per person to decide
+ * badges and links, so this returns { name, accountId } instead.
+ *
+ * No role is set here on purpose. enrichPeopleRoles() in routes/plants.js adds
+ * it from loadAccountPermissions, the same lookup login and /api/auth/me use, so
+ * the badge and link rules always agree with the session's idea of a role.
+ * Reporters get a name only: Reported By is never linked, so their accountId
+ * does not need to be in a public response.
+ */
+async function getContributorPeople(plantId) {
+    const [rows] = await mysqlPool.query(
+        `SELECT pc.role AS contributorRole,
+                a.accountId,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', p.firstName, p.lastName)), ''), a.username) AS displayName,
+                MIN(pc.createdAt) AS firstAt
+         FROM plant_contributors pc
+         JOIN accounts a ON pc.accountId = a.accountId
+         LEFT JOIN profiles p ON p.accountId = a.accountId
+         WHERE pc.plantId = ?
+         GROUP BY pc.role, a.accountId, a.username, p.firstName, p.lastName
+         ORDER BY firstAt ASC`,
+        [plantId]
+    );
+
+    const people = { recordedBy: [], reviewedBy: [], reportedBy: [] };
+    for (const row of rows) {
+        if (row.contributorRole === 'reporter') {
+            people.reportedBy.push({ name: row.displayName });
+            continue;
+        }
+        const person = {
+            name: row.displayName,
+            accountId: String(row.accountId)
+        };
+        if (row.contributorRole === 'contributor') people.recordedBy.push(person);
+        if (row.contributorRole === 'reviewer') people.reviewedBy.push(person);
+    }
+    return people;
 }
 
 async function getPlantDetailSummary(plantId) {
@@ -256,6 +303,7 @@ async function getPlantExists(plantId) {
 module.exports = {
     listPlants,
     getContributorSummary,
+    getContributorPeople,
     getPlantDetailSummary,
     listPlantImages,
     getImageForServing,

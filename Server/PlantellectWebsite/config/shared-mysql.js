@@ -4,6 +4,7 @@
 const path = require('path');
 const fs = require('fs');
 const settings = require('./settings');
+const { insertRow } = require('./ids.js');
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -38,6 +39,22 @@ function normalizeName(value) {
     return String(value).trim().replace(/\s+/g, ' ');
 }
 
+/**
+ * For free-text descriptions (uses, benefits, caution notes). Unlike normalizeName it KEEPS
+ * line breaks, because a botanist's Enter key is a paragraph or bullet break, and the
+ * formatting marks (**bold**, ==highlight==, \\n ...) read by public/javascript/richtext.js.
+ * It still tidies: CRLF -> LF, trailing spaces, runs of 3+ blank lines -> one blank line.
+ */
+function normalizeRichText(value) {
+    if (value === undefined || value === null) return '';
+    return String(value)
+        .replace(/\r\n?/g, '\n')
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 /** scientificName is a machine identifier, so trailing noise is stripped too. */
 function normalizeScientificName(value) {
     return normalizeName(value).replace(/\.+$/, '').trim();
@@ -59,6 +76,11 @@ const UNSPECIFIED_TAXONOMY = 'Unspecified';
 // including them in the gap test would match every row and make the filter
 // useless.
 const TAXONOMY_GAP_LEVELS = ['class', 'order', 'family', 'genus', 'species'];
+
+// Every column of the taxonomy table, in rank order. The one list the draft
+// builder, the taxonomy-update request and its approval all read, so a level
+// cannot be added to one and forgotten in another.
+const TAXONOMY_LEVELS = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species'];
 
 const TAXONOMY_DEFAULTS = {
     kingdom: 'Plantae',
@@ -181,13 +203,83 @@ function parsePayload(payload) {
     return payload;
 }
 
+// ---------------------------------------------------------------------------
+// Plant types. One row per plant: it carries that plant's name for its type, the
+// medicinal / harmful flags, the toxicity level (the badge colour) and the
+// caution note. Nothing here is shared between plants.
+// ---------------------------------------------------------------------------
+
+const typeFlag = (v) => (v === true || v === 1 || v === '1' || v === 'true' ? 1 : 0);
+
+/**
+ * Validates and tidies a plant's type fields. The name keeps the case it was
+ * typed in (the names repeat across plants on purpose); a harmful plant must
+ * state how toxic it is and a plant that is not harmful is stored as 'none'.
+ * The caution note is always allowed: harmful or not.
+ * Returns { errors, spec }.
+ */
+function normalizeTypeSpec(body) {
+    const errors = [];
+    const b = body && typeof body === 'object' ? body : {};
+    const { nameMaxLength, cautionMaxLength, toxicityLevels } = settings.plantTypes;
+    const typeName = String(b.typeName || '').trim().replace(/\s+/g, ' ');
+    const cautionNote = normalizeRichText(b.cautionNote) || null;
+    const isHarmful = typeFlag(b.isHarmful);
+    const isMedicinal = typeFlag(b.isMedicinal);
+    let toxicityLevel = 'none';
+
+    if (!typeName) errors.push('typeName is required');
+    else if (typeName.length > nameMaxLength) errors.push(`typeName is at most ${nameMaxLength} characters`);
+    if (cautionNote && cautionNote.length > cautionMaxLength) {
+        errors.push(`cautionNote is at most ${cautionMaxLength} characters`);
+    }
+    if (isHarmful) {
+        toxicityLevel = String(b.toxicityLevel || '').toLowerCase();
+        if (!toxicityLevels.includes(toxicityLevel) || toxicityLevel === 'none') {
+            errors.push('Choose a toxicity level (mild, moderate or severe) for a harmful plant');
+        }
+    }
+    return { errors, spec: { typeName, isMedicinal, isHarmful, toxicityLevel, cautionNote } };
+}
+
+/** "Herbal · medicinal · harmful (mild)" - how a type reads in a list or a diff. */
+function describeType(t) {
+    return t.typeName + (t.isMedicinal ? ' \u00b7 medicinal' : '') +
+        (t.isHarmful ? ` \u00b7 harmful (${t.toxicityLevel})` : ' \u00b7 safe');
+}
+
+/** Inserts a type row for ONE plant and returns its typeId. Call inside a transaction. */
+async function createPlantType(conn, spec) {
+    return insertRow(
+        conn, 'plant_types',
+        ['typeName', 'isMedicinal', 'isHarmful', 'toxicityLevel', 'cautionNote'],
+        [spec.typeName, spec.isMedicinal, spec.isHarmful, spec.toxicityLevel, spec.cautionNote]
+    );
+}
+
+/** A private copy of an existing type row, for a plant that must not share it. */
+async function cloneType(conn, typeId) {
+    const [rows] = await conn.query(
+        'SELECT typeName, isMedicinal, isHarmful, toxicityLevel, cautionNote FROM plant_types WHERE typeId = ?',
+        [typeId]
+    );
+    if (rows.length === 0) return null;
+    return createPlantType(conn, rows[0]);
+}
+
 module.exports = {
+    normalizeRichText,
+    normalizeTypeSpec,
+    describeType,
+    createPlantType,
+    cloneType,
     parsePaging,
     escapeLike,
     normalizeName,
     normalizeScientificName,
     UNSPECIFIED_TAXONOMY,
     TAXONOMY_GAP_LEVELS,
+    TAXONOMY_LEVELS,
     buildTaxonomyRow,
     PARTS_FIELDS,
     PARTS_SELECT,

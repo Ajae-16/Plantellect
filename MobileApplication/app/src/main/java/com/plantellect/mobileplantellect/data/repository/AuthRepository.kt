@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -102,9 +103,12 @@ class AuthRepository(
             }
         }
 
-    /** Always ends signed out locally, even if the server call fails (e.g. offline). */
+    /**
+     * Always ends signed out locally, even if the server call fails (e.g. offline). The server call is
+     * best-effort and capped at 3 seconds so signing out never hangs on a dead connection.
+     */
     suspend fun logout() {
-        caller.call { api.logout() }
+        withTimeoutOrNull(3_000L) { caller.call { api.logout() } }
         signedOutLocally()
     }
 

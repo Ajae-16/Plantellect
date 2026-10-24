@@ -11,7 +11,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(
+    onNavigateToScan: () -> Unit = {},
+    onNavigateToInventory: () -> Unit = {}
+) {
     PlantellectPage {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -40,8 +43,14 @@ fun HomeScreen() {
                 }
             }
             Text("Explore Plantellect", style = MaterialTheme.typography.titleLarge)
-            FeatureCard("📷", "Identify a plant", "Scan a clear photo to start discovering.")
-            FeatureCard("🪴", "My plant collection", "Keep your saved plants together.")
+            FeatureCard("📷",
+                "Identify a plant",
+                "Scan a clear photo to start discovering.",
+                onClick = onNavigateToScan)
+            FeatureCard("🪴",
+                "My plant collection",
+                "Keep your saved plants together.",
+                onClick = onNavigateToInventory)
             FeatureCard("📚", "Plant discovery", "Explore plant information and characteristics.")
         }
     }

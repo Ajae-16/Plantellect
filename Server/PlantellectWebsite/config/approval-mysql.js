@@ -5,8 +5,11 @@ const { insertRow } = require('./ids.js');
 const { logImageReview } = require('../mongoose-schemas/Imgreview.js');
 const approvalMode = require('./approval-mode.js');
 const { mysqlPool } = require('./pool-mysql');
-const { DISCOVERY_TYPE, parsePayload, normalizeScientificName, normalizeName, buildTaxonomyRow, hasAnyPartValue, DENIAL_KINDS } = require('./shared-mysql');
+const { DISCOVERY_TYPE, parsePayload, normalizeScientificName, normalizeName, normalizeRichText, buildTaxonomyRow, hasAnyPartValue, DENIAL_KINDS, TAXONOMY_LEVELS, normalizeTypeSpec, createPlantType, cloneType } = require('./shared-mysql');
 const { claimPendingRequest, finishRequest } = require('./request-mysql');
+const { applyPlantChange } = require('./plant-manage-mysql');
+const imageFiles = require('./image-files');
+const relocation = require('./image-relocation');
 
 // ---------------------------------------------------------------------------
 // Approval: promoting a request into real content
@@ -54,6 +57,152 @@ async function ensurePrimaryContent(conn, plantId) {
 }
 
 /**
+ * Reads the per-photo verdicts an admin sent with an approval.
+ *
+ * `imageDecisions` is { [imageId]: 'approve' | 'reject' }. Absent means "approve
+ * every photo the request carries" — which is what an automatic approval and any
+ * older client do — so this only has to be strict when it IS present: every photo
+ * in the request needs a verdict, and a verdict for a photo the request does not
+ * carry is refused. Both are errors rather than quiet defaults, because "the admin
+ * forgot one" and "the admin meant one" are indistinguishable afterwards, and the
+ * photos are what the training set is built from.
+ */
+function readImageDecisions(imageIds, decisions) {
+    if (decisions === undefined || decisions === null) {
+        return { approve: [...imageIds], reject: [], explicit: false };
+    }
+    if (typeof decisions !== 'object' || Array.isArray(decisions)) {
+        return { error: 'imageDecisions must be an object of imageId to approve/reject', code: 400 };
+    }
+    const known = new Set(imageIds);
+    for (const id of Object.keys(decisions)) {
+        if (!known.has(id)) return { error: `Photo ${id} is not part of this request`, code: 400 };
+    }
+    const approve = [];
+    const reject = [];
+    for (const id of imageIds) {
+        const verdict = decisions[id];
+        if (verdict === 'approve') approve.push(id);
+        else if (verdict === 'reject') reject.push(id);
+        else return { error: `Decide every photo: ${id} has no approve/reject verdict`, code: 400 };
+    }
+    return { approve, reject, explicit: true };
+}
+
+/**
+ * Approves a plant_taxonomy request: writes the proposed levels onto the plant's
+ * EXISTING taxonomy row.
+ *
+ * Updated in place, never inserted: plants.taxonomyId is a foreign key, so a new
+ * taxonomy row would leave the old one orphaned and is exactly the duplicate this
+ * request type exists to prevent. Each change carries the value it was compared
+ * against when it was filed; if the row has moved since, the approval is refused
+ * instead of silently overwriting whoever changed it.
+ *
+ * Runs inside approvePlantRequest's transaction and settles the request the same
+ * way, so the audit, the contributor credit and the approvalMode column behave
+ * exactly as they do for a description.
+ */
+async function approveTaxonomyRequest(conn, request, reviewerId, note, audit) {
+    const payload = parsePayload(request.payload);
+    const changes = payload.changes && typeof payload.changes === 'object' ? payload.changes : {};
+    const levels = Object.keys(changes).filter((level) => TAXONOMY_LEVELS.includes(level));
+    if (!request.targetPlantId || levels.length === 0) {
+        await conn.rollback();
+        return { error: 'This taxonomy request has no plant or no changes to apply', code: 400 };
+    }
+
+    const [rows] = await conn.query(
+        `SELECT p.plantId, p.taxonomyId, tx.\`kingdom\`, tx.\`phylum\`, tx.\`class\`, tx.\`order\`, tx.\`family\`, tx.\`genus\`, tx.\`species\`
+         FROM plants p JOIN taxonomy tx ON tx.taxonomyId = p.taxonomyId
+         WHERE p.plantId = ? FOR UPDATE`,
+        [request.targetPlantId]
+    );
+    if (rows.length === 0) {
+        await conn.rollback();
+        return { error: 'The plant no longer exists', code: 404 };
+    }
+    for (const level of levels) {
+        if (rows[0][level] !== changes[level].from) {
+            await conn.rollback();
+            return {
+                error: `The ${level} changed from "${changes[level].from}" to "${rows[0][level]}" since this was filed. ` +
+                    'Deny it and ask for a fresh request.',
+                code: 409
+            };
+        }
+    }
+
+    // `levels` is filtered against TAXONOMY_LEVELS above, so interpolating the
+    // column names here cannot be reached from request input.
+    const assignments = levels.map((level) => `\`${level}\` = ?`).join(', ');
+    await conn.query(
+        `UPDATE taxonomy SET ${assignments} WHERE taxonomyId = ?`,
+        [...levels.map((level) => changes[level].to), rows[0].taxonomyId]
+    );
+
+    const plantId = request.targetPlantId;
+    await addContributorRow(conn, plantId, request.accountId, 'contributor');
+    await addContributorRow(conn, plantId, reviewerId, 'reviewer');
+    await finishRequest(conn, request.requestId, 'approved', reviewerId, note || null);
+    await conn.commit();
+
+    await logImageReview({
+        requestId: request.requestId,
+        requestType: request.requestType,
+        imageId: null,
+        plantId,
+        accountId: request.accountId,
+        decision: audit.approvalMode === 'auto' ? 'auto_approved' : 'approved',
+        approvalMode: audit.approvalMode,
+        decisionSource: audit.decisionSource,
+        ruleVersion: audit.ruleVersion,
+        reason: audit.reason,
+        reviewedBy: reviewerId,
+        note: note || ''
+    });
+
+    return { requestId: request.requestId, plantId, taxonomyUpdated: levels, approvalMode: audit.approvalMode };
+}
+
+/**
+ * Approves a plant_change: applies each field it asks for to the plant, its
+ * primary description or that description's measurements. Runs inside
+ * approvePlantRequest's transaction and settles the request the same way, so the
+ * audit row, the contributor credit and the approvalMode column match every other
+ * type. A request whose fields moved since it was filed is refused (409).
+ */
+async function approvePlantChangeRequest(conn, request, reviewerId, note, audit) {
+    const result = await applyPlantChange(conn, request);
+    if (result.error) {
+        await conn.rollback();
+        return { error: result.error, code: result.code };
+    }
+    const plantId = result.plantId;
+    await addContributorRow(conn, plantId, request.accountId, 'contributor');
+    await addContributorRow(conn, plantId, reviewerId, 'reviewer');
+    await finishRequest(conn, request.requestId, 'approved', reviewerId, note || null);
+    await conn.commit();
+
+    await logImageReview({
+        requestId: request.requestId,
+        requestType: request.requestType,
+        imageId: null,
+        plantId,
+        accountId: request.accountId,
+        decision: audit.approvalMode === 'auto' ? 'auto_approved' : 'approved',
+        approvalMode: audit.approvalMode,
+        decisionSource: audit.decisionSource,
+        ruleVersion: audit.ruleVersion,
+        reason: audit.reason,
+        reviewedBy: reviewerId,
+        note: note || ''
+    });
+
+    return { requestId: request.requestId, plantId, changeApplied: result.applied, approvalMode: audit.approvalMode };
+}
+
+/**
  * Approves a plant_addition or plant_contribution.
  *
  * A plant_addition whose scientificName already exists is not an error: its
@@ -66,9 +215,23 @@ async function ensurePrimaryContent(conn, plantId) {
  * reached `Request has no resolvable plant` — a message blaming the data for a
  * design decision. A report carries no content of its own to approve; its
  * approval IS the approval of the record it produced.
+ *
+ * PHOTOS are decided one by one when `options.imageDecisions` is given (see
+ * readImageDecisions); otherwise every photo in the request is approved together.
+ * Each approved photo adds one to plants.quantity, which is how many approved
+ * photos the species has in the training set. The count comes from the rows the
+ * UPDATE actually moved out of 'pending', so approving the same request twice can
+ * never count a photo twice.
+ *
+ * A plant_taxonomy request is routed to approveTaxonomyRequest, and a
+ * plant_change to approvePlantChangeRequest.
  */
-async function approvePlantRequest(requestId, reviewerId, note) {
+async function approvePlantRequest(requestId, reviewerId, note, options = {}) {
     const conn = await mysqlPool.getConnection();
+    // Photo files follow their rows: approved photos are COPIED to
+    // plants/approved/<plantId>/, rejected ones to plants/denied/<requestId>/, and
+    // the old files are deleted only after the commit (see image-files.js).
+    const plan = new imageFiles.FileMovePlan();
     try {
         await conn.beginTransaction();
 
@@ -88,6 +251,33 @@ async function approvePlantRequest(requestId, reviewerId, note) {
 
         const payload = parsePayload(request.payload);
         const submitterId = request.accountId;
+
+        if (request.requestType === 'plant_taxonomy') {
+            return await approveTaxonomyRequest(
+                conn,
+                request,
+                reviewerId,
+                note,
+                approvalMode.auditContextFor(reviewerId)
+            );
+        }
+
+        if (request.requestType === 'plant_change') {
+            return await approvePlantChangeRequest(
+                conn,
+                request,
+                reviewerId,
+                note,
+                approvalMode.auditContextFor(reviewerId)
+            );
+        }
+
+        const allImageIds = Array.isArray(payload.imageIds) ? payload.imageIds : [];
+        const verdicts = readImageDecisions(allImageIds, options.imageDecisions);
+        if (verdicts.error) {
+            await conn.rollback();
+            return { error: verdicts.error, code: verdicts.code };
+        }
         // Resolved ONCE, before any write, because this function settles up to two
         // rows: the record itself and the discovery report it closes. Both have to
         // carry the same approvalMode, and deriving it at each call site is how
@@ -115,6 +305,25 @@ async function approvePlantRequest(requestId, reviewerId, note) {
                     ? `${note}\n\n[system] This species already existed as ${plantId}; the submission was attached to it.`
                     : `[system] This species already existed as ${plantId}; the submission was attached to it.`;
             } else {
+                // The plant gets its OWN type row, made now inside the approval
+                // transaction. A request filed before the per-plant model carries the
+                // id of a shared row: that plant gets a private copy of it.
+                let typeId;
+                if (payload.typeId) {
+                    typeId = await cloneType(conn, payload.typeId);
+                    if (!typeId) {
+                        await conn.rollback();
+                        return { error: 'The plant type on this request no longer exists', code: 400 };
+                    }
+                } else {
+                    const typeCheck = normalizeTypeSpec(payload.typeSpec);
+                    if (typeCheck.errors.length > 0) {
+                        await conn.rollback();
+                        return { error: `Invalid plant type on this request: ${typeCheck.errors.join('; ')}`, code: 400 };
+                    }
+                    typeId = await createPlantType(conn, typeCheck.spec);
+                }
+
                 const taxonomy = buildTaxonomyRow(payload);
                 const taxonomyId = await insertRow(
                     conn,
@@ -134,7 +343,9 @@ async function approvePlantRequest(requestId, reviewerId, note) {
                     conn,
                     'plants',
                     ['taxonomyId', 'typeId', 'commonName', 'scientificName', 'quantity'],
-                    [taxonomyId, payload.typeId, commonName, scientificName, payload.quantity ?? null]
+                    // quantity starts at 0 and is raised by the photos approved below; it is
+                    // no longer a number the botanist types.
+                    [taxonomyId, typeId, commonName, scientificName, 0]
                 );
             }
         }
@@ -178,11 +389,18 @@ async function approvePlantRequest(requestId, reviewerId, note) {
         // thing the public page renders and the thing public visibility requires,
         // so a measurements-only contribution has to produce one too (with a null
         // partsId). An image-only contribution correctly produces none.
-        const uses = normalizeName(payload.uses) || null;
-        const benefits = normalizeName(payload.benefits) || null;
-        const harmful = normalizeName(payload.harmful) || null;
+        const uses = normalizeRichText(payload.uses) || null;
+        const benefits = normalizeRichText(payload.benefits) || null;
+        const harmful = normalizeRichText(payload.harmful) || null;
         const hasDescription = Boolean(uses || benefits || harmful);
         const hasContent = hasDescription || hasParts;
+        if (!hasContent && verdicts.approve.length === 0) {
+            await conn.rollback();
+            return {
+                error: 'Nothing in this request is left to approve — every photo was rejected and it carries no text. Deny it instead.',
+                code: 400
+            };
+        }
         if (hasContent) {
             await insertRow(
                 conn,
@@ -193,13 +411,54 @@ async function approvePlantRequest(requestId, reviewerId, note) {
             );
         }
 
-        // Images uploaded with the request become approved.
-        const imageIds = Array.isArray(payload.imageIds) ? payload.imageIds : [];
-        for (const imageId of imageIds) {
-            await conn.query(
-                'UPDATE plant_images SET status = ?, reviewedBy = ?, reviewedAt = NOW() WHERE imageId = ? AND plantId = ?',
-                ['approved', reviewerId, imageId, plantId]
+        // Photos. Approved ones get their plantId here (a brand-new species had
+        // none while it was a request) and join the training set; rejected ones
+        // keep their row, tied to the plant, so the submitter's own view can still
+        // say what happened to them. `status = 'pending'` makes each UPDATE a
+        // transition rather than an overwrite, and its affectedRows is the count
+        // that feeds quantity.
+        let approvedCount = 0;
+        for (const imageId of verdicts.approve) {
+            const [moved] = await conn.query(
+                `UPDATE plant_images
+                 SET plantId = ?, status = 'approved', reviewedBy = ?, reviewedAt = NOW()
+                 WHERE imageId = ? AND accountId = ? AND status = 'pending'
+                   AND (plantId = ? OR plantId IS NULL)`,
+                [plantId, reviewerId, imageId, submitterId, plantId]
             );
+            approvedCount += moved.affectedRows;
+        }
+        for (const imageId of verdicts.reject) {
+            await conn.query(
+                `UPDATE plant_images
+                 SET plantId = ?, status = 'rejected', reviewedBy = ?, reviewedAt = NOW()
+                 WHERE imageId = ? AND accountId = ? AND status = 'pending'
+                   AND (plantId = ? OR plantId IS NULL)`,
+                [plantId, reviewerId, imageId, submitterId, plantId]
+            );
+        }
+        if (approvedCount > 0) {
+            await conn.query(
+                'UPDATE plants SET quantity = COALESCE(quantity, 0) + ? WHERE plantId = ?',
+                [approvedCount, plantId]
+            );
+        }
+
+        // The files now follow the rows. A photo that cannot be copied cleanly
+        // keeps its old path and is flagged for the admin (fileIssue); it never
+        // blocks the approval, which is a decision about the content.
+        const photoMoves = [
+            await relocation.relocatePlantImages(conn, plan, {
+                imageIds: verdicts.approve, status: 'approved', requestId, plantId
+            }),
+            await relocation.relocatePlantImages(conn, plan, {
+                imageIds: verdicts.reject, status: 'rejected', requestId, plantId
+            })
+        ];
+        const photoFileProblems = photoMoves.flatMap((m) => m.failed);
+        if (verdicts.reject.length > 0) {
+            const photoNote = `[system] Photos: ${verdicts.approve.length} approved, ${verdicts.reject.length} not approved.`;
+            noteText = noteText ? `${noteText}\n\n${photoNote}` : photoNote;
         }
 
         await addContributorRow(conn, plantId, submitterId, 'contributor');
@@ -241,6 +500,11 @@ async function approvePlantRequest(requestId, reviewerId, note) {
                 // plant_description.accountId stay with the botanist who wrote the
                 // description; a 'user' is only ever a reporter.
                 await addContributorRow(conn, plantId, reporterId, 'reporter');
+                // The report is approved, so its photos move to discoveries/approved/.
+                const reportMoves = await relocation.relocateDiscoveryImages(
+                    conn, plan, payload.discoveryRequestId, 'approved'
+                );
+                photoFileProblems.push(...reportMoves.failed);
                 discoveryClosed = { requestId: payload.discoveryRequestId, reporterId, plantId };
             }
         }
@@ -249,6 +513,9 @@ async function approvePlantRequest(requestId, reviewerId, note) {
         await finishRequest(conn, requestId, 'approved', reviewerId, noteText);
 
         await conn.commit();
+        // The rows now point at the verified copies: delete the old files.
+        await plan.finalize();
+        relocation.tidyAfter(plan);
 
         // After the commit: a logging failure must never roll back a review.
         // One record per decision, not per image, so a text-only submission
@@ -270,9 +537,46 @@ async function approvePlantRequest(requestId, reviewerId, note) {
             note: noteText || ''
         });
 
-        return { requestId, plantId, converted, discoveryClosed, approvalMode: audit.approvalMode };
+        // One extra audit row per photo, only when the admin decided them one by
+        // one — that is the case where "which photo, and who said so" is the
+        // question. A bulk approval keeps its single per-request row.
+        if (verdicts.explicit) {
+            for (const imageId of allImageIds) {
+                await logImageReview({
+                    requestId,
+                    requestType: request.requestType,
+                    imageId,
+                    plantId,
+                    accountId: submitterId,
+                    decision: verdicts.approve.includes(imageId)
+                        ? (audit.approvalMode === 'auto' ? 'auto_approved' : 'approved')
+                        : 'rejected',
+                    approvalMode: audit.approvalMode,
+                    decisionSource: audit.decisionSource,
+                    ruleVersion: audit.ruleVersion,
+                    reason: audit.reason,
+                    reviewedBy: reviewerId,
+                    note: noteText || ''
+                });
+            }
+        }
+
+        return {
+            requestId,
+            plantId,
+            converted,
+            discoveryClosed,
+            approvalMode: audit.approvalMode,
+            photosApproved: approvedCount,
+            photosRejected: verdicts.reject.length,
+            quantityAdded: approvedCount,
+            // Non-empty only when a photo could not be copied cleanly after the
+            // retry limit. The approval stands; the admin sees these on the plants page.
+            photoFileProblems
+        };
     } catch (err) {
         await conn.rollback();
+        await plan.rollback();
         throw err;
     } finally {
         conn.release();
@@ -307,6 +611,7 @@ async function denyPlantRequest(requestId, reviewerId, note, kind = 'revise') {
         return { error: `kind must be one of: ${DENIAL_KINDS.join(', ')}`, code: 400 };
     }
     const conn = await mysqlPool.getConnection();
+    const plan = new imageFiles.FileMovePlan();
     try {
         await conn.beginTransaction();
 
@@ -325,7 +630,16 @@ async function denyPlantRequest(requestId, reviewerId, note, kind = 'revise') {
                 ['rejected', reviewerId, imageId]
             );
         }
-        if (request.targetPlantId) {
+        // Denied photos move from plants/pending/ to plants/denied/<requestId>/.
+        const photoMoves = await relocation.relocatePlantImages(conn, plan, {
+            imageIds, status: 'rejected', requestId
+        });
+        const photoFileProblems = [...photoMoves.failed];
+        // plant_taxonomy and plant_change carry a targetPlantId but no content of their
+        // own. Without this guard, denying one would also reject the same botanist's
+        // unrelated pending descriptions and measurements on that plant.
+        const carriesNoContent = request.requestType === 'plant_taxonomy' || request.requestType === 'plant_change';
+        if (request.targetPlantId && !carriesNoContent) {
             await conn.query(
                 `UPDATE plant_description SET status = 'rejected', reviewedBy = ?, reviewedAt = NOW()
                  WHERE accountId = ? AND plantId = ? AND status = 'pending'`,
@@ -350,11 +664,20 @@ async function denyPlantRequest(requestId, reviewerId, note, kind = 'revise') {
                  WHERE requestId = ? AND requestType = ? AND status = 'pending'`,
                 [reviewerId, audit.approvalMode, note || '', payload.discoveryRequestId, DISCOVERY_TYPE]
             );
-            if (result.affectedRows > 0) discoveryDenied = payload.discoveryRequestId;
+            if (result.affectedRows > 0) {
+                discoveryDenied = payload.discoveryRequestId;
+                // The species was refused, so the report's photos go to discoveries/denied/.
+                const reportMoves = await relocation.relocateDiscoveryImages(
+                    conn, plan, payload.discoveryRequestId, 'denied'
+                );
+                photoFileProblems.push(...reportMoves.failed);
+            }
         }
 
         await finishRequest(conn, requestId, 'denied', reviewerId, note);
         await conn.commit();
+        await plan.finalize();
+        relocation.tidyAfter(plan);
 
         // After the commit, for the same reason as on approval.
         await logImageReview({
@@ -375,9 +698,10 @@ async function denyPlantRequest(requestId, reviewerId, note, kind = 'revise') {
             note: note || ''
         });
 
-        return { requestId, kind, discoveryDenied, approvalMode: audit.approvalMode };
+        return { requestId, kind, discoveryDenied, approvalMode: audit.approvalMode, photoFileProblems };
     } catch (err) {
         await conn.rollback();
+        await plan.rollback();
         throw err;
     } finally {
         conn.release();

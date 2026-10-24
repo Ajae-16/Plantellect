@@ -21,11 +21,14 @@
     font-family: var(--font-primary);
 }
 
+/* min-height, not height: a body exactly one screen tall lets the sticky top
+   bar scroll away. overflow-x is "clip", not "hidden": hidden makes body its
+   own scroll container and breaks sticky. */
 body, html {
-    height: 100%;
+    min-height: 100%;
     width: 100%;
     background-color: var(--color-library-green);
-    overflow-x: hidden;
+    overflow-x: clip;
 }
 
 .record-container {
@@ -207,6 +210,28 @@ body, html {
     color: var(--color-dark-forest-green);
 }
 
+/* ------------------------------------------------ harmful checkbox ------- */
+
+.record-check label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--color-dark-forest-green);
+    cursor: pointer;
+}
+
+.record-check input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-spanish-green);
+}
+
+.record-check input:disabled {
+    cursor: not-allowed;
+}
+
 /* ---------------------------------------------------------- picker ------- */
 
 .record-picker {
@@ -238,6 +263,29 @@ body, html {
 .record-picker-item em {
     color: var(--color-reseda-green);
     font-size: 0.82rem;
+}
+
+/* Type filter beside the Find box, and the type tag on each result. */
+.record-search-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.record-search-row select {
+    flex: 0 0 auto;
+    max-width: 45%;
+}
+
+.record-search-row input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.record-picker-item .record-picker-type {
+    display: inline-block;
+    margin-left: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--color-reseda-green);
 }
 
 /* -------------------------------------------------- carried photo ------- */
@@ -451,3 +499,269 @@ body, html {
     line-height: 1.5;
     color: var(--color-dark-forest-green);
 }
+
+/* =========================================================
+   PHOTO THUMBNAILS AND THE PREVIEW DIALOG
+   One list component serves new-plant, contribute and the
+   discovery-report photo picker. A list with no photos is
+   hidden, never shown empty.
+   ========================================================= */
+
+.record-thumbs {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 0.4rem;
+}
+
+.record-thumbs[hidden] {
+    display: none;
+}
+
+.record-thumb {
+    position: relative;
+    width: 96px;
+}
+
+.record-thumb-open {
+    display: block;
+    width: 96px;
+    height: 96px;
+    padding: 0;
+    border: 1px solid var(--color-timberwolf);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    background-color: var(--color-bone);
+    cursor: zoom-in;
+}
+
+.record-thumb-open:focus-visible,
+.record-thumb-remove:focus-visible {
+    outline: 2px solid var(--color-spanish-green);
+    outline-offset: 2px;
+}
+
+.record-thumb-open img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.record-thumb-remove {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0.65);
+    color: var(--color-white);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.record-thumb-remove:hover {
+    background-color: var(--color-error);
+}
+
+.record-thumb-label {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.72rem;
+    color: var(--color-reseda-green);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* A report photo the botanist may tick. The checkbox sits over the corner. */
+.record-thumb-choice {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-spanish-green);
+    cursor: pointer;
+}
+
+.record-modal {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-index-popup);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2.5rem 1rem 1rem;
+    background-color: rgba(0, 0, 0, 0.82);
+}
+
+.record-modal[hidden] {
+    display: none;
+}
+
+.record-modal img {
+    max-width: min(100%, 1100px);
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: var(--border-radius-md);
+    background-color: var(--color-black);
+}
+
+.record-modal-close {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.9rem;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.18);
+    color: var(--color-white);
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.record-modal-close:hover,
+.record-modal-close:focus-visible {
+    background-color: rgba(255, 255, 255, 0.34);
+    outline: 2px solid var(--color-white);
+}
+
+/* =========================================================
+   TAXONOMY (locked) AND ITS SEPARATE UPDATE REQUEST
+   ========================================================= */
+
+.record-taxonomy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px solid var(--color-timberwolf);
+    border-radius: var(--border-radius-md);
+    background-color: var(--color-white);
+}
+
+.record-taxonomy[hidden],
+.record-taxonomy-request[hidden] {
+    display: none;
+}
+
+.record-taxonomy-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.record-taxonomy-head h3 {
+    font-size: 1rem;
+    color: var(--color-dark-forest-green);
+}
+
+.record-taxonomy button {
+    align-self: flex-start;
+}
+
+.record-taxonomy-request {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed var(--color-timberwolf);
+}
+
+/* A locked level reads as a fact, not as an input waiting for text. */
+.record-field input[readonly] {
+    background-color: var(--color-bone);
+    color: var(--color-reseda-green);
+    cursor: not-allowed;
+}
+
+.record-field input.record-gap {
+    font-style: italic;
+}
+
+@media (max-width: 600px) {
+    .record-thumb,
+    .record-thumb-open {
+        width: 84px;
+    }
+
+    .record-thumb-open {
+        height: 84px;
+    }
+}
+
+/* `display:flex` on these would override the [hidden] attribute, so say it plainly. */
+.record-field[hidden],
+.record-carried[hidden],
+.record-notice[hidden],
+.record-hint[hidden],
+.record-thumbs[hidden],
+.record-modal[hidden],
+.record-taxonomy[hidden],
+.record-taxonomy-request[hidden],
+#newDuplicateWarning[hidden] {
+    display: none !important;
+}
+
+#newDuplicateWarning .btn {
+    margin-left: 0.5rem;
+}
+
+/* ------------------------------------------- the plant's own type ------- */
+/* A fieldset that is also a .record-field: its checkboxes must not pick up the
+   text-input padding and border from `.record-field input`, nor the uppercase
+   label style from `.record-field label`. */
+
+.record-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    min-width: 0;
+    border: 1px solid var(--color-timberwolf);
+    border-radius: var(--border-radius-md);
+    padding: 0.75rem 0.9rem;
+    background-color: var(--color-white);
+}
+
+.record-checklist legend {
+    padding: 0 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--color-reseda-green);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.record-checklist label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.9rem;
+}
+
+.record-checklist input[type="checkbox"] {
+    width: auto;
+    padding: 0;
+    accent-color: var(--color-spanish-green);
+}
+
+.record-checklist select {
+    align-self: flex-start;
+}
+
+.record-picker-type .type-badge {
+    margin-left: 0.4rem;
+}
+.record-badge.cancelled { background-color: #e5e5e5; color: #555; }
+.record-withdraw { margin-top: 10px; }

@@ -101,6 +101,22 @@
              READ-ONLY on purpose: no Approve, no Record, no "add to library".
              ============================================================ */
         .gaps-card { margin-top: 26px; }
+        .signin-chart {
+            display: flex; align-items: flex-end; gap: 6px;
+            height: 190px; margin-top: 14px; padding: 8px 4px 0;
+            overflow-x: auto;
+        }
+        .signin-bar {
+            flex: 1 1 0; min-width: 26px; height: 100%;
+            display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px;
+        }
+        .signin-bar-value { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .signin-bar-fill {
+            width: 100%; min-height: 3px; border-radius: 5px 5px 0 0;
+            background: var(--green-dark, #2e6417);
+        }
+        .signin-bar.is-today .signin-bar-fill { background: var(--color-amber, #f59e0b); }
+        .signin-bar-label { font-size: 11px; opacity: 0.7; white-space: nowrap; }
         .gap-filters { display: flex; gap: 10px; margin: 12px 0 0; }
         .gap-filters select {
             padding: 7px 10px;
@@ -240,7 +256,8 @@
                     <span class="nav-link-text">Dashboard</span>
                     <span class="nav-badge" id="navBadgeDashboard" hidden>0</span>
                 </a>
-
+                
+                <!-- cards -->
                 <a href="/admin/users" data-perm="create_user" title="Users">
                     <span class="material-symbols-outlined">person</span>
                     <span class="nav-link-text">Users</span>
@@ -314,6 +331,12 @@
                             <span class="stat-hint">No data yet</span>
                         </div>
                         <div class="stat-card">
+                            <span class="material-symbols-outlined">login</span>
+                            <span class="stat-label">Signed In Today</span>
+                            <span class="stat-value" data-stat="signinsToday">—</span>
+                            <span class="stat-hint" id="signinsTodayHint">Different accounts</span>
+                        </div>
+                        <div class="stat-card">
                             <span class="material-symbols-outlined">pending_actions</span>
                             <span class="stat-label">Pending Requests</span>
                             <span class="stat-value" data-stat="pending">—</span>
@@ -353,16 +376,37 @@
                 </div>
             </section>
 
-            <!-- SPECIES GAPS: a reading panel, gated on view_logs server-side -->
-            <section class="admin-section gaps-card" id="speciesGapsCard">
-                <h2>Species People Scan That Are Missing
-                    <span class="section-count-badge" id="speciesGapsCount" hidden>0</span>
+            <!-- SIGN-INS PER DAY: how many different accounts signed in each day (auth log) -->
+            <section class="admin-section gaps-card" id="signinsCard">
+                <h2>Sign-ins Per Day
+                    <span class="section-count-badge" id="signinsToday" hidden>0</span>
                 </h2>
                 <p class="admin-subtitle">
-                    Ranked by how many <strong>different accounts</strong> hit the species, not by
-                    scan volume: one person photographing the same leaf forty times is not a
-                    signal, twelve people each finding a species once is. Species that already
-                    have a discovery report are left out &mdash; they are already being worked on.
+                    Different accounts that signed in each day. The badge is today&rsquo;s count;
+                    hover a bar for the day&rsquo;s logins.
+                </p>
+                <div class="gap-filters">
+                    <label for="signinDays">Show</label>
+                    <select id="signinDays">
+                        <option value="7">Last 7 days</option>
+                        <option value="14" selected>Last 14 days</option>
+                        <option value="30">Last 30 days</option>
+                    </select>
+                </div>
+                <div class="signin-chart" id="signinChart" role="img" aria-label="Sign-ins per day">
+                    <p class="gap-loading">Loading sign-ins&hellip;</p>
+                </div>
+            </section>
+
+            <!-- MOST SCANNED PLANTS: a reading panel, gated on view_logs server-side -->
+            <section class="admin-section gaps-card" id="topScansCard">
+                <h2>Most Scanned Plants
+                    <span class="section-count-badge" id="topScansCount" hidden>0</span>
+                </h2>
+                <p class="admin-subtitle">
+                    The plants people scan most, ranked by how often the model&rsquo;s top answer was
+                    that plant. <strong>Accounts</strong> is how many different people scanned it,
+                    so one person scanning the same leaf many times is easy to spot.
                 </p>
                 <div class="gap-filters">
                     <label for="gapMonth">Month</label>
@@ -371,13 +415,13 @@
                     </select>
                     <label for="gapLimit">Rows</label>
                     <select id="gapLimit">
-                        <option value="10">10</option>
-                        <option value="25" selected>25</option>
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
                         <option value="50">50</option>
                     </select>
                 </div>
                 <ul class="gap-list" id="speciesGapList">
-                    <li class="gap-loading">Loading species gaps&hellip;</li>
+                    <li class="gap-loading">Loading most scanned plants&hellip;</li>
                 </ul>
             </section>
         </main>
@@ -480,9 +524,24 @@
                 logoutUser();
             });
 
+            loadDashboardStats();
             loadPendingRequests();
-            initSpeciesGaps();
+            initDashboardActivity();
         })();
+
+        async function loadDashboardStats() {
+            try {
+                const response = await fetch('/admin/api/reporting/stats', { credentials: 'include' });
+                if (!response.ok) throw new Error('Failed to load stats');
+                const stats = await response.json();
+                setStat('users', stats.users);
+                setStat('botanists', stats.botanists);
+                setStat('plants', stats.plants);
+                setStat('pending', stats.pending);
+            } catch (err) {
+                console.error('Load dashboard stats error:', err);
+            }
+        }
 
         async function loadPendingRequests() {
             try {
@@ -643,12 +702,8 @@
         }
 
         // ---------------------------------------------------------
-        // Species gaps
+        // Most scanned plants (GET /admin/api/ml/usage/top, gated on view_logs)
         // ---------------------------------------------------------
-        function pluralAccounts(n) {
-            return n + (n === 1 ? ' account' : ' accounts');
-        }
-
         function formatConfidence(value) {
             if (typeof value !== 'number' || !isFinite(value)) return '—';
             return (value * 100).toFixed(1) + '%';
@@ -662,16 +717,16 @@
         }
 
         // `degraded` is checked BEFORE `results.length`: a degraded response has an
-        // empty results array and must not read as "nothing is missing".
-        function renderSpeciesGaps(payload) {
+        // empty results array and must not read as "nobody scanned anything".
+        function renderTopScans(payload) {
             const list = document.getElementById('speciesGapList');
-            const countBadge = document.getElementById('speciesGapsCount');
+            const countBadge = document.getElementById('topScansCount');
 
             if (payload.degraded) {
                 countBadge.hidden = true;
-                list.innerHTML = '<li class="gap-error">Species gaps are unavailable.' +
+                list.innerHTML = '<li class="gap-error">Scan activity is unavailable.' +
                     '<span class="gap-error-note">' + escapeHtml(
-                        payload.error || 'The scan feed could not be read, so this list would be unfiltered.'
+                        payload.error || 'The scan feed could not be read.'
                     ) + '</span></li>';
                 return;
             }
@@ -679,35 +734,35 @@
             const results = payload.results || [];
             if (results.length === 0) {
                 countBadge.hidden = true;
-                list.innerHTML = '<li class="gap-empty">No missing species were scanned this month.</li>';
+                list.innerHTML = '<li class="gap-empty">No plants were scanned this month.</li>';
                 return;
             }
 
             countBadge.hidden = false;
             countBadge.textContent = results.length;
-            list.innerHTML = results.map((gap, index) => `
+            list.innerHTML = results.map((row, index) => `
                 <li class="gap-row">
                     <span class="gap-rank">${index + 1}</span>
                     <span class="gap-name">
-                        <span class="gap-scientific">${escapeHtml(gap.scientificName)}</span>
-                        ${gap.commonName ? '<br><span class="gap-common">' + escapeHtml(gap.commonName) + '</span>' : ''}
+                        <span class="gap-scientific">${escapeHtml(row.commonName || row.scientificName)}</span>
+                        ${row.commonName ? '<br><span class="gap-common">' + escapeHtml(row.scientificName) + '</span>' : ''}
                     </span>
                     <span class="gap-stats">
                         <span class="gap-stat-primary">
-                            <span class="gap-stat-value">${gap.accounts}</span>
-                            <span class="gap-stat-label">accounts</span>
-                        </span>
-                        <span>
-                            <span class="gap-stat-value">${gap.scanCount}</span>
+                            <span class="gap-stat-value">${row.scanCount}</span>
                             <span class="gap-stat-label">scans</span>
                         </span>
                         <span>
-                            <span class="gap-stat-value">${formatConfidence(gap.confidenceMax)}</span>
-                            <span class="gap-stat-label">peak conf.</span>
+                            <span class="gap-stat-value">${row.accounts}</span>
+                            <span class="gap-stat-label">accounts</span>
                         </span>
                         <span>
-                            <span class="gap-stat-value">${formatGapDay(gap.lastSeen)}</span>
-                            <span class="gap-stat-label">last seen</span>
+                            <span class="gap-stat-value">${formatConfidence(row.confidenceAvg)}</span>
+                            <span class="gap-stat-label">avg conf.</span>
+                        </span>
+                        <span>
+                            <span class="gap-stat-value">${formatGapDay(row.lastSeen)}</span>
+                            <span class="gap-stat-label">last scan</span>
                         </span>
                     </span>
                 </li>
@@ -717,8 +772,8 @@
         function populateGapMonths() {
             const select = document.getElementById('gapMonth');
             const now = new Date();
-            const months = Math.max(1, Math.ceil((settingsRetentionMonthsFallback()) / 1));
-            for (let back = 0; back < months; back++) {
+            // Thirteen months covers the one-year default retention plus the current one.
+            for (let back = 0; back < 13; back++) {
                 const date = new Date(now.getFullYear(), now.getMonth() - back, 1);
                 const key = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
                 const option = document.createElement('option');
@@ -728,12 +783,7 @@
             }
         }
 
-        function settingsRetentionMonthsFallback() {
-            // Thirteen months covers the one-year default plus the current one.
-            return 13;
-        }
-
-        async function loadSpeciesGaps() {
+        async function loadTopScans() {
             const list = document.getElementById('speciesGapList');
             const month = document.getElementById('gapMonth').value;
             const limit = document.getElementById('gapLimit').value;
@@ -742,7 +792,7 @@
             query.set('limit', limit);
 
             try {
-                const response = await fetch('/admin/api/ml/usage/gaps?' + query.toString(), {
+                const response = await fetch('/admin/api/ml/usage/top?' + query.toString(), {
                     credentials: 'include'
                 });
                 if (response.status === 401) {
@@ -750,25 +800,90 @@
                     return;
                 }
                 if (response.status === 403) {
-                    list.innerHTML = '';
-                    document.getElementById('speciesGapsCount').hidden = true;
+                    // No view_logs permission: this panel is not for this admin.
+                    document.getElementById('topScansCard').hidden = true;
                     return;
                 }
-                if (!response.ok) throw new Error('Request failed with ' + response.status);
-                renderSpeciesGaps(await response.json());
+                if (!response.ok) {
+                    const body = await response.json().catch(() => ({}));
+                    throw new Error(body.error || ('Request failed with ' + response.status));
+                }
+                renderTopScans(await response.json());
             } catch (err) {
-                console.error('Load species gaps error:', err);
-                list.innerHTML = '<li class="gap-error">Species gaps could not be loaded.' +
+                console.error('Load most scanned plants error:', err);
+                list.innerHTML = '<li class="gap-error">Most scanned plants could not be loaded.' +
                     '<span class="gap-error-note">' + escapeHtml(err.message) + '</span></li>';
-                document.getElementById('speciesGapsCount').hidden = true;
+                document.getElementById('topScansCount').hidden = true;
             }
         }
 
-        function initSpeciesGaps() {
+        // ---------------------------------------------------------
+        // Sign-ins per day (GET /admin/api/reporting/signins)
+        // ---------------------------------------------------------
+        function renderSignins(payload) {
+            const chart = document.getElementById('signinChart');
+            const badge = document.getElementById('signinsToday');
+            const statEl = document.querySelector('[data-stat="signinsToday"]');
+            const hintEl = document.getElementById('signinsTodayHint');
+
+            if (payload.degraded) {
+                badge.hidden = true;
+                if (statEl) statEl.textContent = '—';
+                chart.innerHTML = '<p class="gap-error">Sign-ins are unavailable.' +
+                    '<span class="gap-error-note">' + escapeHtml(payload.error || 'The auth log could not be read.') + '</span></p>';
+                return;
+            }
+
+            const series = payload.series || [];
+            badge.hidden = false;
+            badge.textContent = payload.today;
+            if (statEl) statEl.textContent = payload.today;
+            if (hintEl) hintEl.textContent = payload.todayLogins + ' login' + (payload.todayLogins === 1 ? '' : 's') +
+                ' · yesterday ' + payload.yesterday;
+
+            const max = Math.max(1, ...series.map(d => d.accounts));
+            chart.innerHTML = series.map((d, i) => {
+                const date = new Date(d.day + 'T00:00:00');
+                const label = isNaN(date.getTime()) ? d.day
+                    : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                const height = Math.round((d.accounts / max) * 140);
+                const isToday = i === series.length - 1;
+                return `<div class="signin-bar ${isToday ? 'is-today' : ''}"
+                             title="${escapeHtml(label)}: ${d.accounts} account${d.accounts === 1 ? '' : 's'}, ${d.logins} login${d.logins === 1 ? '' : 's'}">
+                            <span class="signin-bar-value">${d.accounts}</span>
+                            <span class="signin-bar-fill" style="height:${height}px"></span>
+                            <span class="signin-bar-label">${escapeHtml(label)}</span>
+                        </div>`;
+            }).join('');
+        }
+
+        async function loadSignins() {
+            const chart = document.getElementById('signinChart');
+            const days = document.getElementById('signinDays').value;
+            try {
+                const response = await fetch('/admin/api/reporting/signins?days=' + encodeURIComponent(days), {
+                    credentials: 'include'
+                });
+                if (response.status === 401) {
+                    window.location.href = '/auth.html';
+                    return;
+                }
+                if (!response.ok) throw new Error('Request failed with ' + response.status);
+                renderSignins(await response.json());
+            } catch (err) {
+                console.error('Load sign-ins error:', err);
+                chart.innerHTML = '<p class="gap-error">Sign-ins could not be loaded.' +
+                    '<span class="gap-error-note">' + escapeHtml(err.message) + '</span></p>';
+            }
+        }
+
+        function initDashboardActivity() {
             populateGapMonths();
-            document.getElementById('gapMonth').addEventListener('change', loadSpeciesGaps);
-            document.getElementById('gapLimit').addEventListener('change', loadSpeciesGaps);
-            loadSpeciesGaps();
+            document.getElementById('gapMonth').addEventListener('change', loadTopScans);
+            document.getElementById('gapLimit').addEventListener('change', loadTopScans);
+            document.getElementById('signinDays').addEventListener('change', loadSignins);
+            loadTopScans();
+            loadSignins();
         }
     </script>
 

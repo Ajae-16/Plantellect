@@ -1,0 +1,136 @@
+/* Shared rich text: how a botanist's formatted description is DISPLAYED, the little
+   toolbar that helps them write it, and the colour-coded contributor boxes.
+   Markup is produced by public/javascript/richtext.js (RichText.html / .attach).
+   Imported by public-theme.css (every public page) and admin-plants.css (admin pages),
+   so the admin sees the same paragraphs, bullets and emphasis the public page shows.
+   Colours: css/core/variables.css (--rt-*, --contrib-*). */
+@import './variables.css';
+
+/* ---------- displayed text ---------- */
+.rt { line-height: 1.55; overflow-wrap: anywhere; }
+.rt > :first-child { margin-top: 0; }
+.rt > :last-child { margin-bottom: 0; }
+.rt p { margin: 0 0 0.7em; }
+.rt ul, .rt ol { margin: 0 0 0.7em; padding-left: 1.4em; }
+.rt li + li { margin-top: 0.2em; }
+.rt strong { font-weight: 700; }
+.rt u { text-underline-offset: 2px; }
+.rt mark, .rt .rt-mark {
+    background: var(--rt-highlight-bg);
+    color: var(--rt-highlight-fg);
+    padding: 0.05em 0.3em;
+    border-radius: 3px;
+}
+.rt .rt-important {
+    background: var(--rt-important-bg);
+    color: var(--rt-important-fg);
+    font-weight: 700;
+    padding: 0.05em 0.3em;
+    border-radius: 3px;
+}
+.rt .rt-empty { opacity: 0.65; font-style: italic; }
+
+/* ---------- editor helper (toolbar above a textarea) ---------- */
+.rt-editor { display: block; width: 100%; }
+.rt-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+    padding: 4px; margin-bottom: 4px;
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    border-radius: 8px; background: rgba(128, 128, 128, 0.08);
+}
+.rt-toolbar button {
+    min-width: 30px; height: 28px; padding: 0 8px;
+    border: 1px solid transparent; border-radius: 6px;
+    background: transparent; color: inherit; font: inherit; font-size: 0.85rem; cursor: pointer;
+}
+.rt-toolbar button:hover, .rt-toolbar button:focus-visible {
+    background: rgba(128, 128, 128, 0.2); border-color: rgba(128, 128, 128, 0.4); outline: none;
+}
+.rt-toolbar .rt-sep { width: 1px; height: 18px; background: rgba(128, 128, 128, 0.4); margin: 0 2px; }
+.rt-toolbar .rt-help { margin-left: auto; font-size: 0.8rem; text-decoration: underline; }
+.rt-hint { margin: 4px 0 0; font-size: 0.78rem; opacity: 0.75; }
+.rt-hint code, .rt-guide code {
+    padding: 0 4px; border-radius: 4px; background: rgba(128, 128, 128, 0.2);
+    font-family: ui-monospace, Consolas, monospace; font-size: 0.92em;
+}
+.rt-preview {
+    margin-top: 6px; padding: 8px 10px; border-radius: 8px;
+    border: 1px dashed rgba(128, 128, 128, 0.5);
+}
+.rt-preview[hidden] { display: none; }
+.rt-preview-label { display: block; margin-bottom: 4px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px; opacity: 0.65; }
+
+/* ---------- formatting guide dialog ---------- */
+.rt-guide {
+    width: min(680px, 94vw); max-height: 88vh; overflow: auto;
+    padding: 20px 22px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 12px;
+    background: var(--color-bg-light, #fbf9f1); color: var(--color-dark-jungle-green, #2c3427);
+}
+.rt-guide::backdrop { background: rgba(0, 0, 0, 0.45); }
+.rt-guide h2 { margin: 0 0 6px; font-size: 1.2rem; }
+.rt-guide p { margin: 0 0 10px; font-size: 0.92rem; }
+.rt-guide table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 0.9rem; }
+.rt-guide th, .rt-guide td { padding: 6px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid rgba(128, 128, 128, 0.3); }
+.rt-guide th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7; }
+.rt-guide pre { margin: 0; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
+.rt-guide .rt-guide-actions { text-align: right; margin-top: 12px; }
+.rt-guide .rt-guide-actions button {
+    padding: 6px 16px; border: 0; border-radius: 8px; cursor: pointer;
+    background: var(--color-forest-green, #2e6417); color: #fff; font: inherit;
+}
+
+/* ---------- colour-coded contributor boxes (plant profile) ---------- */
+.contrib-list { display: grid; gap: 14px; }
+.contrib-box {
+    --c-bg: var(--contrib-1-bg); --c-accent: var(--contrib-1-accent); --c-fg: var(--contrib-1-fg);
+    padding: 14px 16px; border-radius: 12px;
+    background: var(--c-bg); color: var(--c-fg);
+    border: 1px solid var(--c-accent); border-left-width: 6px;
+}
+.contrib-box--c1 { --c-bg: var(--contrib-1-bg); --c-accent: var(--contrib-1-accent); --c-fg: var(--contrib-1-fg); }
+.contrib-box--c2 { --c-bg: var(--contrib-2-bg); --c-accent: var(--contrib-2-accent); --c-fg: var(--contrib-2-fg); }
+.contrib-box--c3 { --c-bg: var(--contrib-3-bg); --c-accent: var(--contrib-3-accent); --c-fg: var(--contrib-3-fg); }
+.contrib-box--c4 { --c-bg: var(--contrib-4-bg); --c-accent: var(--contrib-4-accent); --c-fg: var(--contrib-4-fg); }
+.contrib-box--c5 { --c-bg: var(--contrib-5-bg); --c-accent: var(--contrib-5-accent); --c-fg: var(--contrib-5-fg); }
+.contrib-box--c6 { --c-bg: var(--contrib-6-bg); --c-accent: var(--contrib-6-accent); --c-fg: var(--contrib-6-fg); }
+.contrib-box--c7 { --c-bg: var(--contrib-7-bg); --c-accent: var(--contrib-7-accent); --c-fg: var(--contrib-7-fg); }
+.contrib-box--c8 { --c-bg: var(--contrib-8-bg); --c-accent: var(--contrib-8-accent); --c-fg: var(--contrib-8-fg); }
+.contrib-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.contrib-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c-accent); flex: none; }
+.contrib-name { font-weight: 700; }
+.contrib-sub { font-size: 0.82rem; opacity: 0.8; }
+.contrib-tag {
+    margin-left: auto; padding: 1px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+    background: var(--c-accent); color: #fff;
+}
+.contrib-section + .contrib-section { margin-top: 10px; }
+.contrib-section h5 { margin: 0 0 3px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.85; }
+.contrib-box .rt mark, .contrib-box .rt .rt-mark { color: var(--rt-highlight-fg); }
+
+/* ---------- dark mode (public pages and admin both set data-theme) ---------- */
+html[data-theme="dark"] {
+    --rt-highlight-bg: #6b5a00; --rt-highlight-fg: #fff4b8;
+    --rt-important-bg: rgba(248, 113, 113, 0.2); --rt-important-fg: #ffb4b4;
+    --contrib-1-bg: #1f3318; --contrib-1-fg: #cdeebd;
+    --contrib-2-bg: #17293a; --contrib-2-fg: #c5e3f8;
+    --contrib-3-bg: #3a2a16; --contrib-3-fg: #fbdcb8;
+    --contrib-4-bg: #2d1f3a; --contrib-4-fg: #e6cdf6;
+    --contrib-5-bg: #3a1a25; --contrib-5-fg: #f8c9d6;
+    --contrib-6-bg: #14322f; --contrib-6-fg: #bdeee8;
+    --contrib-7-bg: #343013; --contrib-7-fg: #f1e6a3;
+    --contrib-8-bg: #212442; --contrib-8-fg: #cfd2f6;
+}
+html[data-theme="dark"] .rt-guide { background: #2c3427; color: #eef2e8; }
+
+.rt-guide-link {
+    padding: 0; border: 0; background: none; color: inherit; font: inherit;
+    text-decoration: underline; cursor: pointer;
+}
+
+/* The textarea fills the editor, whatever the page's own textarea rules say. */
+.rt-editor textarea {
+    display: block; width: 100%; max-width: 100%; box-sizing: border-box;
+    min-height: 90px; resize: vertical;
+}
+.rt-editor + .rt-hint, .rt-editor { margin-bottom: 4px; }
+.rt-hint + label, .rt-hint + .plant-field, p.rt-hint:has(.rt-guide-link) { margin-bottom: 8px; }

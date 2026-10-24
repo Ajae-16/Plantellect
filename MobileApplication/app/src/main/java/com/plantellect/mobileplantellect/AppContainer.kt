@@ -6,8 +6,10 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.plantellect.mobileplantellect.data.local.LocalPlantClassifier
 import com.plantellect.mobileplantellect.data.local.SessionStore
+import com.plantellect.mobileplantellect.data.local.SettingsStore
 import com.plantellect.mobileplantellect.data.logic.ApiCaller
 import com.plantellect.mobileplantellect.data.logic.NetworkMonitor
+import com.plantellect.mobileplantellect.data.logic.ServerMonitor
 import com.plantellect.mobileplantellect.data.remote.NetworkModule
 import com.plantellect.mobileplantellect.data.repository.AuthRepository
 import com.plantellect.mobileplantellect.data.repository.DiscoveryRepository
@@ -28,10 +30,13 @@ class AppContainer(app: Application) {
     private val session = SessionStore(app, network.json)
     val classifier = LocalPlantClassifier(app)
     val connectivity = NetworkMonitor(app)
+    val settings = SettingsStore(app)
+    /** Answers "can we reach the server right now?" (refreshed every 10 s while the app is open). */
+    val serverMonitor = ServerMonitor(connectivity, network.okHttpClient, network.baseUrl)
 
     val auth = AuthRepository(network.authApi, caller, session, network.cookieJar, app.contentResolver)
     val plants = PlantRepository(network.plantApi, caller, network.baseUrl)
-    val scans = ScanRepository(app, network.mlApi, caller, classifier, connectivity)
+    val scans = ScanRepository(app, network.mlApi, caller, classifier, connectivity, serverMonitor)
     val records = RecordRepository(app, network.recordApi, caller, network.json, network.baseUrl)
     val discoveries = DiscoveryRepository(app, network.discoveryApi, caller, network.json, network.baseUrl)
     val profiles = ProfileRepository(network.botanistApi, caller)

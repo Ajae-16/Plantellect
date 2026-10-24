@@ -27,12 +27,23 @@
     var DB_VERSION = 1;
     var EXPIRY_DAYS = 3;
 
-    // Mirrors settings.plantImages.maxSizeBytes. The browser cannot read
-    // settings.js, so a stale value here is only a worse error message — the
-    // server still enforces the real limit.
-    var MAX_BYTES = 10 * 1024 * 1024;
+    // Starting values only. The real ones come from GET /api/plants/limits and
+    // are handed in with setLimits() by the page that fetched them (record-script
+    // does, after the botanist gate). The browser cannot read settings.js and the
+    // file-count cap is an admin setting, so nothing here may be treated as the
+    // limit: a stale value is only a worse error message, because the server still
+    // enforces the real one. maxFilesPerRequest has no default on purpose — null
+    // means "not known yet", which is different from "20".
+    var maxBytes = 10 * 1024 * 1024;
+    var maxFilesPerRequest = null;
 
-    var MAX_FILES_PER_REQUEST = 20;
+    function setLimits(limits) {
+        if (!limits) return;
+        var bytes = Number(limits.maxSizeBytes);
+        if (isFinite(bytes) && bytes > 0) maxBytes = bytes;
+        var files = Number(limits.maxFilesPerRequest);
+        if (isFinite(files) && files >= 1) maxFilesPerRequest = Math.floor(files);
+    }
 
     function available() {
         try {
@@ -81,7 +92,7 @@
      */
     async function saveScanPhoto(file, options) {
         if (!file || !file.size) return false;
-        if (file.size > MAX_BYTES) {
+        if (file.size > maxBytes) {
             console.info('Scan photo is larger than the upload limit; not cached.');
             return false;
         }
@@ -157,10 +168,12 @@
         saveScanPhoto: saveScanPhoto,
         takeScanPhoto: takeScanPhoto,
         dropScanPhoto: dropScanPhoto,
-        maxBytes: MAX_BYTES,
-        maxFilesPerRequest: MAX_FILES_PER_REQUEST,
+        setLimits: setLimits,
         expiryDays: EXPIRY_DAYS
     };
+    // Getters, so a value set by setLimits() is what a later reader sees.
+    Object.defineProperty(window.PhotoCache, 'maxBytes', { enumerable: true, get: function () { return maxBytes; } });
+    Object.defineProperty(window.PhotoCache, 'maxFilesPerRequest', { enumerable: true, get: function () { return maxFilesPerRequest; } });
     window.saveScanPhoto = saveScanPhoto;
     window.takeScanPhoto = takeScanPhoto;
     window.dropScanPhoto = dropScanPhoto;

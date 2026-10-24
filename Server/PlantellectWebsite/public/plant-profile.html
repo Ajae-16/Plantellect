@@ -6,275 +6,12 @@
     <title>Plantellect - Plant Profile</title>
     <link href="https://fonts.googleapis.com/css2?family=Lancelot&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
-    <style>
-        :root {
-            --primary-dark: #1e2821;
-            --secondary-dark: #2b3a2f;
-            --accent-green: #4CAF50;
-            --text-light: #ffffff;
-            --text-muted: #b0c4b1;
-            --danger-red: #e57373;
-            --card-bg: rgba(30, 40, 33, 0.6);
-        }
-
-        body.light-mode {
-            --primary-dark: #f0f4f1;
-            --secondary-dark: #ffffff;
-            --accent-green: #2e7d32;
-            --text-light: #1a2e1b;
-            --text-muted: #556b56;
-            --danger-red: #c62828;
-            --card-bg: rgba(230, 238, 232, 0.8);
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        body {
-            background-color: var(--primary-dark);
-            color: var(--text-light);
-            min-height: 100vh;
-            padding: 20px;
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-
-        .profile-container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: var(--secondary-dark);
-            border-radius: 16px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
-            overflow: hidden;
-            border: 1px solid rgba(76, 175, 80, 0.2);
-            transition: background-color 0.3s ease;
-        }
-
-        .profile-hero {
-            position: relative;
-            width: 100%;
-            height: 320px;
-            background: #111;
-        }
-
-        .profile-hero img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            opacity: 0.85;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-
-        /* An <img> with no src can render a broken-image icon, so it is hidden
-           when the plant has no approved photo. `position: absolute` above does
-           not override the hidden attribute, but this keeps that explicit. */
-        .profile-hero img[hidden] { display: none; }
-
-        .hero-placeholder {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--accent-green);
-            opacity: 0.5;
-        }
-
-        .hero-placeholder[hidden] { display: none; }
-        .hero-placeholder .material-symbols-outlined { font-size: 96px; }
-
-        .header-controls {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            right: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 10;
-        }
-
-        .back-btn, .theme-btn {
-            background: rgba(0, 0, 0, 0.6);
-            color: #fff;
-            border: none;
-            padding: 8px 14px;
-            border-radius: 8px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 14px;
-            backdrop-filter: blur(4px);
-            transition: background 0.2s;
-            text-decoration: none;
-        }
-
-        .theme-btn {
-            padding: 8px;
-            border-radius: 50%;
-            width: 38px;
-            height: 38px;
-            justify-content: center;
-        }
-
-        .back-btn:hover, .theme-btn:hover { background: rgba(0, 0, 0, 0.8); }
-
-        body.light-mode .back-btn,
-        body.light-mode .theme-btn {
-            background: rgba(255, 255, 255, 0.8);
-            color: #1a2e1b;
-        }
-
-        body.light-mode .back-btn:hover,
-        body.light-mode .theme-btn:hover { background: #fff; }
-
-        .profile-content { padding: 30px; }
-
-        .plant-titles h1 {
-            font-size: 28px;
-            color: var(--text-light);
-            margin-bottom: 4px;
-        }
-
-        .plant-titles h3 {
-            font-size: 16px;
-            color: var(--accent-green);
-            font-style: italic;
-            font-weight: normal;
-            margin-bottom: 20px;
-        }
-
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        @media (max-width: 600px) {
-            .info-grid { grid-template-columns: 1fr; }
-        }
-
-        .info-card {
-            background: var(--card-bg);
-            border-radius: 10px;
-            padding: 18px;
-            border-left: 4px solid var(--accent-green);
-            transition: background-color 0.3s ease;
-        }
-
-        .info-card.warning { border-left-color: var(--danger-red); }
-
-        .info-card h4 {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 15px;
-            margin-bottom: 10px;
-            color: var(--text-light);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .info-card p, .info-card ul {
-            font-size: 13px;
-            line-height: 1.6;
-            color: var(--text-muted);
-        }
-
-        .info-card ul { padding-left: 18px; }
-        .info-card p + p { margin-top: 8px; }
-
-        /* describeParts() joins Height / Width / Color / Shape / Texture with
-           newlines and the text is set via textContent, so without this the
-           lines collapse into one run-on sentence. */
-        #plantDescription { white-space: pre-line; }
-
-        .full-width-card { grid-column: 1 / -1; }
-
-        .botanist-meta {
-            margin-top: 25px;
-            padding-top: 15px;
-            border-top: 1px solid rgba(128, 128, 128, 0.2);
-            font-size: 12px;
-            color: var(--text-muted);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .contributor-info { display: flex; align-items: center; gap: 6px; }
-
-        .contributor-info a {
-            color: var(--accent-green);
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .contributor-info a:hover { text-decoration: underline; }
-
-        .verified-badge {
-            color: var(--accent-green);
-            font-weight: bold;
-            display: inline-flex;
-            align-items: center;
-            gap: 2px;
-        }
-
-        /* `display` above would override the hidden attribute, so restore it */
-        .contributor-info[hidden],
-        .verified-badge[hidden] { display: none; }
-
-        /* Recorded by / Reviewed by / Reported by. Each row is its own claim, so
-           they stack rather than sharing one line. Plain text for anyone who is
-           not a botanist; a link plus the Verified Botanist badge for one. */
-        .people-rows {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            width: 100%;
-        }
-
-        .people-list {
-            display: inline-flex;
-            flex-wrap: wrap;
-            gap: 6px 12px;
-            align-items: center;
-        }
-
-        .person { display: inline-flex; align-items: center; gap: 4px; }
-        .person-name { color: var(--text-light); font-weight: 600; }
-
-        /* Shown only when /api/auth/me includes record_plant. Styled here rather
-           than in a shared stylesheet because this page has no sidebar and no
-           shared theme — it keeps its own inline block on purpose. */
-        .contribute-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 7px 14px;
-            border-radius: 20px;
-            border: 1px solid var(--accent-green);
-            background-color: var(--accent-green);
-            color: #ffffff;
-            font-size: 12px;
-            font-weight: 700;
-            text-decoration: none;
-        }
-
-        .contribute-btn:hover { filter: brightness(0.92); text-decoration: none; }
-        .contribute-btn[hidden] { display: none; }
-    </style>
+    <link rel="stylesheet" href="css/public/public-theme.css">
+    <!-- No defer: applies the shared theme before first paint and starts the one
+         /api/auth/me request (window.plantAuth). -->
+    <script src="javascript/sidebar.js"></script>
 </head>
-<body>
+<body class="profile-page">
 
     <div class="profile-container">
         <div class="profile-hero">
@@ -284,13 +21,9 @@
             </div>
 
             <div class="header-controls">
-                <button class="back-btn" onclick="history.back()">
-                    <span class="material-symbols-outlined" style="font-size: 18px;">arrow_back</span> Back
-                </button>
-
-                <button id="themeToggleBtn" class="theme-btn" onclick="toggleTheme()" title="Toggle Theme">
-                    <span class="material-symbols-outlined" id="themeIcon" style="font-size: 20px;">light_mode</span>
-                </button>
+                <a href="library.html" class="back-btn" data-profile-back>
+                    <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span> Back
+                </a>
             </div>
         </div>
 
@@ -298,67 +31,68 @@
             <div class="plant-titles">
                 <h1 id="commonName">Loading...</h1>
                 <h3 id="scientificName"></h3>
+                <span id="plantTypeBadge"></span>
+                <!-- Filled by plant-profile.js: whose description the cards below show. -->
+                <p class="primary-byline" id="primaryByline" hidden></p>
             </div>
 
             <div class="info-grid">
-                <div class="info-card full-width-card">
-                    <h4><span class="material-symbols-outlined">description</span> What it looks like</h4>
+                <section class="info-card full-width-card">
+                    <h4><span class="material-symbols-outlined" aria-hidden="true">description</span> What it looks like</h4>
                     <p id="plantDescription"></p>
-                </div>
+                </section>
 
-                <div class="info-card">
-                    <h4><span class="material-symbols-outlined">psychiatry</span> Common Uses</h4>
-                    <ul id="plantUses"></ul>
-                </div>
+                <section class="info-card">
+                    <h4><span class="material-symbols-outlined" aria-hidden="true">psychiatry</span> Common Uses</h4>
+                    <div id="plantUses" class="rt"></div>
+                </section>
 
-                <div class="info-card">
-                    <h4><span class="material-symbols-outlined">verified</span> Health Benefits</h4>
-                    <ul id="plantBenefits"></ul>
-                </div>
+                <section class="info-card">
+                    <h4><span class="material-symbols-outlined" aria-hidden="true">verified</span> Health Benefits</h4>
+                    <div id="plantBenefits" class="rt"></div>
+                </section>
 
-                <div class="info-card warning full-width-card">
-                    <h4><span class="material-symbols-outlined" style="color: var(--danger-red);">warning</span> Things to Watch Out For</h4>
+                <section class="info-card warning full-width-card">
+                    <h4><span class="material-symbols-outlined" aria-hidden="true">warning</span> Things to Watch Out For</h4>
                     <div id="plantHarmful"></div>
-                </div>
+                </section>
             </div>
+
+            <!-- Every other approved description, one colour-coded box per botanist.
+                 Filled by plant-profile.js; hidden when the plant has only one description. -->
+            <section class="more-details" id="moreDetails" hidden>
+                <h4><span class="material-symbols-outlined" aria-hidden="true">groups</span> More details from other botanists</h4>
+                <p class="more-details-intro">Each box is one botanist&rsquo;s own findings, in their own colour.</p>
+                <div class="contrib-list" id="contribList"></div>
+            </section>
 
             <div class="botanist-meta">
                 <span id="datasetSource"></span>
 
-                <!-- Revealed by plant-profile.js only for a session holding
-                     record_plant. Note this page keeps its own theme key
-                     (plantellect-theme), so following the link can flip the
-                     theme across the navigation. That is a known, accepted
-                     one-off: converting the key is not worth it for one
-                     jump, and it is not a bug. -->
-                <div class="contributor-info">
-                    <a href="#" id="contributeLink" class="contribute-btn" hidden>
-                        <span class="material-symbols-outlined" style="font-size: 15px;">edit_note</span>
-                        Contribute
-                    </a>
-                </div>
+                <!-- Revealed by plant-profile.js only for a session holding record_plant. -->
+                <a href="#" id="contributeLink" class="contribute-btn" hidden>
+                    <span class="material-symbols-outlined" aria-hidden="true">edit_note</span> Contribute
+                </a>
 
-                <!-- Three separate claims, three rows, each filled by
-                     renderPeople() in plant-profile.js and hidden when nobody is
-                     named for it.
-                       - botanist: link to botanist-profile.html + Verified Botanist badge
-                       - admin / superadmin: link to admin-profile.html, no badge
-                       - user / system: plain text, no badge
-                     "Reported by" is credit for the discovery report, not
-                     authorship. It only has someone in it when the plant was
-                     created from a discovery report, so on every other plant
-                     that row stays hidden. -->
-                <div class="people-rows full-width-card">
+                <!-- Three separate claims, three rows, each filled by renderPeople() with
+                     its OWN link rule (see profileHref in plant-profile.js) and hidden
+                     when nobody is named for it.
+                       - Recorded by: botanist -> link for everyone;
+                                      admin / superadmin -> link for administrators only
+                       - Reviewed by: admin / superadmin -> link for administrators only
+                       - Reported by: display only, never a link, for any viewer
+                     Anything not linked is plain text (a <span>). -->
+                <div class="people-rows">
                     <div class="contributor-info" id="recordedByRow" hidden>
-                        <span>Recorded by:</span>
+                        <span class="people-label">Recorded by</span>
                         <span id="recordedByList" class="people-list"></span>
                     </div>
                     <div class="contributor-info" id="reviewedByRow" hidden>
-                        <span>Reviewed by:</span>
+                        <span class="people-label">Reviewed by</span>
                         <span id="reviewedByList" class="people-list"></span>
                     </div>
                     <div class="contributor-info" id="reportedByRow" hidden>
-                        <span>Reported by:</span>
+                        <span class="people-label">Reported by</span>
                         <span id="reportedByList" class="people-list"></span>
                     </div>
                 </div>
@@ -366,40 +100,10 @@
         </div>
     </div>
 
-    <!-- The profile is rendered from the API, so no static data bundle.
-         auth.js is loaded for checkAuth / escapeHtml only: the Contribute button
-         is revealed from the session, and escapeHtml is used by renderList. -->
-    <script src="javascript/auth.js"></script>
+    <!-- auth.js is no longer loaded: sidebar.js is the single auth authority
+         (window.plantAuth), and plant-profile.js has its own escapeHtml. -->
+    <script src="javascript/badges.js"></script>
+    <script src="javascript/richtext.js"></script>
     <script src="javascript/plant-profile.js"></script>
-
-    <script>
-        // Icon shows what you will switch TO: sun in dark mode, moon in light mode
-        function applyTheme(mode) {
-            const body = document.body;
-            const themeIcon = document.getElementById('themeIcon');
-            const themeBtn = document.getElementById('themeToggleBtn');
-
-            if (mode === 'light') {
-                body.classList.add('light-mode');
-                themeIcon.textContent = 'dark_mode';
-                themeBtn.title = "Switch to Dark Mode";
-            } else {
-                body.classList.remove('light-mode');
-                themeIcon.textContent = 'light_mode';
-                themeBtn.title = "Switch to Light Mode";
-            }
-
-            localStorage.setItem('plantellect-theme', mode);
-        }
-
-        function toggleTheme() {
-            const isLight = document.body.classList.contains('light-mode');
-            applyTheme(isLight ? 'dark' : 'light');
-        }
-
-        window.addEventListener('DOMContentLoaded', () => {
-            applyTheme(localStorage.getItem('plantellect-theme') || 'dark');
-        });
-    </script>
 </body>
 </html>

@@ -94,10 +94,10 @@ class DiscoveryRepository(
     fun reportImageUrl(imageId: String) = "${baseUrl.trimEnd('/')}/${ApiConfig.DISCOVERIES}/report-images/$imageId"
 
     /** Fetches the owner's discovery image via Retrofit (programmatic: headers, retry, cancellation). */
-    suspend fun ownerImage(imageId: String): ApiResult<Response<ResponseBody>> =
+    suspend fun ownerImage(imageId: String): ApiResult<ResponseBody> =
         caller.call { api.ownerImage(imageId) }
 
     /** Fetches a report image (botanist view) via Retrofit (programmatic: headers, retry, cancellation). */
-    suspend fun reportImage(imageId: String): ApiResult<Response<ResponseBody>> =
+    suspend fun reportImage(imageId: String): ApiResult<ResponseBody> =
         caller.call { api.reportImage(imageId) }
 }

@@ -27,6 +27,11 @@
    `header nav` in base.css, and the top bar in base.css now handles the
    logo gap itself.) */
 
+/* Tagline: home.js fades it (opacity) and lifts it (translate) with scroll */
+.hero-content {
+    will-change: opacity, translate;
+}
+
 /* Keep the hero text inside the space beside the sidebar */
 @media (min-width: 1024px) {
     .hero-container {
@@ -422,6 +427,26 @@ html[data-theme="dark"] .slider-label {
 }
 
 /* =========================================
+   SCROLL-FLOAT WRAPPER (added)
+   home.js wraps every card in .pc-float and moves ONLY that wrapper up and
+   down as the page scrolls. It takes the card's place in the flex row (same
+   size), so layout is unchanged, and the card inside keeps its own
+   transform for the entrance animation, hover tilt and lift.
+   The transform is written by JavaScript on each frame; no transition is set
+   here on purpose, because the easing is done in the script.
+   ========================================= */
+
+.slider-track .pc-float {
+    position: relative;
+    flex: 0 0 auto;
+    width: var(--pc-w);
+    height: var(--pc-h);
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
+    backface-visibility: hidden;
+}
+
+/* =========================================
    LATEST PLANT CARDS
    Full-photo cards: the name sits on a gradient at the bottom; on hover the
    card tilts toward the cursor, the photo zooms and the description opens.
@@ -622,6 +647,22 @@ html[data-theme="dark"] .slider-label {
     color: #ffffff;
     text-transform: uppercase;
     animation: pcPulse 2s ease-in-out infinite;
+}
+
+@media (max-width: 479px) {
+    .pc-new {
+        top: 10px;
+        right: 10px;
+        padding: 4px 9px;
+        font-size: 10px;
+    }
+
+    .pc-type {
+        top: 10px;
+        left: 10px;
+        padding: 4px 9px;
+        font-size: 10px;
+    }
 }
 
 /* ----- Name + description ----- */
@@ -850,6 +891,12 @@ html[data-theme="dark"] .plant-empty {
         transform: none;
         transition: none;
     }
+
+    /* scroll float: home.js already shrinks it to a tiny parallax with no
+       speed lift or sway; this just drops the compositing hint */
+    .slider-track .pc-float {
+        will-change: auto;
+    }
 }
 
 
@@ -909,5 +956,133 @@ html[data-theme="dark"] .plant-empty {
 @media (prefers-reduced-motion: reduce) {
     .slider-arrow {
         transition: none;
+    }
+}
+
+
+/* =========================================
+   CREATION DATE ON THE CARD (replaces the NEWEST badge)
+   ========================================= */
+.slider-track .plant-card .pc-date {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 4px 0 0;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12px;
+    text-align: left;
+}
+
+.slider-track .plant-card .pc-date .material-symbols-outlined {
+    font-size: 14px;
+}
+
+/* =========================================
+   PINNED SCROLL TRANSITION (tagline -> plant cards)
+   Everything below is keyed to .pin-active, which home.js adds only when
+   motion is allowed. Without JavaScript, or with prefers-reduced-motion,
+   the hero and the slider simply stack as before.
+   ========================================= */
+
+.pin-track {
+    position: relative;
+}
+
+/* The track is one screen tall plus the scroll distance of the transition */
+.pin-track.pin-active {
+    height: calc((100dvh - var(--topbar-height, 56px)) + var(--pin-travel, 100dvh));
+}
+
+/* The stage sticks right under the top bar and clips the rising cards */
+.pin-track.pin-active .pin-stage {
+    position: sticky;
+    top: var(--topbar-height, 56px);
+    height: calc(100dvh - var(--topbar-height, 56px));
+    overflow: hidden;
+    isolation: isolate;
+}
+
+/* The photo fills the stage and stays still while the stage is pinned */
+.pin-track.pin-active .background-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+}
+
+.pin-track.pin-active .hero-container {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    min-height: 0;
+}
+
+/* Overlay for the slider. Its vertical position is set by home.js. Until then
+   it waits below the stage and hidden, so the cards never flash into view. */
+.pin-track.pin-active .pin-cards {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 clamp(8px, 3vw, 32px);
+    transform: translate3d(0, 100vh, 0);
+    visibility: hidden;
+    pointer-events: none;     /* the overlay itself never blocks the hero... */
+    will-change: transform;
+}
+
+.pin-track.pin-active .pin-cards .slider-wrapper {
+    pointer-events: auto;     /* ...but the slider inside stays fully interactive */
+    margin: 0;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+/* The slider sizes itself to its cards: a band at the top for the label and pause
+   button (so they never overlap a card), and vertical room around the cards inside
+   the clip for the float and the hover lift. */
+.pin-track.pin-active .pin-cards .slider-wrapper {
+    height: auto;
+    min-height: 0;
+    max-width: 1400px;
+    padding: 52px 0 12px;
+}
+
+.pin-track.pin-active .slider-track {
+    padding-top: 36px;
+    padding-bottom: 36px;
+}
+
+.pin-track.pin-active .slider-label {
+    top: 12px;
+    left: 20px;
+}
+
+.pin-track.pin-active .slider-pause {
+    top: 10px;
+    right: 20px;
+}
+
+/* Over the photo the label chip needs a solid backing to stay readable */
+.pin-track.pin-active .slider-label {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--color-forest-green);
+}
+
+/* Short screens (landscape phones): slightly smaller cards so they fit the stage */
+@media (max-height: 640px) {
+    .pin-track.pin-active .pin-cards .slider-wrapper {
+        --pc-w: 200px;
+        --pc-h: 270px;
+        padding-top: 46px;
+    }
+
+    .pin-track.pin-active .slider-track {
+        padding-top: 24px;
+        padding-bottom: 24px;
     }
 }

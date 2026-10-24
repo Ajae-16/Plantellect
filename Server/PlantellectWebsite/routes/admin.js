@@ -24,9 +24,16 @@ const {
     DISCOVERY_STORAGE_ROOT
 } = require('../config/mysql.js');
 const approvalMode = require('../config/approval-mode.js');
-const { logAuthEvent } = require('../mongoose-schemas/Authlog');
+const { listImageIssues, retryImageIssue } = require('../config/image-relocation');
+const { logAuthEvent, Authlog } = require('../mongoose-schemas/Authlog');
+const plantEdit = require('../config/admin-plant-edit-mysql');
 
 const router = express.Router();
+
+// The admin-editable plant-photo cap. The fallback is settings.js (env-seeded);
+// declared here because the settings handlers below shadow `settings` locally.
+const PLANT_IMAGES_DEFAULT = { maxFilesPerRequest: settings.plantImages.maxFilesPerRequest };
+const PLANT_IMAGES_CEILING = settings.plantImages.hardMaxFilesPerRequest || 100;
 
 // ---------------------------------------------------------------------------
 // HTML pages. JSON lives under /api so the two never collide on one path.
@@ -169,21 +176,60 @@ router.get('/api/plant-images/:imageId', requirePermission('access_admin'), asyn
 
 router.post('/api/plant-requests/:requestId/approve', requirePermission('access_admin'), async (req, res) => {
     try {
+        // imageDecisions: { [imageId]: 'approve' | 'reject' } approves the photos
+        // one by one. Omitted, every photo in the request is approved together
+        // (the old behaviour). It is validated in approvePlantRequest.
         const result = await approvePlantRequest(
             req.params.requestId,
             req.session.accountId,
-            req.body.note
+            req.body.note,
+            { imageDecisions: req.body.imageDecisions }
         );
         if (result.error) return res.status(result.code).json({ error: result.error });
-        res.json({
-            message: result.converted
-                ? 'Approved. The species already existed, so the submission was attached to it.'
-                : 'Approved',
-            ...result
-        });
+        let message = 'Approved';
+        if (result.changeApplied) {
+            message = 'Approved. The change was applied to the plant.';
+        } else if (result.taxonomyUpdated) {
+            message = 'Approved. The plant\'s taxonomy was updated.';
+        } else if (result.converted) {
+            message = 'Approved. The species already existed, so the submission was attached to it.';
+        } else if (result.photosRejected > 0) {
+            message = `Approved. ${result.photosApproved} photo(s) approved, ${result.photosRejected} not approved.`;
+        }
+        if (result.photoFileProblems && result.photoFileProblems.length > 0) {
+            message += ` ${result.photoFileProblems.length} photo file(s) could not be moved into their folder; ` +
+                'see "Image file problems" on this page.';
+        }
+        res.json({ message, ...result });
     } catch (err) {
         console.error('Approve plant request error:', err.message);
         res.status(500).json({ error: 'Approval failed' });
+    }
+});
+
+/**
+ * Photos whose file could not be copied cleanly into the folder their status
+ * belongs in, after the retry limit. The plants page lists these so an admin
+ * knows; the photo itself is still served from its old location meanwhile.
+ */
+router.get('/api/image-issues', requirePermission('access_admin'), async (req, res) => {
+    try {
+        res.json({ issues: await listImageIssues(), maxAttempts: settings.plantImages.copyMaxAttempts });
+    } catch (err) {
+        console.error('List image issues error:', err.message);
+        res.status(500).json({ error: 'Failed to load image file problems' });
+    }
+});
+
+router.post('/api/image-issues/:kind/:imageId/retry', requirePermission('access_admin'), async (req, res) => {
+    try {
+        const result = await retryImageIssue(req.params.kind, req.params.imageId);
+        if (result.error) return res.status(result.code).json({ error: result.error });
+        // 200 either way: the request worked, the copy itself may not have.
+        res.json(result);
+    } catch (err) {
+        console.error('Retry image issue error:', err.message);
+        res.status(500).json({ error: 'Retry failed' });
     }
 });
 
@@ -316,6 +362,58 @@ router.get('/api/plants', requirePermission('access_admin'), async (req, res) =>
     } catch (err) {
         console.error('List plants error:', err.message);
         res.status(500).json({ error: 'Failed to load plants' });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Admin plant editing. The base record and each botanist's description are saved
+// separately, so editing one can never overwrite the other.
+// ---------------------------------------------------------------------------
+
+/** Everything the edit dialog needs: the base record and EVERY approved description. */
+router.get('/api/plants/:plantId/edit', requirePermission('access_admin'), async (req, res) => {
+    try {
+        const data = await plantEdit.getAdminPlantEdit(req.params.plantId);
+        if (!data) return res.status(404).json({ error: 'Plant not found' });
+        res.json(data);
+    } catch (err) {
+        console.error('Load plant for edit error:', err.message);
+        res.status(500).json({ error: 'Failed to load the plant' });
+    }
+});
+
+function sendEditResult(res, result, logLabel) {
+    if (result.error) return res.status(result.code || 400).json({ error: result.error });
+    res.json({ ok: true, ...result });
+}
+
+/** Base description: names, the plant's own type, and its taxonomy. */
+router.patch('/api/plants/:plantId', requirePermission('access_admin'), async (req, res) => {
+    try {
+        sendEditResult(res, await plantEdit.updatePlantBase(req.params.plantId, req.body));
+    } catch (err) {
+        console.error('Save plant base error:', err.message);
+        res.status(500).json({ error: 'Failed to save the plant' });
+    }
+});
+
+/** One botanist's description (text + measurements); body.makePrimary may promote it. */
+router.patch('/api/plants/:plantId/descriptions/:descriptionId', requirePermission('access_admin'), async (req, res) => {
+    try {
+        sendEditResult(res, await plantEdit.updateDescription(req.params.plantId, req.params.descriptionId, req.body));
+    } catch (err) {
+        console.error('Save plant description error:', err.message);
+        res.status(500).json({ error: 'Failed to save the description' });
+    }
+});
+
+/** Makes a description the primary one (shown first on the plant page and in the library). */
+router.post('/api/plants/:plantId/descriptions/:descriptionId/primary', requirePermission('access_admin'), async (req, res) => {
+    try {
+        sendEditResult(res, await plantEdit.setPrimaryDescription(req.params.plantId, req.params.descriptionId));
+    } catch (err) {
+        console.error('Set primary description error:', err.message);
+        res.status(500).json({ error: 'Failed to change the primary description' });
     }
 });
 
@@ -551,7 +649,7 @@ router.get('/api/settings', requirePermission('admin_settings'), async (req, res
     try {
         const conn = await mysqlPool.getConnection();
         try {
-            const keys = ['mlActiveModel', 'mlConfidence', 'discoveries', 'mlRequest'];
+            const keys = ['mlActiveModel', 'mlConfidence', 'discoveries', 'mlRequest', 'plantImages'];
             const settings = {};
 
             for (const key of keys) {
@@ -596,6 +694,7 @@ router.get('/api/settings', requirePermission('admin_settings'), async (req, res
                 version: 0
             };
             if (!settings.mlRequest) settings.mlRequest = { value: { maxTopK: 10 }, version: 0 };
+            if (!settings.plantImages) settings.plantImages = { value: { ...PLANT_IMAGES_DEFAULT }, version: 0 };
 
             // Return settings with versions as separate top-level keys
             const response = {};
@@ -649,7 +748,7 @@ router.post('/api/settings', requirePermission('admin_settings'), async (req, re
         return res.status(400).json({ error: 'No settings provided' });
     }
 
-    const allowedKeys = ['mlActiveModel', 'mlConfidence', 'discoveries', 'mlRequest'];
+    const allowedKeys = ['mlActiveModel', 'mlConfidence', 'discoveries', 'mlRequest', 'plantImages'];
     const invalidKeys = Object.keys(updates).filter(k => !allowedKeys.includes(k));
     if (invalidKeys.length > 0) {
         return res.status(400).json({ error: `Invalid setting keys: ${invalidKeys.join(', ')}` });
@@ -691,6 +790,7 @@ router.post('/api/settings', requirePermission('admin_settings'), async (req, re
                     discoveryClosedPhotoDays: 90
                 };
                 else if (key === 'mlRequest') defaultValue = { maxTopK: 10 };
+                else if (key === 'plantImages') defaultValue = { ...PLANT_IMAGES_DEFAULT };
 
                 await conn.query(
                     'INSERT INTO system_settings (settingKey, settingValue, version) VALUES (?, ?, 1)',
@@ -801,6 +901,19 @@ router.post('/api/settings', requirePermission('admin_settings'), async (req, re
                     if (!Number.isFinite(v) || v < 1 || v > 100) {
                         await conn.rollback();
                         return res.status(400).json({ error: 'maxTopK must be 1-100' });
+                    }
+                }
+                validatedValue = { ...existingValue, ...value };
+            } else if (key === 'plantImages') {
+                if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                    await conn.rollback();
+                    return res.status(400).json({ error: 'plantImages must be an object' });
+                }
+                if (value.maxFilesPerRequest !== undefined) {
+                    const v = Number(value.maxFilesPerRequest);
+                    if (!Number.isInteger(v) || v < 1 || v > PLANT_IMAGES_CEILING) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: `maxFilesPerRequest must be a whole number from 1 to ${PLANT_IMAGES_CEILING}` });
                     }
                 }
                 validatedValue = { ...existingValue, ...value };
@@ -1153,6 +1266,81 @@ router.post('/api/role-limits', requirePermission('admin_settings'), async (req,
         res.status(500).json({ error: 'Failed to update role limits' });
     } finally {
         conn.release();
+    }
+});
+
+/**
+ * GET /admin/api/reporting/stats
+ * Dashboard summary stats from the reporting views.
+ */
+router.get('/api/reporting/stats', requirePermission('access_admin'), async (req, res) => {
+    try {
+        const [[users], [botanists], [plants], [pending]] = await Promise.all([
+            mysqlPool.query('SELECT COUNT(*) AS count FROM vw_active_users'),
+            mysqlPool.query('SELECT COUNT(*) AS count FROM vw_active_botanists'),
+            mysqlPool.query('SELECT totalPlants AS count FROM vw_total_plants'),
+            mysqlPool.query('SELECT COUNT(*) AS count FROM vw_pending_requests')
+        ]);
+
+        res.json({
+            users: users[0].count,
+            botanists: botanists[0].count,
+            plants: plants[0].count,
+            pending: pending[0].count
+        });
+    } catch (err) {
+        console.error('Reporting stats error:', err.message);
+        res.status(500).json({ error: 'Failed to load reporting stats' });
+    }
+});
+
+/**
+ * GET /admin/api/reporting/signins?days=14
+ * Sign-ins per day from the auth log: how many logins, and how many DIFFERENT accounts
+ * signed in, for each of the last N days (default 14, at most 90), oldest first, empty days
+ * included as zero. Days are cut at the project's timezone (settings.system.timezone).
+ * `degraded: true` instead of a wrong zero when the log cannot be read.
+ */
+router.get('/api/reporting/signins', requirePermission('access_admin'), async (req, res) => {
+    const parsed = parseInt(req.query.days, 10);
+    const days = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 90) : 14;
+    const tz = settings.system.timezone;
+    try {
+        // Day keys in the project timezone, oldest first, built from "now" shifted by the offset.
+        const sign = tz.startsWith('-') ? -1 : 1;
+        const [oh, om] = tz.replace(/^[+-]/, '').split(':').map(Number);
+        const offsetMs = sign * ((oh * 60) + (om || 0)) * 60 * 1000;
+        const keyOf = (ms) => new Date(ms + offsetMs).toISOString().slice(0, 10);
+        const dayMs = 24 * 60 * 60 * 1000;
+        const keys = [];
+        for (let i = days - 1; i >= 0; i--) keys.push(keyOf(Date.now() - i * dayMs));
+
+        const since = new Date(Date.now() - (days + 1) * dayMs);
+        const rows = await Authlog.aggregate([
+            { $match: { action: 'login', createdAt: { $gte: since } } },
+            { $group: {
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: tz } },
+                logins: { $sum: 1 },
+                accountSet: { $addToSet: '$accountId' }
+            } }
+        ]);
+        const byDay = new Map(rows.map((r) => [r._id, r]));
+        const series = keys.map((day) => {
+            const r = byDay.get(day);
+            return { day, logins: r ? r.logins : 0, accounts: r ? r.accountSet.length : 0 };
+        });
+        const today = series[series.length - 1];
+        res.json({
+            days,
+            timezone: tz,
+            today: today.accounts,
+            todayLogins: today.logins,
+            yesterday: series.length > 1 ? series[series.length - 2].accounts : 0,
+            series
+        });
+    } catch (err) {
+        console.error('Sign-ins per day error:', err.message);
+        res.json({ degraded: true, error: err.message, days, series: [] });
     }
 });
 

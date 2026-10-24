@@ -15,8 +15,15 @@ class NetworkMonitor(context: Context) {
     fun isOnline(): Boolean {
         val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
+
+    /**
+     * Any active network at all. isOnline() also needs Android's "validated" flag, which is false on
+     * a LAN-only Wi-Fi or a VPN/Tailscale route even though the API is reachable. Whether the SERVER
+     * can actually be reached is decided by [ServerMonitor], not by this.
+     */
+    fun hasNetwork(): Boolean = cm.activeNetwork != null
 
     /** For an offline banner in the UI. */
     val onlineFlow: Flow<Boolean> = callbackFlow {
@@ -29,4 +36,14 @@ class NetworkMonitor(context: Context) {
         trySend(isOnline())
         awaitClose { cm.unregisterNetworkCallback(cb) }
     }.distinctUntilChanged()
+
+    /** Fires whenever the default network appears or disappears (Wi-Fi <-> mobile, airplane mode, ...). */
+    val changes: Flow<Unit> = callbackFlow {
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { trySend(Unit) }
+            override fun onLost(network: Network) { trySend(Unit) }
+        }
+        cm.registerDefaultNetworkCallback(cb)
+        awaitClose { cm.unregisterNetworkCallback(cb) }
+    }
 }

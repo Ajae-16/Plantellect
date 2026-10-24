@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="/css/admin/admin-plants.css">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="/css/admin/admin-theme.css">
+    <!-- Inventory actions, edit dialog, tidied toolbar (has its own dark rules) -->
+    <link rel="stylesheet" href="/css/admin/admin-plant-manage.css">
 
     <style>
         /* ---------- Collapsible sections ---------- */
@@ -168,6 +170,32 @@
             color: #b97a17;
             vertical-align: middle;
         }
+        /* ---------- Per-photo review and taxonomy diff ----------
+           Colours are translucent so they read on both admin themes. */
+        .photo-review-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+        .photo-review { width: 132px; margin: 0; }
+        .photo-review .plant-preview-thumb { display: block; }
+        .photo-review img { width: 132px; height: 132px; object-fit: cover; border-radius: 8px; display: block; }
+        .photo-review.verdict-approve img { outline: 3px solid rgba(46, 125, 50, 0.85); }
+        .photo-review.verdict-reject img { outline: 3px solid rgba(169, 68, 66, 0.85); opacity: 0.6; }
+        .photo-verdict { display: flex; gap: 4px; margin-top: 6px; }
+        .verdict-btn, .bulk-btn {
+            flex: 1; padding: 5px 4px; font-size: 12px; font-weight: 600; cursor: pointer;
+            border-radius: 6px; border: 1px solid currentColor; background: transparent; color: inherit;
+        }
+        .verdict-btn.verdict-yes { color: #2e7d32; }
+        .verdict-btn.verdict-no { color: #a94442; }
+        .verdict-btn.verdict-yes.selected { background: rgba(46, 125, 50, 0.9); color: #fff; border-color: transparent; }
+        .verdict-btn.verdict-no.selected { background: rgba(169, 68, 66, 0.9); color: #fff; border-color: transparent; }
+        .verdict-btn:focus-visible, .bulk-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+        .photo-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+        .bulk-btn { flex: 0 0 auto; padding: 5px 10px; }
+        .photo-summary { font-size: 13px; opacity: 0.8; }
+        .photo-summary.incomplete { opacity: 1; color: #d97706; font-weight: 600; }
+        .taxonomy-diff { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
+        .taxonomy-diff .diff-from { text-decoration: line-through; opacity: 0.65; }
+        .taxonomy-diff .diff-to { font-weight: 700; }
+
     </style>
 </head>
 <body>
@@ -251,7 +279,25 @@
 
             <div class="plants-container">
 
-                <!-- Pending plant upload requests -->
+                <!-- Photos whose file could not be copied cleanly into its pending / approved /
+                     denied folder after the retry limit. Hidden unless there is one. -->
+                <section class="admin-section" id="imageIssuesSection" hidden>
+                    <details class="collapse" open>
+                        <summary class="collapse-summary">
+                            <h2>Image file problems
+                                <span class="section-count-badge" id="imageIssuesCount" hidden>0</span>
+                            </h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle" id="imageIssuesIntro"></p>
+                            <p id="imageIssuesNotice" class="admin-notice" hidden></p>
+                            <div id="imageIssuesList"></div>
+                        </div>
+                    </details>
+                </section>
+
+                <!-- Pending plant upload requests (new plants, contributions, taxonomy and change requests) -->
                 <section class="admin-section" id="pendingRequestsSection">
                     <details class="collapse">
                         <summary class="collapse-summary">
@@ -291,6 +337,10 @@
                                     <!-- Options are populated from plant_types so the dropdown can't drift from the database. -->
                                     <option value="all">All Types</option>
                                 </select>
+                                <select id="plantStatusFilter" class="plants-filter-select" aria-label="Show active or archived plants">
+                                    <option value="active">Active</option>
+                                    <option value="archived">Archived</option>
+                                </select>
                                 <label class="plants-taxonomy-toggle">
                                     <input type="checkbox" id="taxonomyGapFilter">
                                     Needs taxonomy
@@ -312,6 +362,7 @@
                                             <th>Reviewed By</th>
                                             <th>Recorded By</th>
                                             <th>Date Uploaded</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="plantsTableBody">
@@ -374,7 +425,31 @@
         </main>
     </div>
 
+    <!-- Edit a plant directly (admin). Two independent halves, each with its own Save:
+         "Plant info" (names, type, taxonomy) and "Descriptions" (one botanist's description at
+         a time, with the option to make it the primary one). Built by openPlantEdit() below. -->
+    <dialog id="plantEditDialog" class="plant-dialog plant-dialog-wide" aria-labelledby="plantEditTitle">
+        <form id="plantEditForm" novalidate>
+            <h2 id="plantEditTitle">Edit plant</h2>
+            <div class="plant-tabs" role="tablist">
+                <button type="button" role="tab" class="plant-tab active" data-tab="base" aria-selected="true">Plant info</button>
+                <button type="button" role="tab" class="plant-tab" data-tab="description" aria-selected="false">Descriptions</button>
+            </div>
+            <p class="plant-dialog-hint" id="plantEditHint"></p>
+            <p class="plant-dialog-error" id="plantEditError" role="alert" hidden></p>
+            <p class="plant-dialog-ok" id="plantEditOk" role="status" hidden></p>
+            <div id="plantEditBody"></div>
+            <div class="plant-dialog-actions">
+                <button type="button" class="btn-deny" id="plantEditCancel">Close</button>
+                <button type="submit" class="btn-approve" id="plantEditSave">Save</button>
+                <button type="button" class="btn-approve" id="plantEditSaveClose">Save &amp; close</button>
+            </div>
+        </form>
+    </dialog>
+
     <script src="/javascript/logout.js"></script>
+    <script src="/javascript/badges.js"></script>
+    <script src="/javascript/richtext.js"></script>
     <!-- home.js calls checkAuth(), which lives in auth.js, so auth.js loads first -->
     <script src="/javascript/auth.js"></script>
     <script src="/javascript/home.js"></script>
@@ -388,37 +463,16 @@
         let pendingRequests = [];
         let plantSearch = '';
         let plantTypeFilterValue = 'all';
+        let plantStatus = 'active';
         let plantsPage = 1;
         let taxonomyGapOnly = false;
         let expandedPlantId = null;
-        // Labels and icons come from plant_types so the filter, the badges and
-        // the dropdown can never disagree with the database.
-        let typeMeta = {};
-
-        const typeLabels = {
-            'herbal': 'Herbal',
-            'flower': 'Flower',
-            'non-herbal-flower': 'Non-Herbal & Flower',
-        };
-
-        const typeIcons = {
-            'herbal': '🌿',
-            'flower': '🌸',
-            'non-herbal-flower': '🌳',
-        };
-
-        function labelForType(type, fallback) {
-            if (typeMeta[type]) return typeMeta[type].label;
-            return typeLabels[type] || fallback || type;
-        }
-
-        function iconForType(type) {
-            if (typeMeta[type]) return typeMeta[type].icon || typeIcons[type] || '🌱';
-            return typeIcons[type] || '🌱';
-        }
-
-        function typeBadgeClass(type) {
-            return 'plant-badge plant-badge-' + type;
+        // One badge per plant: the plant's OWN type name, coloured by its toxicity level
+        // (green / yellow / orange / red). Every plant owns its type row, so there is no
+        // shared list of types to look a label or an icon up in. See js/badges.js and
+        // css/core/badges.css to change how it looks.
+        function plantBadge(name, toxicityLevel) {
+            return PlantBadge.html(name, toxicityLevel);
         }
 
         // Moved here from the table header, where it had been pasted by mistake.
@@ -442,33 +496,151 @@
         // -----------------------------------------------------------------
         // Pending plant requests (uploaded by botanists, awaiting review)
         // -----------------------------------------------------------------
+        // Per-photo verdicts, kept across re-renders: { [requestId]: { [imageId]: 'approve' | 'reject' } }.
+        // Deliberately NOT defaulted. Each photo goes into the training set, so a
+        // photo nobody looked at must not be approved by omission.
+        const photoVerdicts = {};
+
+        // Human labels for the fields a change request can touch.
+        const CHANGE_FIELD_LABELS = {
+            commonName: 'Common name',
+            scientificName: 'Scientific name',
+            'type.typeName': 'Type',
+            'type.isMedicinal': 'Medicinal',
+            'type.isHarmful': 'Harmful',
+            'type.toxicityLevel': 'Toxicity level',
+            'type.cautionNote': 'Caution note',
+            'taxonomy.kingdom': 'Kingdom',
+            'taxonomy.phylum': 'Phylum',
+            'taxonomy.class': 'Class',
+            'taxonomy.order': 'Order',
+            'taxonomy.family': 'Family',
+            'taxonomy.genus': 'Genus',
+            'taxonomy.species': 'Species',
+            uses: 'Uses',
+            benefits: 'Benefits',
+            harmful: 'Things to watch out for',
+            'parts.heightMinCm': 'Height min (cm)',
+            'parts.heightMaxCm': 'Height max (cm)',
+            'parts.widthMinCm': 'Width min (cm)',
+            'parts.widthMaxCm': 'Width max (cm)',
+            'parts.heightNote': 'Height note',
+            'parts.widthNote': 'Width note',
+            'parts.color': 'Color',
+            'parts.shape': 'Shape',
+            'parts.texture': 'Texture'
+        };
+
+        // A change request covers ONE half of a plant: its shared info, or one
+        // botanist's own description. Requests filed before the split have no scope.
+        function changeScopeLabel(r) {
+            if (r && r.changeScope === 'base') return 'Change request · plant info';
+            if (r && r.changeScope === 'description') return 'Change request · description';
+            return 'Change request';
+        }
+
+        function requestKindLabel(requestType, r) {
+            if (requestType === 'plant_addition') return 'New plant';
+            if (requestType === 'plant_taxonomy') return 'Taxonomy update';
+            if (requestType === 'plant_change') return changeScopeLabel(r);
+            return 'Contribution';
+        }
+
+        function verdictSummary(r) {
+            const verdicts = photoVerdicts[r.id] || {};
+            const total = (r.images || []).length;
+            let approve = 0;
+            let reject = 0;
+            (r.images || []).forEach(img => {
+                if (verdicts[img.imageId] === 'approve') approve++;
+                if (verdicts[img.imageId] === 'reject') reject++;
+            });
+            return { total, approve, reject, undecided: total - approve - reject };
+        }
+
+        function renderVerdictSummary(r) {
+            const s = verdictSummary(r);
+            return s.undecided > 0
+                ? `${s.undecided} of ${s.total} photo${s.total === 1 ? '' : 's'} still need a decision`
+                : `${s.approve} approved, ${s.reject} rejected`;
+        }
+
+        const RICH_DIFF_KEYS = ['uses', 'benefits', 'harmful', 'type.cautionNote'];
+
+        /** One before → after list, shared by taxonomy updates and change requests. */
+        function renderDiffList(changes, labelFor) {
+            const rows = Object.keys(changes).map(key => {
+                const c = changes[key] || {};
+                const from = c.fromLabel != null ? c.fromLabel : c.from;
+                const to = c.toLabel != null ? c.toLabel : c.to;
+                if (RICH_DIFF_KEYS.includes(key)) {
+                    const show = v => v == null || v === '' ? '(empty)' : RichText.html(v);
+                    return `<li><strong>${escapeHtml(labelFor(key))}</strong>:` +
+                        `<div class="diff-from rt">${show(from)}</div>→<div class="diff-to rt">${show(to)}</div></li>`;
+                }
+                return `<li><strong>${escapeHtml(labelFor(key))}</strong>: ` +
+                    `<span class="diff-from">${escapeHtml(from == null || from === '' ? '(empty)' : from)}</span> → ` +
+                    `<span class="diff-to">${escapeHtml(to == null || to === '' ? '(empty)' : to)}</span></li>`;
+            }).join('');
+            return '<ul class="taxonomy-diff">' + rows + '</ul>';
+        }
+
         /**
-         * Thumbnail previews for a pending request. Photos open in a new tab so
-         * an admin can judge the actual image before approving. The draft text
-         * gets a summary, since a new-plant request has no photos yet.
+         * Previews for a pending request. Every photo carries its own
+         * Approve / Reject control and opens full size in a new tab, so the
+         * admin judges the actual image before deciding it. A taxonomy update
+         * or a change request has no photos: it shows the fields it changes,
+         * before and after, with the reason the botanist gave.
          */
         function renderRequestPreview(r) {
             const parts = [];
 
-            if (r.images && r.images.length > 0) {
-                const thumbs = r.images.map(img => `
-                    <a class="plant-preview-thumb"
-                       href="${escapeHtml(img.url)}"
-                       target="_blank" rel="noopener"
-                       title="Open photo in a new tab">
-                        <img src="${escapeHtml(img.url)}" alt="Submitted photo" loading="lazy">
-                    </a>`).join('');
+            if (r.requestType === 'plant_taxonomy') {
+                parts.push(renderDiffList(r.taxonomyChanges || {}, level => level));
+                if (r.taxonomyReason) {
+                    parts.push('<p class="plant-preview-note">Reason: “' + escapeHtml(r.taxonomyReason) + '”</p>');
+                }
+            } else if (r.requestType === 'plant_change') {
+                parts.push(renderDiffList(r.changes || {}, key => CHANGE_FIELD_LABELS[key] || key));
+                if (r.changeReason) {
+                    parts.push('<p class="plant-preview-note">Reason: “' + escapeHtml(r.changeReason) + '”</p>');
+                }
+            } else if (r.images && r.images.length > 0) {
+                const verdicts = photoVerdicts[r.id] || {};
+                const figures = r.images.map(img => {
+                    const v = verdicts[img.imageId] || '';
+                    return `
+                    <figure class="photo-review ${v ? 'verdict-' + v : ''}" data-request="${escapeHtml(r.id)}" data-image="${escapeHtml(img.imageId)}">
+                        <a class="plant-preview-thumb" href="${escapeHtml(img.url)}" target="_blank" rel="noopener"
+                           title="Open photo in a new tab">
+                            <img src="${escapeHtml(img.url)}" alt="Submitted photo" loading="lazy">
+                        </a>
+                        <div class="photo-verdict" role="group" aria-label="Decision for this photo">
+                            <button type="button" class="verdict-btn verdict-yes ${v === 'approve' ? 'selected' : ''}"
+                                    data-verdict="approve" aria-pressed="${v === 'approve'}">Approve</button>
+                            <button type="button" class="verdict-btn verdict-no ${v === 'reject' ? 'selected' : ''}"
+                                    data-verdict="reject" aria-pressed="${v === 'reject'}">Reject</button>
+                        </div>
+                    </figure>`;
+                }).join('');
+                const summary = verdictSummary(r);
                 parts.push(
-                    '<div class="plant-preview-grid">' + thumbs + '</div>' +
-                    '<p class="plant-preview-caption">' +
-                        r.images.length + ' photo' + (r.images.length === 1 ? '' : 's') +
-                        ' — click to open full size</p>'
+                    '<div class="photo-review-grid">' + figures + '</div>' +
+                    '<div class="photo-bulk" data-request="' + escapeHtml(r.id) + '">' +
+                        (r.images.length > 1
+                            ? '<button type="button" class="bulk-btn" data-bulk="approve">Approve all</button>' +
+                              '<button type="button" class="bulk-btn" data-bulk="reject">Reject all</button>'
+                            : '') +
+                        '<span class="photo-summary ' + (summary.undecided > 0 ? 'incomplete' : '') + '">' +
+                            renderVerdictSummary(r) + '</span>' +
+                    '</div>'
                 );
-            } else if (r.requestType === 'plant_addition') {
+            }
+
+            if (r.requestType === 'plant_addition') {
                 const p = r.payload || {};
                 const detail = [
                     p.scientificName,
-                    p.quantity != null ? p.quantity + ' in stock' : null,
                     p.parts && p.parts.heightMaxCm ? p.parts.heightMaxCm + ' cm tall' : null,
                     p.parts && p.parts.color ? p.parts.color : null
                 ].filter(Boolean);
@@ -481,6 +653,108 @@
                 parts.push('<p class="plant-preview-note">“' + escapeHtml(r.note) + '”</p>');
             }
             return parts.join('');
+        }
+
+        /** Updates one card's controls in place, so a click does not rebuild the list. */
+        function refreshVerdictUi(requestId) {
+            const r = pendingRequests.find(x => String(x.id) === String(requestId));
+            const card = document.querySelector(`.pending-request-card[data-id="${CSS.escape(String(requestId))}"]`);
+            if (!r || !card) return;
+            const verdicts = photoVerdicts[r.id] || {};
+            card.querySelectorAll('.photo-review').forEach(fig => {
+                const v = verdicts[fig.dataset.image] || '';
+                fig.classList.toggle('verdict-approve', v === 'approve');
+                fig.classList.toggle('verdict-reject', v === 'reject');
+                fig.querySelectorAll('.verdict-btn').forEach(btn => {
+                    const on = btn.dataset.verdict === v;
+                    btn.classList.toggle('selected', on);
+                    btn.setAttribute('aria-pressed', String(on));
+                });
+            });
+            const summaryEl = card.querySelector('.photo-summary');
+            if (summaryEl) {
+                summaryEl.textContent = renderVerdictSummary(r);
+                summaryEl.classList.toggle('incomplete', verdictSummary(r).undecided > 0);
+            }
+        }
+
+        const TAXONOMY_ORDER = ['kingdom', 'phylum', 'plantClass', 'order', 'family', 'genus', 'species'];
+        const TAXONOMY_LABELS = {
+            kingdom: 'Kingdom', phylum: 'Phylum', plantClass: 'Class', order: 'Order',
+            family: 'Family', genus: 'Genus', species: 'Species'
+        };
+
+        /**
+         * EVERYTHING the botanist sent, in one expandable block, so an admin does not
+         * have to approve a plant they have only half read. The queue list already
+         * carries the whole payload; the card used to show only a line of it.
+         */
+        function renderRequestDetails(r) {
+            const p = r.payload || {};
+            const rows = [];
+            // `html` is already escaped by the caller.
+            const row = (label, html) => {
+                if (html === null || html === undefined || html === '') return;
+                rows.push(`<div class="request-detail-row"><dt>${escapeHtml(label)}</dt><dd>${html}</dd></div>`);
+            };
+            const text = value => (value === null || value === undefined || value === '') ? '' : escapeHtml(value);
+            // Botanist-written free text: paragraphs, bullets and emphasis exactly as the public page shows them.
+            const rich = value => (value === null || value === undefined || value === '') ? '' : '<div class="rt">' + RichText.html(value) + '</div>';
+
+            row('Submitted by',
+                escapeHtml(r.submittedByName || r.submittedBy) + ' ' + RoleBadge.html(r.submittedByRole) +
+                (r.submittedByUsername && r.submittedByUsername !== r.submittedByName
+                    ? ` <span class="request-detail-muted">@${escapeHtml(r.submittedByUsername)}</span>` : ''));
+            row('Requested', text(formatDate(r.requestedAt)));
+
+            const isAddition = r.requestType === 'plant_addition';
+            const isContent = isAddition || r.requestType === 'plant_contribution';
+
+            if (isAddition) {
+                row('Common name', text(p.commonName));
+                row('Scientific name', text(p.scientificName));
+                const t = p.typeSpec || {};
+                if (t.typeName) {
+                    row('Plant type',
+                        plantBadge(t.typeName, t.toxicityLevel) +
+                        (t.isMedicinal ? ' <span class="request-detail-muted">Medicinal</span>' : '') +
+                        (t.isHarmful ? ` <span class="request-detail-muted">Harmful · ${escapeHtml(t.toxicityLevel)}</span>` : ''));
+                    row('Caution note', rich(t.cautionNote));
+                }
+                const taxonomy = TAXONOMY_ORDER.filter(k => p[k]).map(k => `${TAXONOMY_LABELS[k]}: ${escapeHtml(p[k])}`);
+                row('Taxonomy', taxonomy.length > 0 ? taxonomy.join(' · ')
+                    : '<span class="request-detail-muted">Not given, recorded as Unspecified</span>');
+            } else {
+                row('Plant', escapeHtml(r.plantName) + (r.type ? ' ' + plantBadge(r.typeLabel || r.type, r.toxicityLevel) : ''));
+            }
+
+            if (isContent) {
+                row('Uses', rich(p.uses));
+                row('Benefits', rich(p.benefits));
+                row('Things to watch out for', rich(p.harmful));
+                const parts = p.parts || {};
+                const measures = Object.keys(parts)
+                    .filter(k => parts[k] !== null && parts[k] !== undefined && parts[k] !== '')
+                    .map(k => `${escapeHtml(CHANGE_FIELD_LABELS['parts.' + k] || k)}: ${escapeHtml(parts[k])}`);
+                row('Measurements', measures.join('<br>'));
+                const photoCount = (r.images || []).length;
+                row('Photos', photoCount > 0 ? `${photoCount} attached` : '<span class="request-detail-muted">None</span>');
+            }
+            if (p.discoveryRequestId) row('From discovery report', text(p.discoveryRequestId));
+            if (r.requestType === 'plant_change') {
+                row('Covers', r.changeScope === 'base'
+                    ? 'The plant info only (names, type, taxonomy). No description is touched.'
+                    : r.changeScope === 'description'
+                        ? `One description written by the requester (<code>${escapeHtml(r.changeDescriptionId || '')}</code>). The plant info is not touched.`
+                        : 'Filed before requests were split: plant info and the primary description together.');
+                row(r.changeScope === 'description' ? 'Reason for the description change'
+                    : r.changeScope === 'base' ? 'Reason for the plant info change' : 'Reason', text(r.changeReason));
+            }
+            if (r.requestType === 'plant_taxonomy') row('Reason', text(r.taxonomyReason));
+            if (r.note) row('Note', text(r.note));
+
+            return `<details class="request-details"><summary>Full details</summary>` +
+                `<dl class="request-detail-list">${rows.join('')}</dl></details>`;
         }
 
         function renderPlantRequests() {
@@ -507,16 +781,16 @@
             list.innerHTML = pendingRequests.map(r => `
                 <div class="pending-request-card" data-id="${r.id}">
                     <div class="plant-request-body">
-                        <span class="plant-request-icon" aria-hidden="true">${iconForType(r.type)}</span>
                         <div class="request-info">
                             <h3>${escapeHtml(r.plantName)}
-                                <span class="request-type-badge ${typeBadgeClass(r.type)}">${escapeHtml(labelForType(r.type))}</span>
-                                <span class="request-kind-badge">${r.requestType === 'plant_addition' ? 'New plant' : 'Contribution'}</span>
+                                ${r.type ? plantBadge(r.typeLabel || r.type, r.toxicityLevel) : ''}
+                                <span class="request-kind-badge">${requestKindLabel(r.requestType, r)}</span>
                                 ${approvalModeBadge(r.approvalMode)}
                             </h3>
-                            <p>Submitted by: <strong>${escapeHtml(r.submittedByName || r.submittedBy)}</strong></p>
+                            <p>Submitted by: <strong>${escapeHtml(r.submittedByName || r.submittedBy)}</strong> ${RoleBadge.html(r.submittedByRole)}</p>
                             <p class="request-date">Requested: ${formatDate(r.requestedAt)}</p>
                             ${renderRequestPreview(r)}
+                            ${renderRequestDetails(r)}
                         </div>
                     </div>
                     <div class="request-actions">
@@ -534,16 +808,77 @@
             });
         }
 
+        // One delegated listener for the per-photo and bulk controls. Registered
+        // once here, not per render, so re-rendering the list never stacks them.
+        document.getElementById('plantRequestsList').addEventListener('click', event => {
+            const verdictBtn = event.target.closest('.verdict-btn');
+            const bulkBtn = event.target.closest('.bulk-btn');
+            if (verdictBtn) {
+                const fig = verdictBtn.closest('.photo-review');
+                const requestId = fig.dataset.request;
+                photoVerdicts[requestId] = photoVerdicts[requestId] || {};
+                // Pressing the selected verdict again clears it back to undecided.
+                photoVerdicts[requestId][fig.dataset.image] =
+                    photoVerdicts[requestId][fig.dataset.image] === verdictBtn.dataset.verdict
+                        ? undefined
+                        : verdictBtn.dataset.verdict;
+                refreshVerdictUi(requestId);
+            } else if (bulkBtn) {
+                const requestId = bulkBtn.closest('.photo-bulk').dataset.request;
+                const r = pendingRequests.find(x => String(x.id) === String(requestId));
+                if (!r) return;
+                photoVerdicts[requestId] = {};
+                (r.images || []).forEach(img => { photoVerdicts[requestId][img.imageId] = bulkBtn.dataset.bulk; });
+                refreshVerdictUi(requestId);
+            }
+        });
+
         async function handleRequestDecision(id, decision) {
-            const label = decision === 'approve' ? 'Approve' : 'Deny';
-            if (!confirm(`${label} this plant upload request?`)) return;
+            const request = pendingRequests.find(r => String(r.id) === String(id));
+            let body = {};
+            let question;
+
+            if (decision === 'approve' && request && request.requestType === 'plant_change') {
+                question = request.changeScope === 'base'
+                    ? 'Apply these changes to the plant info? They go live immediately. No description is changed.'
+                    : request.changeScope === 'description'
+                        ? 'Apply these changes to this botanist\u2019s description? They go live immediately. The plant info is not changed.'
+                        : 'Apply these changes to the plant? They go live immediately.';
+            } else if (decision === 'approve' && request && request.requestType !== 'plant_taxonomy' &&
+                (request.images || []).length > 0) {
+                // Every photo needs a verdict before the request can be approved:
+                // the server refuses a partial set, and a photo nobody looked at
+                // must never be approved by default.
+                const s = verdictSummary(request);
+                if (s.undecided > 0) {
+                    alert(`Decide every photo first — ${s.undecided} still need Approve or Reject.`);
+                    return;
+                }
+                body = { imageDecisions: {} };
+                request.images.forEach(img => {
+                    body.imageDecisions[img.imageId] = photoVerdicts[request.id][img.imageId];
+                });
+                question = `Approve this request with ${s.approve} photo${s.approve === 1 ? '' : 's'} approved` +
+                    (s.reject ? ` and ${s.reject} rejected` : '') + '?';
+            } else if (decision === 'approve' && request && request.requestType === 'plant_taxonomy') {
+                question = 'Apply these taxonomy changes to the plant?';
+            } else if (decision === 'deny' && request && request.requestType === 'plant_change') {
+                question = request.changeScope === 'description'
+                    ? 'Deny this description change? The description stays as it is.'
+                    : 'Deny this change request? The plant stays as it is.';
+            } else if (decision === 'deny' && request && (request.images || []).length > 0) {
+                question = 'Deny this request? Every photo in it will be rejected.';
+            } else {
+                question = `${decision === 'approve' ? 'Approve' : 'Deny'} this plant upload request?`;
+            }
+            if (!confirm(question)) return;
 
             try {
                 const response = await fetch(`/admin/api/plant-requests/${id}/${decision}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({})
+                    body: JSON.stringify(body)
                 });
                 if (!response.ok) {
                     const err = await response.json().catch(() => ({}));
@@ -555,12 +890,15 @@
                 alert('Error: ' + err.message);
                 return;
             }
+            delete photoVerdicts[id];
             // Approving/denying resolves the request, so drop it from the
             // pending list, and refresh the inventory in case it was approved
             // (the reviewer's account then shows up as "Reviewed By").
             pendingRequests = pendingRequests.filter(r => String(r.id) !== String(id));
             renderPlantRequests();
             loadPlants();
+            // A photo that could not be filed is flagged by the decision itself.
+            if (window.refreshImageIssues) window.refreshImageIssues();
         }
 
         // -----------------------------------------------------------------
@@ -590,39 +928,53 @@
 
             if (plants.length === 0) {
                 tbody.innerHTML = '';
+                emptyState.querySelector('p').textContent = plantStatus === 'archived'
+                    ? 'No archived plants.'
+                    : 'No plants match your search.';
                 emptyState.hidden = false;
             } else {
                 emptyState.hidden = true;
                 tbody.innerHTML = plants.map(p => {
                     const isExpanded = expandedPlantId === p.id;
+                    const isArchived = Boolean(p.archivedAt);
                     const parts = p.parts || {};
                     const desc = p.description || {};
                     const missing = p.missingTaxonomyLevels || [];
                     const gapBadge = missing.length
                         ? `<span class="taxonomy-gap-badge" title="Missing taxonomy: ${escapeHtml(missing.join(', '))}">Needs taxonomy</span>`
                         : '';
+                    const archivedBadge = isArchived
+                        ? `<span class="archived-badge" title="Archived ${escapeHtml(formatDate(p.archivedAt))}">Archived</span>`
+                        : '';
+                    const pid = escapeHtml(p.id);
+                    const actions = isArchived
+                        ? `<button type="button" class="plant-act" data-act="restore" data-id="${pid}">Restore</button>
+                           <button type="button" class="plant-act danger" data-act="delete" data-id="${pid}">Delete</button>`
+                        : `<button type="button" class="plant-act" data-act="edit" data-id="${pid}">Edit</button>
+                           <button type="button" class="plant-act" data-act="archive" data-id="${pid}">Archive</button>`;
                     const row = `
-                        <tr class="plant-row" data-id="${escapeHtml(p.id)}">
+                        <tr class="plant-row ${isArchived ? 'is-archived' : ''}" data-id="${pid}">
                             <td>
-                                <button class="btn-expand ${isExpanded ? 'expanded' : ''}" data-id="${escapeHtml(p.id)}" aria-label="Show plant details" aria-expanded="${isExpanded}">
+                                <button class="btn-expand ${isExpanded ? 'expanded' : ''}" data-id="${pid}" aria-label="Show plant details" aria-expanded="${isExpanded}">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M6 9l6 6 6-6"></path>
                                     </svg>
                                 </button>
                             </td>
-                            <td class="plant-name-cell" data-label="Name">${escapeHtml(p.name)} ${gapBadge}</td>
-                            <td data-label="Type"><span class="${typeBadgeClass(p.type)}">${escapeHtml(labelForType(p.type, p.typeLabel))}</span></td>
+                            <td class="plant-name-cell" data-label="Name">${escapeHtml(p.name)} ${archivedBadge} ${gapBadge}</td>
+                            <td data-label="Type">${plantBadge(p.typeLabel || p.type, p.toxicityLevel)}</td>
                             <td data-label="Reviewed By">${escapeHtml(p.reviewedBy || '—')}</td>
                             <td data-label="Recorded By">${escapeHtml(p.recordedBy || '—')}</td>
                             <td data-label="Date Uploaded">${formatDate(p.dateUploaded)}</td>
+                            <td class="plant-actions-cell" data-label="Actions">${actions}</td>
                         </tr>
                     `;
 
                     if (!isExpanded) return row;
 
                     return row + `
-                        <tr class="plant-detail-row" data-detail-for="${escapeHtml(p.id)}">
-                            <td colspan="6">
+                        <tr class="plant-detail-row" data-detail-for="${pid}">
+                            <td colspan="7">
                                 <div class="plant-detail-content">
                                     <div class="plant-detail-item">
                                         <span class="label">Scientific Name</span>
@@ -646,15 +998,15 @@
                                     </div>
                                     <div class="plant-detail-item">
                                         <span class="label">Uses</span>
-                                        <span class="value">${escapeHtml(desc.uses || '—')}</span>
+                                        <div class="value rt">${RichText.html(desc.uses) || '—'}</div>
                                     </div>
                                     <div class="plant-detail-item">
                                         <span class="label">Benefits</span>
-                                        <span class="value">${escapeHtml(desc.benefits || '—')}</span>
+                                        <div class="value rt">${RichText.html(desc.benefits) || '—'}</div>
                                     </div>
                                     <div class="plant-detail-item">
                                         <span class="label">Harmful</span>
-                                        <span class="value">${escapeHtml(desc.harmful || '—')}</span>
+                                        <div class="value rt">${RichText.html(desc.harmful) || '—'}</div>
                                     </div>
                                     <div class="plant-detail-item">
                                         <span class="label">Approved Photos</span>
@@ -725,10 +1077,307 @@
             loadPlants();
         });
 
+        document.getElementById('plantStatusFilter').addEventListener('change', (e) => {
+            plantStatus = e.target.value;
+            plantsPage = 1;
+            expandedPlantId = null;
+            loadPlants();
+        });
+
         document.getElementById('taxonomyGapFilter').addEventListener('change', (e) => {
             taxonomyGapOnly = e.target.checked;
             plantsPage = 1;
             loadPlants();
+        });
+
+        // -----------------------------------------------------------------
+        // Inventory actions: edit (dialog), archive, restore, delete
+        // -----------------------------------------------------------------
+        const TAXONOMY_FIELDS = [
+            ['kingdom', 'Kingdom'], ['phylum', 'Phylum'], ['class', 'Class'], ['order', 'Order'],
+            ['family', 'Family'], ['genus', 'Genus'], ['species', 'Species']
+        ];
+        const DESCRIPTION_TEXT_FIELDS = [
+            ['uses', 'Uses'], ['benefits', 'Benefits'], ['harmful', 'Things to watch out for']
+        ];
+        const MEASUREMENT_FIELDS = [
+            ['heightMinCm', 'Height min (cm)', 'number'], ['heightMaxCm', 'Height max (cm)', 'number'],
+            ['heightNote', 'Height note', 'text'],
+            ['widthMinCm', 'Width min (cm)', 'number'], ['widthMaxCm', 'Width max (cm)', 'number'],
+            ['widthNote', 'Width note', 'text'],
+            ['color', 'Color', 'text'], ['shape', 'Shape', 'text'], ['texture', 'Texture', 'text']
+        ];
+
+        let editingPlantId = null;
+        let editData = null;          // GET /admin/api/plants/:id/edit
+        let editTab = 'base';
+        let editDescriptionId = null;
+
+        function editField(id, label, kind, value, wide) {
+            const v = escapeHtml(value == null ? '' : value);
+            let input;
+            if (kind === 'area') {
+                input = `<textarea data-richtext id="${id}" rows="4">${v}</textarea>`;
+            } else if (kind === 'number') {
+                input = `<input id="${id}" type="number" step="any" min="0" value="${v}">`;
+            } else {
+                input = `<input id="${id}" type="text" value="${v}">`;
+            }
+            return `<div class="plant-field ${wide ? 'wide' : ''}"><label for="${id}">${escapeHtml(label)}</label>${input}</div>`;
+        }
+
+        /** Save and Save & close are enabled and disabled together. */
+        function setSaveDisabled(disabled) {
+            document.getElementById('plantEditSave').disabled = disabled;
+            document.getElementById('plantEditSaveClose').disabled = disabled;
+        }
+
+        function editMessage(kind, text) {
+            const err = document.getElementById('plantEditError');
+            const ok = document.getElementById('plantEditOk');
+            err.hidden = kind !== 'error';
+            ok.hidden = kind !== 'ok';
+            (kind === 'error' ? err : ok).textContent = text || '';
+        }
+
+        function renderEditBase() {
+            const b = editData.base;
+            const t = b.type;
+            document.getElementById('plantEditHint').textContent =
+                'The names, type and taxonomy of the plant itself. Saving this never changes any botanist\u2019s description. A blank taxonomy box is left as it is.';
+            const level = ['mild', 'moderate', 'severe'].map(l =>
+                `<option value="${l}" ${t.toxicityLevel === l ? 'selected' : ''}>${l.charAt(0).toUpperCase() + l.slice(1)}</option>`).join('');
+            document.getElementById('plantEditBody').innerHTML =
+                '<div class="plant-form-grid">' +
+                    editField('edit-commonName', 'Common name', 'text', b.commonName) +
+                    editField('edit-scientificName', 'Scientific name', 'text', b.scientificName) +
+                    '<div class="plant-form-section">Plant type</div>' +
+                    editField('edit-typeName', 'Type name', 'text', t.typeName) +
+                    `<div class="plant-field"><label>Flags</label>
+                        <label class="plant-check"><input type="checkbox" id="edit-isMedicinal" ${t.isMedicinal ? 'checked' : ''}> Medicinal</label>
+                        <label class="plant-check"><input type="checkbox" id="edit-isHarmful" ${t.isHarmful ? 'checked' : ''}> Harmful</label></div>` +
+                    `<div class="plant-field"><label for="edit-toxicityLevel">Toxicity level (harmful plants)</label>
+                        <select id="edit-toxicityLevel" ${t.isHarmful ? '' : 'disabled'}>${level}</select></div>` +
+                    editField('edit-cautionNote', 'Caution note', 'area', t.cautionNote, true) +
+                    '<div class="plant-form-section">Taxonomy</div>' +
+                    TAXONOMY_FIELDS.map(([key, label]) => editField('edit-tax-' + key, label, 'text', editData.base.taxonomy[key])).join('') +
+                '</div>';
+            const harmful = document.getElementById('edit-isHarmful');
+            harmful.addEventListener('change', () => {
+                const sel = document.getElementById('edit-toxicityLevel');
+                sel.disabled = !harmful.checked;
+                if (harmful.checked && !sel.value) sel.value = 'mild';
+            });
+            if (t.isHarmful === false) document.getElementById('edit-toxicityLevel').value = 'mild';
+            document.getElementById('plantEditSave').textContent = 'Save plant info';
+            RichText.attachAll(document.getElementById('plantEditBody'));
+        }
+
+        function descriptionLabel(d, i) {
+            return `${d.authorName} \u00b7 ${d.isPrimary ? 'Primary' : 'Description ' + (i + 1)}` +
+                ` \u00b7 ${formatDate(d.createdAt)}`;
+        }
+
+        function renderEditDescription() {
+            const list = editData.descriptions;
+            const hint = document.getElementById('plantEditHint');
+            const body = document.getElementById('plantEditBody');
+            const save = document.getElementById('plantEditSave');
+            if (list.length === 0) {
+                hint.textContent = '';
+                body.innerHTML = '<p class="request-detail-muted">This plant has no approved description yet.</p>';
+                setSaveDisabled(true);
+                save.textContent = 'Save description';
+                return;
+            }
+            setSaveDisabled(false);
+            if (!list.some(d => d.descriptionId === editDescriptionId)) editDescriptionId = list[0].descriptionId;
+            const d = list.find(x => x.descriptionId === editDescriptionId);
+            hint.textContent =
+                'Each botanist\u2019s description is separate. Saving changes only the one chosen below. ' +
+                'Press Enter for a new line; use the toolbar for bold, bullets and highlights.';
+            body.innerHTML =
+                '<div class="plant-form-grid">' +
+                    `<div class="plant-field wide"><label for="edit-descPick">Description</label>
+                        <select id="edit-descPick">${list.map((x, i) =>
+                            `<option value="${escapeHtml(x.descriptionId)}" ${x.descriptionId === d.descriptionId ? 'selected' : ''}>${escapeHtml(descriptionLabel(x, i))}</option>`).join('')}</select></div>` +
+                    `<div class="plant-field wide"><label class="plant-check">
+                        <input type="checkbox" id="edit-makePrimary" ${d.isPrimary ? 'checked disabled' : ''}>
+                        ${d.isPrimary ? 'This is the primary description (shown first on the plant page and in the library)'
+                                      : 'Make this the primary description (shown first on the plant page and in the library)'}</label></div>` +
+                    '<div class="plant-form-section">Description</div>' +
+                    DESCRIPTION_TEXT_FIELDS.map(([key, label]) => editField('edit-d-' + key, label, 'area', d[key], true)).join('') +
+                    '<div class="plant-form-section">Measurements</div>' +
+                    MEASUREMENT_FIELDS.map(([key, label, kind]) => editField('edit-p-' + key, label, kind, d.parts[key])).join('') +
+                '</div>';
+            document.getElementById('edit-descPick').addEventListener('change', (e) => {
+                editDescriptionId = e.target.value;
+                editMessage('none');
+                renderEditDescription();
+            });
+            save.textContent = 'Save this description';
+            RichText.attachAll(body);
+        }
+
+        function renderEditTab() {
+            document.querySelectorAll('#plantEditForm .plant-tab').forEach(btn => {
+                const active = btn.dataset.tab === editTab;
+                btn.classList.toggle('active', active);
+                btn.setAttribute('aria-selected', String(active));
+            });
+            setSaveDisabled(false);
+            if (editTab === 'base') renderEditBase(); else renderEditDescription();
+        }
+
+        async function reloadEditData() {
+            const res = await fetch('/admin/api/plants/' + encodeURIComponent(editingPlantId) + '/edit', { credentials: 'include' });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Could not load the plant');
+            editData = data;
+        }
+
+        async function openPlantEdit(p) {
+            editingPlantId = p.id;
+            editTab = 'base';
+            editDescriptionId = null;
+            editData = null;
+            document.getElementById('plantEditTitle').textContent = 'Edit ' + p.name;
+            editMessage('none');
+            document.getElementById('plantEditHint').textContent = '';
+            document.getElementById('plantEditBody').innerHTML = '<p class="request-detail-muted">Loading…</p>';
+            setSaveDisabled(true);
+            document.getElementById('plantEditDialog').showModal();
+            try {
+                await reloadEditData();
+                renderEditTab();
+            } catch (err) {
+                editMessage('error', err.message);
+            }
+        }
+
+        document.querySelectorAll('#plantEditForm .plant-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!editData) return;
+                editTab = btn.dataset.tab;
+                editMessage('none');
+                renderEditTab();
+            });
+        });
+
+        document.getElementById('plantEditCancel').addEventListener('click', () => {
+            document.getElementById('plantEditDialog').close();
+        });
+
+        const valueOf = (id) => document.getElementById(id).value;
+
+        document.getElementById('plantEditForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            savePlantEdit(false);
+        });
+        document.getElementById('plantEditSaveClose').addEventListener('click', () => savePlantEdit(true));
+
+        /** Saves the tab being shown. With closeAfter, the dialog closes only if the save succeeded. */
+        async function savePlantEdit(closeAfter) {
+            if (!editData) return;
+            let url, body;
+            const base = '/admin/api/plants/' + encodeURIComponent(editingPlantId);
+
+            if (editTab === 'base') {
+                url = base;
+                const harmful = document.getElementById('edit-isHarmful').checked;
+                body = {
+                    commonName: valueOf('edit-commonName'),
+                    scientificName: valueOf('edit-scientificName'),
+                    type: {
+                        typeName: valueOf('edit-typeName'),
+                        isMedicinal: document.getElementById('edit-isMedicinal').checked,
+                        isHarmful: harmful,
+                        toxicityLevel: harmful ? valueOf('edit-toxicityLevel') : 'none',
+                        cautionNote: valueOf('edit-cautionNote')
+                    },
+                    taxonomy: {}
+                };
+                TAXONOMY_FIELDS.forEach(([key]) => { body.taxonomy[key] = valueOf('edit-tax-' + key); });
+            } else {
+                url = base + '/descriptions/' + encodeURIComponent(editDescriptionId);
+                body = { parts: {} };
+                DESCRIPTION_TEXT_FIELDS.forEach(([key]) => { body[key] = valueOf('edit-d-' + key); });
+                MEASUREMENT_FIELDS.forEach(([key]) => { body.parts[key] = valueOf('edit-p-' + key); });
+                const primary = document.getElementById('edit-makePrimary');
+                if (primary && !primary.disabled && primary.checked) body.makePrimary = true;
+            }
+
+            setSaveDisabled(true);
+            editMessage('none');
+            let saved = false;
+            try {
+                const res = await fetch(url, {
+                    method: 'PATCH',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    editMessage('error', data.error || 'Save failed');
+                    return;
+                }
+                saved = true;
+                loadPlants();
+                if (closeAfter) {
+                    document.getElementById('plantEditDialog').close();
+                    return;
+                }
+                await reloadEditData();
+                renderEditTab();
+                editMessage('ok', editTab === 'base' ? 'Plant info saved.' : 'Description saved.');
+            } catch (err) {
+                editMessage('error', (saved ? 'Saved, but the form could not refresh: ' : 'Save failed: ') + err.message);
+            } finally {
+                if (editData && !(saved && closeAfter)) setSaveDisabled(false);
+            }
+        }
+
+        // One delegated listener for every row action, registered once.
+        document.getElementById('plantsTableBody').addEventListener('click', async (e) => {
+            const btn = e.target.closest('.plant-act');
+            if (!btn) return;
+            const id = btn.dataset.id;
+            const plant = (lastPlantsResponse.plants || []).find(x => String(x.id) === String(id));
+            if (!plant) return;
+            const act = btn.dataset.act;
+            if (act === 'edit') { openPlantEdit(plant); return; }
+
+            let url = '/admin/api/plants/' + encodeURIComponent(id);
+            let method = 'POST';
+            if (act === 'archive') {
+                if (!confirm(`Archive "${plant.name}"? It disappears from the public library and can be restored later.`)) return;
+                url += '/archive';
+            } else if (act === 'restore') {
+                url += '/restore';
+            } else if (act === 'delete') {
+                const typed = prompt(`This permanently deletes "${plant.name}", its photos and its descriptions. Type DELETE to confirm.`);
+                if (typed !== 'DELETE') return;
+                method = 'DELETE';
+            } else {
+                return;
+            }
+
+            btn.disabled = true;
+            try {
+                const res = await fetch(url, { method, credentials: 'include' });
+                if (!res.ok) {
+                    const d = await res.json().catch(() => ({}));
+                    alert('Error: ' + (d.error || 'Action failed'));
+                    return;
+                }
+                expandedPlantId = null;
+                loadPlants();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            } finally {
+                btn.disabled = false;
+            }
         });
 
         // ---------------------------------------------------------
@@ -742,16 +1391,14 @@
                 const response = await fetch('/api/plants/types', { credentials: 'include' });
                 if (!response.ok) return;
                 const data = await response.json();
-                (data.types || []).forEach(t => {
-                    typeMeta[t.typeName] = t;
-                });
+                // The server groups the names in use, most used first.
                 // Populate the filter dropdown from the database.
                 const select = document.getElementById('plantTypeFilter');
                 const currentValue = select.value;
                 (data.types || []).forEach(t => {
                     const option = document.createElement('option');
                     option.value = t.typeName;
-                    option.textContent = t.label;
+                    option.textContent = t.typeName;
                     select.appendChild(option);
                 });
                 select.value = currentValue;
@@ -790,6 +1437,7 @@
             // is 'Unspecified'. kingdom and phylum are excluded deliberately: they
             // default correctly, so including them would match every row.
             if (taxonomyGapOnly) params.set('taxonomyGap', '1');
+            if (plantStatus === 'archived') params.set('archived', '1');
             params.set('page', String(plantsPage));
 
             try {
@@ -869,6 +1517,9 @@
          shape has no requestType field and sharing a renderer would mean one
          queue rendering the other's half-truths. -->
     <script src="/javascript/admin/admin-discoveries.js"></script>
+
+    <!-- "Image file problems": photos that could not be copied into their folder -->
+    <script src="/javascript/admin/admin-image-issues.js"></script>
 
     <!-- Shared topbar: highlights the section you are reading while you scroll and
          scrolls to a section when its tab is clicked (opening it first if collapsed) -->

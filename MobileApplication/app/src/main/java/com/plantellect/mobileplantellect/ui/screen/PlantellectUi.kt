@@ -40,14 +40,13 @@ internal fun PageHeading(eyebrow: String, title: String, subtitle: String) {
 }
 
 @Composable
-internal fun FeatureCard(emoji: String, title: String, description: String, modifier: Modifier = Modifier) {
+internal fun FeatureCard(emoji: String,
+                         title: String,
+                         description: String,
+                         modifier: Modifier = Modifier,
+                         onClick:(()-> Unit)? = null) {
     val c = MaterialTheme.colorScheme
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = c.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
+    val cardContent: @Composable ColumnScope.() -> Unit = {
         Row(
             Modifier.fillMaxWidth().padding(18.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -63,6 +62,24 @@ internal fun FeatureCard(emoji: String, title: String, description: String, modi
                 Text(description, style = MaterialTheme.typography.bodyMedium, color = c.onSurface.copy(alpha = .7f))
             }
         }
+    }
+    if (onClick != null) {
+        Card(
+            onClick = onClick,
+            modifier = modifier,
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = c.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            content = cardContent
+        )
+    } else {
+        Card(
+            modifier = modifier,
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = c.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            content = cardContent
+        )
     }
 }
 

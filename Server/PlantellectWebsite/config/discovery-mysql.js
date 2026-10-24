@@ -10,6 +10,8 @@ const { logImageReview } = require('../mongoose-schemas/Imgreview.js');
 const { resolveSetting, resolveLimit } = require('./limits.js');
 const { mysqlPool } = require('./pool-mysql');
 const { DISCOVERY_TYPE, normalizeScientificName, normalizeName, parsePaging, parsePayload } = require('./shared-mysql');
+const imageFiles = require('./image-files');
+const relocation = require('./image-relocation');
 
 // ---------------------------------------------------------------------------
 // Discovery reports
@@ -348,7 +350,7 @@ async function createDiscoveryReport({ accountId, note, location, predictions, f
     }
 
     const conn = await mysqlPool.getConnection();
-    const movedPaths = [];
+    const plan = new imageFiles.FileMovePlan();
     let createdDir = null;
     try {
         await conn.beginTransaction();
@@ -431,17 +433,28 @@ async function createDiscoveryReport({ accountId, note, location, predictions, f
 
         let imageIds = [];
         if (accepted.length > 0) {
-            createdDir = path.join(DISCOVERY_STORAGE_ROOT, requestId);
+            // A new report is PENDING, so its photos start in discoveries/pending/<requestId>/.
+            const relativeDir = imageFiles.discoveryRelativeDir('pending', requestId);
+            createdDir = path.join(DISCOVERY_STORAGE_ROOT, relativeDir);
             if (!fs.existsSync(createdDir)) fs.mkdirSync(createdDir, { recursive: true });
 
             for (const file of accepted) {
                 const ext = path.extname(file.originalname).toLowerCase();
                 // Never reuse the client-supplied name on disk.
                 const storedFilename = `${crypto.randomUUID()}${ext}`;
-                const relativePath = path.join(requestId, storedFilename);
+                const relativePath = path.join(relativeDir, storedFilename);
                 const destination = path.join(DISCOVERY_STORAGE_ROOT, relativePath);
-                fs.renameSync(file.path, destination);
-                movedPaths.push(destination);
+                // COPY, verify, and delete the temp upload only after the commit.
+                const copied = await plan.stage(file.path, destination, { mimeType: file.mimetype });
+                if (!copied.ok) {
+                    const failure = new Error(
+                        `The photo "${file.originalname}" could not be saved cleanly after ${copied.attempts || 1} attempts ` +
+                        `(${copied.error}). Nothing was submitted. Please try again.`
+                    );
+                    failure.userFacing = true;
+                    failure.code = 500;
+                    throw failure;
+                }
                 imageIds.push(await insertRow(
                     conn,
                     'discovery_images',
@@ -454,6 +467,7 @@ async function createDiscoveryReport({ accountId, note, location, predictions, f
         const dispatchedTo = await dispatchDiscovery(conn, requestId);
 
         await conn.commit();
+        await plan.finalize();
 
         // After the commit: Mongo is not in the transaction and must never be able
         // to fail the report.
@@ -465,23 +479,13 @@ async function createDiscoveryReport({ accountId, note, location, predictions, f
         return { requestId, imageIds, openReports: openReports + 1, maxOpenReports, dispatchedTo };
     } catch (err) {
         await conn.rollback();
-        for (const destination of movedPaths) {
-            try {
-                if (fs.existsSync(destination)) fs.unlinkSync(destination);
-            } catch (cleanupErr) {
-                console.error('Could not remove rolled-back report upload:', destination, cleanupErr.message);
-            }
-        }
+        await plan.rollback();
         if (createdDir) {
-            try {
-                if (fs.existsSync(createdDir)) fs.rmdirSync(createdDir);
-                if (fs.existsSync(DISCOVERY_STORAGE_ROOT) && fs.readdirSync(DISCOVERY_STORAGE_ROOT).length === 0) {
-                    fs.rmdirSync(DISCOVERY_STORAGE_ROOT);
-                }
-            } catch (cleanupErr) {
-                console.error('Could not remove rolled-back report folder:', cleanupErr.message);
-            }
+            // Removes the request's own folder only; the pending/approved/denied
+            // folders themselves stay.
+            imageFiles.pruneEmptyDirs(createdDir, path.dirname(createdDir));
         }
+        if (err && err.userFacing) return { error: err.message, code: err.code };
         throw err;
     } finally {
         conn.release();
@@ -534,7 +538,7 @@ async function listPendingDiscoveries({ page, pageSize } = {}) {
                ar.resolvedBy, ar.resolvedAt,
                ar.recordRequestId, ar.targetPlantId,
                ar.disqualifiedBy, ar.disqualifiedAt, ar.disqualifyReason,
-               a.accountId AS reporterId, a.username AS reporterName,
+               a.accountId AS reporterId, a.username AS reporterName, rl.roleName AS reporterRole,
                pr.firstName AS reporterFirstName, pr.lastName AS reporterLastName,
                claimer.username AS claimerName,
                cpr.firstName AS claimerFirstName, cpr.lastName AS claimerLastName,
@@ -552,6 +556,7 @@ disqualifier.username AS disqualifierName,
                (SELECT COUNT(*) FROM discovery_votes v WHERE v.requestId = ar.requestId) AS voteCount
         FROM approval_requests ar
         JOIN accounts a ON a.accountId = ar.accountId
+        JOIN roles rl ON rl.roleId = a.roleId
         LEFT JOIN profiles pr ON pr.accountId = a.accountId
         LEFT JOIN accounts claimer ON claimer.accountId = ar.claimedBy
         LEFT JOIN profiles cpr ON cpr.accountId = ar.claimedBy
@@ -622,6 +627,8 @@ function mapDiscoveryCard(row, images, options = {}) {
         reporterId: row.reporterId,
         reporterName: [row.reporterFirstName, row.reporterLastName].filter(Boolean).join(' ')
             || row.reporterName,
+        // Current role of the reporter (superadmin / admin / botanist / user), for the badge.
+        reporterRole: row.reporterRole || null,
         images: images.map((img) => ({
             imageId: img.imageId,
             // The BOTANIST queue's route, not the reporter's. The two differ only
@@ -1103,6 +1110,7 @@ async function disqualifyDiscovery(requestId, accountId, reason) {
  */
 async function reinstateDisqualified(requestId, accountId) {
     const conn = await mysqlPool.getConnection();
+    const plan = new imageFiles.FileMovePlan();
     try {
         await conn.beginTransaction();
         const [rows] = await conn.query(
@@ -1130,9 +1138,13 @@ async function reinstateDisqualified(requestId, accountId) {
                 "UPDATE approval_requests SET status = 'pending' WHERE requestId = ? AND status = 'rejected'",
                 [requestId]
             );
+            // Back to pending: the photos leave the denied folder too.
+            await relocation.relocateDiscoveryImages(conn, plan, requestId, 'pending');
         }
         await conn.query('DELETE FROM discovery_votes WHERE requestId = ?', [requestId]);
         await conn.commit();
+        await plan.finalize();
+        relocation.tidyAfter(plan);
 
         await logImageReview({
             requestId,
@@ -1148,6 +1160,7 @@ async function reinstateDisqualified(requestId, accountId) {
         return { requestId, reinstated: true, wasQuorum };
     } catch (err) {
         await conn.rollback();
+        await plan.rollback();
         throw err;
     } finally {
         conn.release();
@@ -1178,6 +1191,7 @@ async function countNotAPlantVotes(requestId) {
  */
 async function castNotAPlantVote(requestId, accountId) {
     const conn = await mysqlPool.getConnection();
+    const plan = new imageFiles.FileMovePlan();
     try {
         await conn.beginTransaction();
 
@@ -1274,9 +1288,13 @@ async function castNotAPlantVote(requestId, accountId) {
                  WHERE requestId = ?`,
                 [accountId, accountId, requestId]
             );
+            // Rejected by quorum: the report's photos go to the denied folder.
+            await relocation.relocateDiscoveryImages(conn, plan, requestId, 'rejected');
         }
 
         await conn.commit();
+        await plan.finalize();
+        relocation.tidyAfter(plan);
         return {
             requestId,
             voteCount,
@@ -1289,6 +1307,7 @@ async function castNotAPlantVote(requestId, accountId) {
         };
     } catch (err) {
         await conn.rollback();
+        await plan.rollback();
         throw err;
     } finally {
         conn.release();
@@ -1350,6 +1369,7 @@ async function adminDisqualifyDiscovery(requestId, adminId, reason) {
         return { error: `reason must be one of: ${DISQUALIFY_REASONS.join(', ')}`, code: 400 };
     }
     const conn = await mysqlPool.getConnection();
+    const plan = new imageFiles.FileMovePlan();
     try {
         await conn.beginTransaction();
         const [rows] = await conn.query(
@@ -1376,7 +1396,11 @@ async function adminDisqualifyDiscovery(requestId, adminId, reason) {
         // Clears the vote rows like any other closure, so a reinstated report
         // cannot immediately re-fire the same ballots.
         await conn.query('DELETE FROM discovery_votes WHERE requestId = ?', [requestId]);
+        // Closed by an admin: the photos go to the denied folder.
+        await relocation.relocateDiscoveryImages(conn, plan, requestId, 'rejected');
         await conn.commit();
+        await plan.finalize();
+        relocation.tidyAfter(plan);
 
         await logImageReview({
             requestId,
@@ -1392,6 +1416,7 @@ async function adminDisqualifyDiscovery(requestId, adminId, reason) {
         return { requestId, status: 'rejected', disqualifiedBy: adminId, disqualifyReason: reason };
     } catch (err) {
         await conn.rollback();
+        await plan.rollback();
         throw err;
     } finally {
         conn.release();
@@ -1481,18 +1506,15 @@ async function cancelDiscoveryReport(requestId, accountId) {
     }
 }
 
-/** Removes the request's folder, then the discovery root when it is empty. */
+/**
+ * Removes the report's now-empty folder from whichever state folder holds it
+ * (pending / approved / denied). The state folders and the discovery root are
+ * part of the layout and are never removed.
+ */
 function removeEmptyDiscoveryFolders(requestId) {
-    try {
-        const requestDir = path.join(DISCOVERY_STORAGE_ROOT, requestId);
-        if (fs.existsSync(requestDir) && fs.readdirSync(requestDir).length === 0) {
-            fs.rmdirSync(requestDir);
-        }
-        if (fs.existsSync(DISCOVERY_STORAGE_ROOT) && fs.readdirSync(DISCOVERY_STORAGE_ROOT).length === 0) {
-            fs.rmdirSync(DISCOVERY_STORAGE_ROOT);
-        }
-    } catch (err) {
-        console.error('Could not remove discovery folders:', err.message);
+    for (const state of imageFiles.STATES) {
+        const stateDir = path.join(DISCOVERY_STORAGE_ROOT, settings.plantImages.statusFolders[state]);
+        imageFiles.pruneEmptyDirs(path.join(stateDir, requestId), stateDir);
     }
 }
 
@@ -1636,12 +1658,13 @@ async function listDiscoveryReports({ status, page, pageSize } = {}) {
                 ar.claimedBy, ar.claimedAt, ar.claimSource, ar.recordRequestId, ar.targetPlantId,
                 ar.disqualifiedBy, ar.disqualifyReason,
                 ar.reviewedBy, ar.approvalMode,
-                a.accountId AS submitterId, a.username AS submitterName,
+                a.accountId AS submitterId, a.username AS submitterName, rl.roleName AS submitterRole,
                 pr.firstName AS submitterFirstName, pr.lastName AS submitterLastName,
                 claimer.username AS claimerName,
                 (SELECT COUNT(*) FROM discovery_votes v WHERE v.requestId = ar.requestId) AS voteCount
          FROM approval_requests ar
          JOIN accounts a ON a.accountId = ar.accountId
+         JOIN roles rl ON rl.roleId = a.roleId
          LEFT JOIN profiles pr ON pr.accountId = a.accountId
          LEFT JOIN accounts claimer ON claimer.accountId = ar.claimedBy
          ${whereSql}
@@ -1669,6 +1692,7 @@ async function listDiscoveryReports({ status, page, pageSize } = {}) {
                 requestedAt: r.createdAt,
                 submittedBy: r.submitterId,
                 submittedByName: fullName || r.submitterName,
+                submittedByRole: r.submitterRole,
                 note: payload.note || r.note || null,
                 location: payload.location || null,
                 predictions,

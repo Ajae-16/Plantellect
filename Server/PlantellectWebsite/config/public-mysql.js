@@ -3,17 +3,17 @@
 
 const { mysqlPool } = require('./pool-mysql');
 const { parsePaging, escapeLike, PARTS_SELECT, partsFromRow, DISCOVERY_TYPE } = require('./shared-mysql');
-const { getContributorSummary } = require('./plant-mysql');
+const { getContributorPeople } = require('./plant-mysql');
 
-// ---------------------------------------------------------------------------
-// Public reads
-// ---------------------------------------------------------------------------
-
-/** Only plants that have an approved primary description are publicly visible. */
-const PUBLIC_VISIBILITY = `EXISTS (
+/**
+ * A plant is publicly visible when it has an approved primary description.
+ * ARCHIVE-OFF: the archivedAt check is disabled until the column exists.
+ */
+// ARCHIVE-OFF: const PUBLIC_VISIBILITY = `(p.archivedAt IS NULL AND EXISTS (
+const PUBLIC_VISIBILITY = `(EXISTS (
     SELECT 1 FROM plant_description pd
     WHERE pd.plantId = p.plantId AND pd.status = 'approved' AND pd.isPrimary = TRUE
-)`;
+))`;
 
 async function listPublicPlants({ search, type, page, pageSize }) {
     const paging = parsePaging({ page, pageSize });
@@ -33,11 +33,16 @@ async function listPublicPlants({ search, type, page, pageSize }) {
 
     const [rows] = await mysqlPool.query(
         `SELECT p.plantId, p.commonName, p.scientificName, p.quantity,
-                t.typeName, t.label AS typeLabel, t.icon AS typeIcon, t.badgeClass AS typeBadgeClass,
-                t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote,
+                t.typeName, t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote,
                 (SELECT i.imageId FROM plant_images i
                  WHERE i.plantId = p.plantId AND i.status = 'approved'
-                 ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId
+                 ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId,
+                (SELECT d.benefits FROM plant_description d
+                 WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE
+                 LIMIT 1) AS primaryBenefits,
+                (SELECT d.harmful FROM plant_description d
+                 WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE
+                 LIMIT 1) AS primaryHarmful
          FROM plants p
          JOIN plant_types t ON p.typeId = t.typeId
          ${whereSql}
@@ -58,14 +63,16 @@ async function listPublicPlants({ search, type, page, pageSize }) {
             scientificName: r.scientificName,
             quantity: r.quantity,
             type: r.typeName,
-            typeLabel: r.typeLabel,
-            typeIcon: r.typeIcon,
-            typeBadgeClass: r.typeBadgeClass,
+            typeLabel: r.typeName,   // kept for older clients; the name IS the label now
             isMedicinal: Boolean(r.isMedicinal),
             isHarmful: Boolean(r.isHarmful),
             toxicityLevel: r.toxicityLevel,
             cautionNote: r.cautionNote,
-            imageUrl: r.heroImageId ? `/api/plants/${r.plantId}/images/${r.heroImageId}` : null
+            imageUrl: r.heroImageId ? `/api/plants/${r.plantId}/images/${r.heroImageId}` : null,
+            description: {
+                benefits: r.primaryBenefits || '',
+                harmful: r.primaryHarmful || ''
+            }
         })),
         total: countRows[0].total,
         page: paging.page,
@@ -76,8 +83,7 @@ async function listPublicPlants({ search, type, page, pageSize }) {
 async function getPublicPlantDetail(plantId) {
     const [rows] = await mysqlPool.query(
         `SELECT p.plantId, p.commonName, p.scientificName, p.quantity, p.createdAt,
-                t.typeName, t.label AS typeLabel, t.icon AS typeIcon, t.badgeClass AS typeBadgeClass,
-                t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote
+                t.typeName, t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote
          FROM plants p
          JOIN plant_types t ON p.typeId = t.typeId
          WHERE p.plantId = ? AND ${PUBLIC_VISIBILITY}`,
@@ -101,15 +107,13 @@ async function getPublicPlantDetail(plantId) {
          FROM plant_description d
          JOIN accounts a ON d.accountId = a.accountId
          LEFT JOIN profiles pr ON pr.accountId = a.accountId
-         -- LEFT JOIN, not INNER: a description without measurements must still
-         -- be listed, it just reports parts: null.
          LEFT JOIN plant_parts pp ON d.partsId = pp.partId
          WHERE d.plantId = ? AND d.status = 'approved'
          ORDER BY d.isPrimary DESC, d.createdAt ASC`,
         [plantId]
     );
 
-    const summary = await getContributorSummary(plantId);
+    const people = await getContributorPeople(plantId);
 
     return {
         id: p.plantId,
@@ -117,9 +121,7 @@ async function getPublicPlantDetail(plantId) {
         scientificName: p.scientificName,
         quantity: p.quantity,
         type: p.typeName,
-        typeLabel: p.typeLabel,
-        typeIcon: p.typeIcon,
-        typeBadgeClass: p.typeBadgeClass,
+        typeLabel: p.typeName,
         isMedicinal: Boolean(p.isMedicinal),
         isHarmful: Boolean(p.isHarmful),
         toxicityLevel: p.toxicityLevel,
@@ -144,11 +146,9 @@ async function getPublicPlantDetail(plantId) {
             parts: partsFromRow(d),
             createdAt: d.createdAt
         })),
-        recordedBy: summary.recordedBy,
-        reviewedBy: summary.reviewedBy,
-        //  A plant can carry "Reported By: <user>, Recorded By: <botanist>"
-        // with no ambiguity about who wrote what.
-        reportedBy: summary.reportedBy
+        recordedBy: people.recordedBy,
+        reviewedBy: people.reviewedBy,
+        reportedBy: people.reportedBy
     };
 }
 
@@ -165,9 +165,6 @@ async function getBotanistProfile(accountId) {
     if (rows.length === 0) return null;
     const a = rows[0];
 
-    // reviewedCount stays reviewer-only, and reportedCount is a SEPARATE column
-    // for role = 'reporter' — not folded into reviewedCount, and never added to a
-    // "contributed" figure. They are different claims and must not blur.
     const [stats] = await mysqlPool.query(
         `SELECT COUNT(DISTINCT pc.plantId) AS plantCount,
                 COALESCE(SUM(CASE WHEN pc.role = 'reviewer' THEN 1 ELSE 0 END), 0) AS reviewedCount,
@@ -177,18 +174,9 @@ async function getBotanistProfile(accountId) {
         [accountId]
     );
 
-    // The verified-contributions grid filters to role = 'contributor'. Without
-    // that filter a reported species would render under "No verified
-    // contributions yet" as though the reporter had verified it. Filtering is not
-    // enough on its own, which is why there is a separate Reported grid below.
-    //
-    // Both queries are INLINE here — there is no listContributorPlants or
-    // getContributorStats function to edit, and a fresh one would omit the
-    // PUBLIC_VISIBILITY guard, which is exactly what keeps an unapproved plant off
-    // a profile.
     const contributionSelect = `
         SELECT p.plantId, p.commonName, p.scientificName, pc.role, pc.createdAt,
-                t.typeName, t.label AS typeLabel,
+                t.typeName, t.toxicityLevel,
                 (SELECT i.imageId FROM plant_images i
                  WHERE i.plantId = p.plantId AND i.status = 'approved'
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId
@@ -231,39 +219,42 @@ async function getBotanistProfile(accountId) {
             scientificName: c.scientificName,
             role: c.role,
             type: c.typeName,
-            typeLabel: c.typeLabel,
+            typeLabel: c.typeName,
+            toxicityLevel: c.toxicityLevel,
             imageUrl: c.heroImageId ? `/api/plants/${c.plantId}/images/${c.heroImageId}` : null
         })),
-        // A separate grid over role = 'reporter', same joins and the same
-        // PUBLIC_VISIBILITY guard. Showing the distinction to a reader is better
-        // than silently hiding it.
         reported: reported.map((c) => ({
             id: c.plantId,
             name: c.commonName,
             scientificName: c.scientificName,
             role: c.role,
             type: c.typeName,
-            typeLabel: c.typeLabel,
+            typeLabel: c.typeName,
+            toxicityLevel: c.toxicityLevel,
             imageUrl: c.heroImageId ? `/api/plants/${c.plantId}/images/${c.heroImageId}` : null
         }))
     };
 }
 
+/**
+ * The type NAMES in use, for the suggestion list on the record form and for the
+ * library filter. Every plant owns its own plant_types row, so this is a
+ * GROUP BY on the name, not a list of rows: "Herbal" appears once however many
+ * plants carry it. The column collation is case-insensitive, so "herbal" and
+ * "Herbal" group together. Most-used first, so the common names are on top.
+ */
 async function listPlantTypes() {
     const [rows] = await mysqlPool.query(
-        `SELECT typeId, typeName, label, icon, badgeClass, isMedicinal, isHarmful, toxicityLevel, cautionNote
-         FROM plant_types ORDER BY label ASC`
+        `SELECT MIN(t.typeName) AS typeName, COUNT(*) AS plantCount
+         FROM plant_types t
+         JOIN plants p ON p.typeId = t.typeId
+         GROUP BY t.typeName
+         ORDER BY plantCount DESC, typeName ASC`
     );
     return rows.map((r) => ({
-        typeId: r.typeId,
         typeName: r.typeName,
-        label: r.label,
-        icon: r.icon,
-        badgeClass: r.badgeClass,
-        isMedicinal: Boolean(r.isMedicinal),
-        isHarmful: Boolean(r.isHarmful),
-        toxicityLevel: r.toxicityLevel,
-        cautionNote: r.cautionNote
+        label: r.typeName,   // kept for older clients
+        plantCount: Number(r.plantCount)
     }));
 }
 
@@ -271,6 +262,7 @@ async function listPlantTypes() {
 async function resolveScientificNames(names) {
     if (!names.length) return new Map();
     const placeholders = names.map(() => '?').join(',');
+    // ARCHIVE-OFF: add "p.archivedAt IS NULL AND" back to the WHERE clause below
     const [rows] = await mysqlPool.query(
         `SELECT p.plantId, p.scientificName, p.commonName,
                 (SELECT i.imageId FROM plant_images i
@@ -284,6 +276,7 @@ async function resolveScientificNames(names) {
 
 /** Species present in the database, in classes.json, or both. */
 async function getMlCoverage(classes) {
+    // ARCHIVE-OFF: add "WHERE p.archivedAt IS NULL" back to the query below
     const [rows] = await mysqlPool.query(
         `SELECT DISTINCT p.scientificName FROM plants p
          JOIN plant_images i ON i.plantId = p.plantId AND i.status = 'approved'`
@@ -299,26 +292,8 @@ async function getMlCoverage(classes) {
 
 /**
  * Every species somebody has already filed a discovery report about, by name.
- *
- * The gap aggregation runs in Mongo and these names live in MySQL, so
- * they have to cross over — which means this endpoint now depends on BOTH
- * databases, and the failure mode to avoid is specific: a MySQL error that
- * returns an UNFILTERED list is indistinguishable from a working card, and it
- * fills the dashboard with species the team already handled. So this THROWS on
- * failure rather than returning an empty array, and the caller turns a throw into
- * `degraded: true` with no rows. An empty array would silently disable the filter
- * and look like a healthy answer.
- *
- * EVERY plant_discovery request counts, whatever its status. A report that was
- * rejected as not-a-plant, withdrawn, or closed by the quorum has all been
- * adjudicated, and re-listing the species is how a signal gets ignored. Only
- * reports that have never been decided are work in progress, and `reported` on the
- * scan feed  already covers the overlap for reports filed
- * straight from a scan.
- *
- * `executor` is a parameter rather than the pool so the failing branch is
- * reachable from a test with a deliberately broken executor, rather than only by
- * breaking a live table.
+ * THROWS on failure rather than returning an empty array, so the caller can
+ * report `degraded: true` instead of silently disabling the filter.
  */
 async function listHandledDiscoverySpecies(executor = mysqlPool) {
     const [rows] = await executor.query(

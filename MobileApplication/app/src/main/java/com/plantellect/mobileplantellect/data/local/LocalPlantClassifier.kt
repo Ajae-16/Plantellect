@@ -27,13 +27,15 @@ private enum class Mode { RAW, ZERO_ONE, MINUS_ONE_ONE }
 
 class LocalPlantClassifier(
     private val context: Context,
-    private val assetDir: String = "mobilenet"
+    private val assetDir: String = ""   // model files sit in the assets root
 ) {
     private val lock = Any()
     private var interpreterFp16: Interpreter? = null
     private var interpreterFp32: Interpreter? = null
-    private var loadAttemptedFp16 = false
-    private var loadAttemptedFp32 = false
+    /** Why the last load failed (null when fine). Shown in the UI so "unavailable" is explainable. */
+    @Volatile var lastError: String? = null
+        private set
+    private fun assetPath(name: String) = if (assetDir.isBlank()) name else "$assetDir/$name"
     private var classes: List<ClassInfo> = emptyList()
     private var mode = Mode.RAW
 
@@ -47,33 +49,25 @@ class LocalPlantClassifier(
 
     /** Tries to load the requested variant. Returns true on success. Call off the main thread. */
     fun ensureLoaded(variant: Variant = Variant.FP32): Boolean = synchronized(lock) {
-        return when (variant) {
-            Variant.FP16 -> ensureLoadedVariant(Variant.FP16) { loadAttemptedFp16 = true }
-            Variant.FP32 -> ensureLoadedVariant(Variant.FP32) { loadAttemptedFp32 = true }
+        when (variant) {
+            Variant.FP16 -> ensureLoadedVariant(Variant.FP16)
+            Variant.FP32 -> ensureLoadedVariant(Variant.FP32)
         }
     }
 
-    private fun ensureLoadedVariant(variant: Variant, markAttempted: () -> Unit): Boolean {
+    private fun ensureLoadedVariant(variant: Variant): Boolean {
         val interpreter = when (variant) {
             Variant.FP16 -> interpreterFp16
             Variant.FP32 -> interpreterFp32
         }
         if (interpreter != null) return true
 
-        val attempted = when (variant) {
-            Variant.FP16 -> loadAttemptedFp16
-            Variant.FP32 -> loadAttemptedFp32
-        }
-        if (attempted) return false
-
-        markAttempted()
-
         try {
             val modelFile = when (variant) {
                 Variant.FP16 -> "plantellect_model_fp16.tflite"
                 Variant.FP32 -> "plantellect_model_fp32.tflite"
             }
-            val bytes = context.assets.open("$assetDir/$modelFile").use { it.readBytes() }
+            val bytes = context.assets.open(assetPath(modelFile)).use { it.readBytes() }
             val model = ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).put(bytes)
             model.rewind()
 
@@ -89,7 +83,8 @@ class LocalPlantClassifier(
 
             val outputs = interp.getOutputTensor(0).shape().last()
             if (outputs != classes.size) {
-                Log.e(TAG, "Model has $outputs outputs but classes.json has ${classes.size} entries")
+                lastError = "Model has $outputs outputs but classes.json has ${classes.size} entries"
+                Log.e(TAG, lastError!!)
                 interp.close()
                 return false
             }
@@ -98,10 +93,13 @@ class LocalPlantClassifier(
                 Variant.FP16 -> interpreterFp16 = interp
                 Variant.FP32 -> interpreterFp32 = interp
             }
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "On-device model ($variant) unavailable: ${e.message}")
-            false
+            lastError = null
+            return true
+        } catch (e: Throwable) {
+            // Throwable: a missing native lib is an UnsatisfiedLinkError, not an Exception.
+            lastError = "${e.javaClass.simpleName}: ${e.message}"
+            Log.w(TAG, "On-device model ($variant) unavailable: $lastError")
+            return false
         }
     }
 
@@ -110,11 +108,11 @@ class LocalPlantClassifier(
         val effectiveVariant = if (!ensureLoaded(variant)) fallbackVariant(variant) else variant
         if (!ensureLoaded(effectiveVariant)) return null
 
-        synchronized(lock) {
+        return synchronized(lock) {
             val interp = when (effectiveVariant) {
                 Variant.FP16 -> interpreterFp16
                 Variant.FP32 -> interpreterFp32
-            } ?: return null
+            } ?: return@synchronized null
 
             val inTensor = interp.getInputTensor(0)
             val h = inTensor.shape()[1]
@@ -126,7 +124,7 @@ class LocalPlantClassifier(
             val top = probs.indices.sortedByDescending { probs[it] }.take(topK).map {
                 LocalPrediction(classes[it].scientific, classes[it].kind, probs[it])
             }
-            return LocalResult(top)
+            LocalResult(top)
         }
     }
 
@@ -172,7 +170,7 @@ class LocalPlantClassifier(
     }
 
     private fun readClasses(): List<ClassInfo> {
-        val root = JSONObject(context.assets.open("$assetDir/classes.json").bufferedReader().use { it.readText() })
+        val root = JSONObject(context.assets.open(assetPath("classes.json")).bufferedReader().use { it.readText() })
         return root.keys().asSequence().map { it.toInt() }.sorted().map { i ->
             val o = root.getJSONObject(i.toString())
             ClassInfo(o.optString("scientific"), o.optString("kind", "species"))
@@ -180,7 +178,7 @@ class LocalPlantClassifier(
     }
 
     private fun readMode(): Mode = try {
-        val o = JSONObject(context.assets.open("$assetDir/preprocessing.json").bufferedReader().use { it.readText() })
+        val o = JSONObject(context.assets.open(assetPath("preprocessing.json")).bufferedReader().use { it.readText() })
         when (o.optString("mode", "raw")) {
             "zero_one" -> Mode.ZERO_ONE
             "minus_one_one" -> Mode.MINUS_ONE_ONE

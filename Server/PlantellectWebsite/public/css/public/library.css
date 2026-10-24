@@ -13,9 +13,10 @@
 /* Background comes from public-theme.css (shared gradient for
    library, scan and profile), so nothing is hardcoded here.
    overflow-x is "clip", not "hidden": hidden turns body into its own scroll
-   container and breaks the sticky top bar. */
+   container and breaks the sticky top bar. min-height, not height: a body that
+   is exactly one screen tall lets the sticky top bar scroll away with it. */
 body, html {
-    height: 100%;
+    min-height: 100%;
     width: 100%;
     overflow-x: clip;
 }
@@ -168,6 +169,72 @@ body, html {
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+/* ----- Watch out / benefits note on each card ----- */
+
+.plant-grid > .plant-link {
+    display: block;
+    height: 100%;
+    text-decoration: none;
+    color: inherit;
+}
+
+.plant-grid .plant-card {
+    height: 100%;
+}
+
+/* the type line sits closer to the note */
+.plant-grid .plant-card .plant-card-type {
+    padding-bottom: 8px;
+}
+
+.plant-note {
+    margin-top: auto;              /* pushes "More" to the bottom of every card */
+    padding: 0 18px 16px;
+    text-align: left;
+}
+
+.plant-note-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-forest-green);
+}
+
+.plant-note.is-harmful .plant-note-label {
+    color: var(--color-error, #d9534f);
+}
+
+.plant-note-text {
+    margin-top: 4px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: #4d6054;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;         /* shows "..." when the text is too long */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.plant-note.is-harmful .plant-note-text {
+    color: #8a2f2b;
+}
+
+.plant-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-spanish-green, #2e7d32);
+}
+
+.plant-grid .plant-card:hover .plant-more {
+    text-decoration: underline;
 }
 
 /* =========================================

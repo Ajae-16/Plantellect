@@ -8,10 +8,14 @@
  *   botanist             the original profile
  *   admin / superadmin   an administrator profile (reviewing statistics)
  *
- * An administrator profile is only returned to a botanist or an administrator.
- * Everyone else gets a 404 from the server, which this page shows as "not
- * available" rather than revealing that the account exists.
+ * An administrator profile is only returned to an administrator. Everyone else
+ * gets a 404 from the server, which this page shows as "not available" rather
+ * than revealing that the account exists.
+ *
+ * Theme and the back button are handled by sidebar.js.
  */
+
+const UNAVAILABLE = 'Profile not found or not available to you.';
 
 function escapeHtml(str) {
     const div = document.createElement('div');
@@ -26,33 +30,6 @@ function initialsFor(name) {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// The page markup calls toggleTheme() from the header button, so it has to be
-// on the global scope. Icon shows what you will switch TO.
-function applyTheme(mode) {
-    const body = document.body;
-    const themeIcon = document.getElementById('themeIcon');
-    const themeBtn = document.getElementById('themeToggleBtn');
-    if (!themeIcon || !themeBtn) return;
-
-    if (mode === 'light') {
-        body.classList.add('light-mode');
-        themeIcon.textContent = 'dark_mode';
-        themeBtn.title = 'Switch to Dark Mode';
-    } else {
-        body.classList.remove('light-mode');
-        themeIcon.textContent = 'light_mode';
-        themeBtn.title = 'Switch to Light Mode';
-    }
-    localStorage.setItem('plantellect-theme', mode);
-}
-
-function toggleTheme() {
-    const isLight = document.body.classList.contains('light-mode');
-    applyTheme(isLight ? 'dark' : 'light');
-}
-
-window.toggleTheme = toggleTheme;
-
 function setText(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
@@ -63,13 +40,49 @@ function setHidden(id, hidden) {
     if (el) el.hidden = hidden;
 }
 
+/** Shows only the message, so a failed or restricted load never shows stale "—" stats. */
+function showUnavailable(message) {
+    document.body.classList.add('profile-unavailable');
+    setText('botanistName', message);
+    setText('botanistBio', '');
+    setText('botanistAvatar', '—');
+    const grid = document.getElementById('contributionGrid');
+    if (grid) grid.innerHTML = '';
+    setHidden('reportedSection', true);
+}
+
+/**
+ * One plant card. Uses its own .profile-plant-card classes (NOT .plant-card),
+ * so none of the library card styling can leak into the profile page.
+ */
+function renderPlantCard(c, role) {
+    const name = c && c.name ? c.name : 'Unnamed plant';
+    const media = c && c.imageUrl
+        ? `<img class="profile-plant-card__media" src="${escapeHtml(c.imageUrl)}" alt="${escapeHtml(name)}" loading="lazy">`
+        : '<div class="profile-plant-card__media profile-plant-card__placeholder" aria-hidden="true">🌿</div>';
+    const sci = c && c.scientificName
+        ? `<p class="profile-plant-card__sci">${escapeHtml(c.scientificName)}</p>`
+        : '';
+    const meta = [role, c && (c.typeLabel || c.type)].filter(Boolean).join(' · ');
+
+    return `
+        <a href="plant-profile.html?plantId=${encodeURIComponent(c && c.id)}" class="profile-plant-card">
+            ${media}
+            <div class="profile-plant-card__body">
+                <h4>${escapeHtml(name)}</h4>
+                ${sci}
+                <small>${escapeHtml(meta)}</small>
+            </div>
+        </a>`;
+}
+
 /**
  * The verified-contributions grid, filtered to role = 'contributor'.
  *
  * The label is part of the claim: a species this botanist REPORTED is not one
  * they verified, so rendering both under one heading would assert something
  * false. The reported grid below is a separate grid over role = 'reporter' for
- * the same reason — showing the distinction is better than hiding it.
+ * the same reason.
  *
  * For an administrator the same grid lists the plants they reviewed, labelled
  * "Reviewed".
@@ -78,45 +91,25 @@ function renderContributions(contributions, cardLabel, emptyText) {
     const grid = document.getElementById('contributionGrid');
     if (!grid) return;
 
-    if (!contributions || contributions.length === 0) {
+    if (!Array.isArray(contributions) || contributions.length === 0) {
         grid.innerHTML = `<p class="muted">${escapeHtml(emptyText)}</p>`;
         return;
     }
-
-    grid.innerHTML = contributions.map(function (c) {
-        return renderPlantCard(c, cardLabel);
-    }).join('');
+    grid.innerHTML = contributions.map(c => renderPlantCard(c, cardLabel)).join('');
 }
 
-/** species this account flagged, over role = 'reporter'. */
+/** Species this account flagged, over role = 'reporter'. */
 function renderReported(reported) {
     const grid = document.getElementById('reportedGrid');
     const section = document.getElementById('reportedSection');
     if (!grid || !section) return;
 
-    if (!reported || reported.length === 0) {
+    if (!Array.isArray(reported) || reported.length === 0) {
         section.hidden = true;
         return;
     }
     section.hidden = false;
-    grid.innerHTML = reported.map(function (c) {
-        return renderPlantCard(c, 'Reported');
-    }).join('');
-}
-
-function renderPlantCard(c, role) {
-    const image = c.imageUrl
-        ? `<img src="${escapeHtml(c.imageUrl)}" alt="${escapeHtml(c.name)}">`
-        : '<div class="plant-card-placeholder" aria-hidden="true">🌿</div>';
-    return `
-        <a href="plant-profile.html?plantId=${encodeURIComponent(c.id)}" class="plant-card">
-            ${image}
-            <div class="plant-card-content">
-                <h4>${escapeHtml(c.name)}</h4>
-                <p>${escapeHtml(c.scientificName)}</p>
-                <small>${role} · ${escapeHtml(c.typeLabel || c.type)}</small>
-            </div>
-        </a>`;
+    grid.innerHTML = reported.map(c => renderPlantCard(c, 'Reported')).join('');
 }
 
 function formatJoined(value) {
@@ -133,6 +126,8 @@ const ADMIN_ROLE_LABELS = {
 
 /** The original botanist layout. */
 function renderBotanist(profile) {
+    const metrics = profile.metrics || {};
+
     setText('roleBadgeIcon', 'verified');
     setText('roleBadgeText', 'Verified Plant Expert & Botanist');
     setText('metricLabelPlants', 'Verified Plants');
@@ -141,7 +136,7 @@ function renderBotanist(profile) {
     setText('contributionsIcon', 'eco');
     setText('contributionsTitle', 'Verified Plant Contributions');
 
-    setText('botanistPlantCount', profile.metrics.verifiedPlants);
+    setText('botanistPlantCount', metrics.verifiedPlants || 0);
     setText('botanistSpecialization', profile.specialization || '—');
 
     // Per-plant CNN accuracy is not persisted anywhere, so the metric is hidden
@@ -151,7 +146,7 @@ function renderBotanist(profile) {
     // A reported species is credited, so the number counts it — and only it.
     // It is deliberately NOT added into verifiedPlants: the two are different
     // claims and the metrics row must not blur them.
-    setText('botanistReportedCount', profile.metrics.reportedPlants || 0);
+    setText('botanistReportedCount', metrics.reportedPlants || 0);
 
     renderContributions(profile.contributions, 'Contributed', 'No verified contributions yet.');
     renderReported(profile.reported);
@@ -186,10 +181,9 @@ function renderAdministrator(profile) {
 async function loadBotanistProfile() {
     const params = new URLSearchParams(window.location.search);
     const accountId = params.get('accountId') || params.get('id');
-    const nameEl = document.getElementById('botanistName');
 
     if (!accountId) {
-        nameEl.textContent = 'Profile not found';
+        showUnavailable('Profile not found.');
         return;
     }
 
@@ -197,44 +191,36 @@ async function loadBotanistProfile() {
     try {
         const response = await fetch(`/api/botanists/${encodeURIComponent(accountId)}`, { credentials: 'include' });
         if (response.status === 404) {
-            // Also what a guest or plain user gets for an administrator's id.
-            nameEl.textContent = 'Profile not found or not available to you';
+            // Missing, deleted, or an administrator profile this visitor may not see.
+            showUnavailable(UNAVAILABLE);
             return;
         }
         if (!response.ok) throw new Error('Failed to load profile');
         profile = await response.json();
     } catch (err) {
         console.error('Load botanist profile error:', err);
-        nameEl.textContent = 'Could not load profile';
+        showUnavailable('Could not load profile. Check your connection and try again.');
         return;
     }
 
-    document.title = `${profile.name} - Plantellect`;
-    nameEl.textContent = profile.name;
-    document.getElementById('botanistAvatar').textContent = initialsFor(profile.name);
-    document.getElementById('botanistBio').textContent = profile.bio || 'No biography recorded yet.';
+    if (!profile || typeof profile !== 'object') {
+        showUnavailable(UNAVAILABLE);
+        return;
+    }
+
+    const name = profile.name || 'Unnamed account';
+    document.title = `${name} - Plantellect`;
+    setText('botanistName', name);
+    setText('botanistAvatar', initialsFor(name));
+    setText('botanistBio', profile.bio || 'No biography recorded yet.');
 
     if (profile.role === 'botanist') {
         renderBotanist(profile);
-    } else {
+    } else if (profile.role === 'admin' || profile.role === 'superadmin') {
         renderAdministrator(profile);
+    } else {
+        showUnavailable(UNAVAILABLE);   // no other role has a public profile
     }
 }
 
-document.addEventListener('DOMContentLoaded', function () {
-    applyTheme(localStorage.getItem('plantellect-theme') || 'dark');
-
-    // Back goes to wherever the visitor came from (a plant page, usually), and
-    // only falls back to the link's own href when there is no history.
-    const back = document.getElementById('backBtn');
-    if (back) {
-        back.addEventListener('click', function (event) {
-            if (window.history.length > 1) {
-                event.preventDefault();
-                window.history.back();
-            }
-        });
-    }
-
-    loadBotanistProfile();
-});
+document.addEventListener('DOMContentLoaded', loadBotanistProfile);

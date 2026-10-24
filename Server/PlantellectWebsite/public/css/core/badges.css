@@ -1,0 +1,105 @@
+/* Shared badges: the plant type badge (one per plant, coloured by toxicity) and the
+   role chip (who submitted something). Tokens live in variables.css; the markup is
+   built by public/javascript/badges.js. Imported by public-theme.css (every public
+   page) and admin-plants.css, so a change here reaches all of them. */
+@import './variables.css';
+
+.type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    max-width: 100%;
+    padding: 0.2em 0.7em;
+    border-radius: 999px;
+    background-color: var(--badge-bg);
+    color: var(--badge-fg);
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.4;
+    letter-spacing: 0.2px;
+    vertical-align: middle;
+}
+
+.type-badge--none     { --badge-bg: var(--badge-none-bg);     --badge-fg: var(--badge-none-fg); }
+.type-badge--mild     { --badge-bg: var(--badge-mild-bg);     --badge-fg: var(--badge-mild-fg); }
+.type-badge--moderate { --badge-bg: var(--badge-moderate-bg); --badge-fg: var(--badge-moderate-fg); }
+.type-badge--severe   { --badge-bg: var(--badge-severe-bg);   --badge-fg: var(--badge-severe-fg); }
+
+.type-badge__icon {
+    flex: none;
+    font-size: 0.95em;
+    line-height: 1;
+}
+
+.type-badge .material-symbols-outlined {
+    flex: none;
+    font-size: 1.15em;
+}
+
+.type-badge__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The level is also said in words for screen readers; colour alone is not enough. */
+.type-badge__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* Where a page already wraps its type text in its own pill, let the badge be the pill. */
+.pc-type--badge {
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+
+.plant-titles .type-badge {
+    margin-top: 0.5rem;
+}
+
+/* ------------------------------------------------------------ role chip --- */
+
+.role-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    padding: 0.1em 0.6em;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.5;
+    vertical-align: middle;
+    background-color: rgba(90, 102, 84, 0.14);
+    color: var(--color-reseda-green);
+}
+
+.role-chip--verified { background-color: var(--badge-none-bg); color: var(--badge-none-fg); }
+.role-chip--admin    { background-color: rgba(2, 132, 199, 0.14); color: #0369a1; }
+
+.role-chip .material-symbols-outlined {
+    font-size: 1.1em;
+}
+
+/* ---------------------------------------------------------------- dark ----- */
+
+html[data-theme="dark"] {
+    --badge-none-bg: rgba(52, 211, 153, 0.2);
+    --badge-none-fg: #6ee7b7;
+    --badge-mild-bg: rgba(250, 204, 21, 0.2);
+    --badge-mild-fg: #fde047;
+    --badge-moderate-bg: rgba(251, 146, 60, 0.22);
+    --badge-moderate-fg: #fdba74;
+    --badge-severe-bg: rgba(248, 113, 113, 0.22);
+    --badge-severe-fg: #fca5a5;
+}
+
+html[data-theme="dark"] .role-chip { background-color: rgba(234, 230, 213, 0.12); color: var(--color-bone); }
+html[data-theme="dark"] .role-chip--admin { background-color: rgba(56, 189, 248, 0.2); color: #7dd3fc; }

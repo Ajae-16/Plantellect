@@ -63,8 +63,8 @@ const uploadPlantImages = createUploader(settings.plantImages);
  * filename in two different roots is never confused.
  */
 const discoveryUploadConfig = {
-    // The temp landing zone. Files are moved into
-    // <plantImages.storageDir>/<discoverySubdir>/<requestId>/ once the request
+    // The temp landing zone. Files are COPIED (verified) into
+    // <discoverySubdir>/pending/<requestId>/ once the request
     // row exists, and discovery_images.storedPath is relative to that folder.
     storageDir: settings.plantImages.storageDir,
     maxSizeBytes: settings.plantImages.maxSizeBytes,
@@ -75,6 +75,33 @@ const discoveryUploadConfig = {
 const uploadDiscoveryImages = createUploader(discoveryUploadConfig);
 
 /**
+ * Plant-photo upload middleware whose file-count ceiling is read per request.
+ *
+ * multer fixes `limits.files` when the instance is built, so a module-level
+ * uploadPlantImages can never follow an admin edit. This builds the instance
+ * after the live limit is known (cheap: it is only an object), records the limit
+ * on req so handleUploadError words its message with the SAME number, and passes
+ * non-multipart requests straight through — which is what lets one route accept
+ * both a JSON body and a multipart one.
+ *
+ * `getLimits` is injected rather than required here so this file keeps no
+ * dependency on the database layer.
+ */
+function plantImageUpload(getLimits) {
+    return async function (req, res, next) {
+        let limits;
+        try {
+            limits = await getLimits();
+        } catch (err) {
+            return next(err);
+        }
+        req.uploadMaxFiles = limits.maxFilesPerRequest;
+        createUploader({ ...settings.plantImages, maxFilesPerRequest: limits.maxFilesPerRequest })
+            .array('images', limits.maxFilesPerRequest)(req, res, next);
+    };
+}
+
+/**
  * Maps a multer rejection to a 400 carrying the message the fileFilter already
  * builds. Without this, index.js's error handler turned every rejected upload
  * into a flat "Something went wrong!" and threw away the reason.
@@ -83,10 +110,11 @@ const uploadDiscoveryImages = createUploader(discoveryUploadConfig);
  */
 function handleUploadError(config) {
     const maxSizeMb = Math.round(config.maxSizeBytes / (1024 * 1024));
-    const maxFiles = config.maxFilesPerRequest || 1;
 
     // eslint-disable-next-line no-unused-vars
     return function (err, req, res, next) {
+        // The live admin limit when plantImageUpload set one, else the static one.
+        const maxFiles = (req && req.uploadMaxFiles) || config.maxFilesPerRequest || 1;
         // The fileFilter's own rejection, already worded for the user.
         if (err && err.isUploadRejection) return res.status(400).json({ error: err.message });
         if (!(err instanceof multer.MulterError)) return next(err);
@@ -118,6 +146,7 @@ module.exports = {
     uploadCertificate,
     uploadPlantImages,
     uploadDiscoveryImages,
+    plantImageUpload,
     discoveryUploadConfig,
     handleUploadError
 };

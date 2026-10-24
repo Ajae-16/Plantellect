@@ -13,10 +13,12 @@ data class AuthUiState(
     val busy: Boolean = false,
     /** Server / network message for a snackbar or banner. */
     val error: String? = null,
-    /** Per-field messages. Keys: identifier, email, username, password, terms, certificate. */
+    /** Per-field messages. Keys: identifier, firstName, lastName, email, username, password, confirm, terms, certificate. */
     val fieldErrors: Map<String, String> = emptyMap(),
     /** Set after a botanist sign-up so the UI can say "awaiting review" or "approved". */
-    val notice: String? = null
+    val notice: String? = null,
+    /** True while the sign-out request is running (drives the confirmation dialog's spinner). */
+    val signingOut: Boolean = false
 )
 
 class AuthViewModel(
@@ -45,8 +47,8 @@ class AuthViewModel(
         }
     }
 
-    fun register(form: RegisterForm, certificate: Uri?) {
-        val problems = AuthValidator.register(form, hasCertificate = certificate != null)
+    fun register(form: RegisterForm, certificate: Uri?, confirmPassword: String = form.password) {
+        val problems = AuthValidator.register(form, hasCertificate = certificate != null, confirmPassword = confirmPassword)
         if (problems.isNotEmpty()) { _ui.value = AuthUiState(fieldErrors = problems); return }
         launchBusy {
             when (val r = repo.register(form, certificate)) {
@@ -64,7 +66,14 @@ class AuthViewModel(
 
     fun refreshProfile() { viewModelScope.launch { repo.refreshProfile() } }
 
-    fun logout() { viewModelScope.launch { repo.logout(); _ui.value = AuthUiState() } }
+    fun logout() {
+        if (_ui.value.signingOut) return
+        _ui.value = AuthUiState(signingOut = true)
+        viewModelScope.launch {
+            repo.logout()
+            _ui.value = AuthUiState()
+        }
+    }
 
     fun consumeMessages() { _ui.update { it.copy(error = null, notice = null, fieldErrors = emptyMap()) } }
 

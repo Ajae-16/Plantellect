@@ -194,7 +194,7 @@
                     <div class="plant-request-text">
                         <h3>${escapeText(row.plantName)}</h3>
                         <p class="admin-muted">
-                            From ${escapeText(row.submittedByName || row.submittedBy)} on ${formatWhen(row.requestedAt)}
+                            From ${escapeText(row.submittedByName || row.submittedBy)} ${window.RoleBadge ? RoleBadge.html(row.submittedByRole) : ''} on ${formatWhen(row.requestedAt)}
                             ${row.location ? ' · ' + escapeText(row.location) : ''}
                         </p>
                         ${row.note ? `<p class="discovery-admin-note">${escapeText(row.note)}</p>` : ''}

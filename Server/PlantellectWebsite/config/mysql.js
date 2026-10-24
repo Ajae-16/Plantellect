@@ -10,12 +10,12 @@ const { listPendingRoleRequests, listPlantRequests, getRequestDetail, decideRole
 const { listPlants, getContributorSummary, getPlantDetailSummary, listPlantImages, getImageForServing, getImageForReview, getImageForOwner, getPlantExists } = require('./plant-mysql');
 const { approvePlantRequest, denyPlantRequest } = require('./approval-mysql');
 const { hasPriorSubmissionDecision, maybeAutoResolve, processNewRequest } = require('./auto-approval-mysql');
-const { validatePlantDraft, validateContribution, createPlantAdditionRequest, createPlantContributionRequest, listMyRequests } = require('./record-mysql');
+const { validatePlantDraft, validateContribution, createPlantAdditionRequest, createPlantContributionRequest, createPlantTaxonomyRequest, getRecordingPlant, isSafeType, listMyRequests } = require('./record-mysql');
 const { DISQUALIFY_REASONS, DISCOVERY_STORAGE_ROOT, countActiveBotanists, effectiveNotAPlantThreshold, getDiscoveryFeatureFlag, isAutoDispatchEnabled, createDiscoveryReport, getDiscoveryImageForOwner, getDiscoveryImageForBotanist, getDiscoveryImageForReview, listPendingDiscoveries, getDiscoveryCounts, claimDiscovery, unclaimDiscovery, releaseDiscovery, resolveDiscovery, reopenDiscovery, disqualifyDiscovery, reinstateDisqualified, castNotAPlantVote, countNotAPlantVotes, listNotAPlantVoters, adminDisqualifyDiscovery, cancelDiscoveryReport, listMyDiscoveryReports, getMyDiscoverySummary, listDiscoveryReports, purgeClosedDiscoveryPhotos, expireStaleDiscoveryClaims } = require('./discovery-mysql');
 const { currentScanWindowStart, scanWindowRetryAfterSeconds, consumeScanQuota } = require('./scan-mysql');
 const { listPublicPlants, getPublicPlantDetail, getBotanistProfile, listPlantTypes, resolveScientificNames, getMlCoverage, listHandledDiscoverySpecies } = require('./public-mysql');
 const { listCertificatesByAccount, deleteCertificate } = require('./certificate-mysql');
-const { getSystemSetting } = require('./setting-mysql');
+const { getSystemSetting, getPlantImageLimits } = require('./setting-mysql');
 
 module.exports = {
     mysqlPool,
@@ -51,6 +51,9 @@ module.exports = {
     validateContribution,
     createPlantAdditionRequest,
     createPlantContributionRequest,
+    createPlantTaxonomyRequest,
+    getRecordingPlant,
+    isSafeType,
     listMyRequests,
 
     // ---- automatic approval (document 3) ----
@@ -102,6 +105,7 @@ module.exports = {
     getMlCoverage,
     listHandledDiscoverySpecies,
     getSystemSetting,
+    getPlantImageLimits,
     listCertificatesByAccount,
     deleteCertificate
 };

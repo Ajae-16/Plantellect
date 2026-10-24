@@ -107,6 +107,17 @@ async function openLibrary(event) {
         return isNaN(t) ? null : t;
     }
 
+    /** The plant's creation date as { iso, text }, or null when the API gave none. */
+    function addedOn(p, detail) {
+        const t = dateOf(p) !== null ? dateOf(p) : dateOf(detail);
+        if (t === null) return null;
+        const when = new Date(t);
+        return {
+            iso: when.toISOString(),
+            text: when.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+        };
+    }
+
     /** Finds a usable photo URL on either a list row or a detail response. */
     function imageUrlFrom(source, plantId) {
         if (!source) return null;
@@ -139,7 +150,7 @@ async function openLibrary(event) {
             const d = source.description;
             if (typeof d === 'string' && d.trim()) return d.trim();
             if (d && typeof d === 'object') {
-                const text = d.uses || d.benefits;
+                const text = RichText.plain(d.uses || d.benefits);
                 if (text && String(text).trim()) return String(text).trim();
             }
         }
@@ -157,10 +168,8 @@ async function openLibrary(event) {
         const data = await fetchJson(API_BASE + '?page=1&pageSize=' + LATEST_LIMIT + '&sort=newest');
         let plants = Array.isArray(data) ? data : (data.plants || []);
 
-        // If the rows carry a date, make sure newest really is first.
-        if (plants.some(function (p) { return dateOf(p) !== null; })) {
-            plants = plants.slice().sort(function (a, b) { return (dateOf(b) || 0) - (dateOf(a) || 0); });
-        }
+        // Order is decided by the server (newest created first, then id).
+        // Do not re-sort or reverse here.
         // Never show the same plant twice (same id, or same scientific name)
         const seen = new Set();
         plants = plants.filter(function (p) {
@@ -214,11 +223,15 @@ async function openLibrary(event) {
 
         const name = p.name || p.commonName || (d && (d.name || d.commonName)) || 'Unnamed plant';
         const scientific = p.scientificName || (d && d.scientificName) || '';
-        const type = p.type || (d && d.type) || '';
-        const typeLabel = p.typeLabel || (d && d.typeLabel) || TYPE_LABELS[type] || '';
-        const icon = TYPE_ICONS[type] || '🌱';
+        // The type name is free text now ("Non-Herbal & Flower"). The placeholder art
+        // and the per-type styling are keyed by a slug, so derive one from it.
+        const rawType = p.type || (d && d.type) || '';
+        const type = String(rawType).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const typeLabel = p.typeLabel || (d && d.typeLabel) || rawType || TYPE_LABELS[type] || '';
+        const toxicity = p.toxicityLevel || (d && d.toxicityLevel) || 'none';
         const image = imageUrlFrom(p, id) || imageUrlFrom(d, id);
         const blurb = blurbOf(p, d);
+        const added = addedOn(p, d);
 
         const img = image
             ? '<img src="' + esc(image) + '" alt="' + esc(name) + '" decoding="async" draggable="false">'
@@ -228,18 +241,25 @@ async function openLibrary(event) {
         const tag = href ? 'a' : 'article';
         const attrs = href ? ' href="' + esc(href) + '" draggable="false" aria-label="' + esc(name) + ' - view plant profile"' : '';
 
-        return '<' + tag + attrs + ' class="plant-card" data-type="' + esc(type) + '" style="--i:' + index + '">' +
-            '<div class="pc-media">' + placeholderHtml(type) + img + '</div>' +
-            '<div class="pc-shine"></div>' +
-            (typeLabel ? '<span class="pc-type">' + icon + ' ' + esc(typeLabel) + '</span>' : '') +
-            (index === 0 ? '<span class="pc-new">Newest</span>' : '') +
-            '<div class="pc-info">' +
-                '<h3>' + esc(name) + '</h3>' +
-                '<span class="pc-bar"></span>' +
-                (scientific ? '<p class="pc-sci">' + esc(scientific) + '</p>' : '') +
-                (blurb ? '<div class="pc-more"><div><p class="pc-text">' + esc(blurb) + '</p></div></div>' : '') +
-            '</div>' +
-        '</' + tag + '>';
+        // The outer .pc-float div is the ONLY element the scroll-float effect
+        // moves. The card inside keeps its own transform (entrance animation,
+        // hover tilt, lift) and the track keeps the horizontal slide, so the
+        // three movements never overwrite each other.
+        return '<div class="pc-float">' +
+            '<' + tag + attrs + ' class="plant-card" data-type="' + esc(type) + '" style="--i:' + index + '">' +
+                '<div class="pc-media">' + placeholderHtml(type) + img + '</div>' +
+                '<div class="pc-shine"></div>' +
+                (typeLabel ? '<span class="pc-type pc-type--badge">' + PlantBadge.html(typeLabel, toxicity) + '</span>' : '') +
+                '<div class="pc-info">' +
+                    '<h3>' + esc(name) + '</h3>' +
+                    '<span class="pc-bar"></span>' +
+                    (scientific ? '<p class="pc-sci">' + esc(scientific) + '</p>' : '') +
+                    (added ? '<p class="pc-date"><span class="material-symbols-outlined" aria-hidden="true">calendar_today</span>' +
+                        '<time datetime="' + esc(added.iso) + '">Added ' + esc(added.text) + '</time></p>' : '') +
+                    (blurb ? '<div class="pc-more"><div><p class="pc-text">' + esc(blurb) + '</p></div></div>' : '') +
+                '</div>' +
+            '</' + tag + '>' +
+        '</div>';
     }
 
     function messageHtml(text, withRetry) {
@@ -295,27 +315,88 @@ async function openLibrary(event) {
         let downCard = null;     // the card the pointer went down on (for click-to-open)
         let moved = 0;           // furthest the pointer travelled during this press
         let glideTo = null;      // target x of an arrow-button / keyboard glide (null = none)
+        let loopW = 0;           // width of one full set of cards (0 = not looping: everything fits)
 
         function measure() {
             maxShift = Math.max(0, track.offsetWidth - viewport.clientWidth);
         }
 
-        function clamp(value) {
-            return Math.min(0, Math.max(value, -maxShift));
-        }
+        /**
+         * Infinite loop: the cards are followed by clones of themselves (one or more
+         * full sets). When the track has moved exactly one set to the left, the view
+         * looks identical to the start, so x jumps back by one set and the scroll
+         * carries on 1 ... N, 1 ... N without a visible seam.
+         * Clones are skipped when all the cards already fit on screen.
+         */
+        function buildLoop() {
+            const originals = track.querySelectorAll('.pc-float:not(.is-clone)');
+            const clones = track.querySelectorAll('.pc-float.is-clone');
+            const n = originals.length;
+            let sets = 0;
+            loopW = 0;
 
-        function apply() {
-            track.style.transform = 'translate3d(' + x + 'px,0,0)';
-            // Arrow buttons: hidden when everything fits, dimmed at either end
-            if (prevBtn) {
-                prevBtn.classList.toggle('is-off', x >= -0.5);
-                nextBtn.classList.toggle('is-off', x <= -maxShift + 0.5);
-                prevBtn.hidden = nextBtn.hidden = !maxShift;
+            if (n) {
+                const cs = window.getComputedStyle(track);
+                const gap = parseFloat(cs.columnGap) || 0;
+                const first = originals[0];
+                const last = originals[n - 1];
+                const realW = last.offsetLeft + last.offsetWidth - first.offsetLeft;
+                // Loops whenever there are 2+ cards, even if they all fit on screen,
+                // so the slider always keeps moving (a ticker with a few plants).
+                if (n >= 2 && realW > 0) {
+                    loopW = realW + gap;                                         // distance from card 1 to its clone
+                    const view = Math.max(viewport.clientWidth, window.innerWidth || 0);
+                    sets = Math.max(1, Math.ceil(view / loopW));                 // enough clones to fill the view
+                }
+            }
+
+            if (clones.length === sets * n) return;   // already right: no DOM change (resize, reload)
+
+            clones.forEach(function (c) { c.remove(); });
+            for (let s = 0; s < sets; s++) {
+                originals.forEach(function (el) {
+                    const c = el.cloneNode(true);
+                    c.classList.add('is-clone');
+                    c.setAttribute('aria-hidden', 'true');                       // screen readers hear each plant once
+                    c.querySelectorAll('a').forEach(function (a) { a.setAttribute('tabindex', '-1'); });
+                    c.style.transform = '';
+                    c.style.opacity = '';
+                    track.appendChild(c);
+                });
             }
         }
 
-        // No cloned cards: each plant appears once. At the end the slider turns
-        // around and scrolls back instead of looping the same plants again.
+        function clamp(value) {
+            if (loopW) return value;     // looping: no ends to clamp to; apply() wraps instead
+            return Math.min(0, Math.max(value, -maxShift));
+        }
+
+        /** Keeps x inside one set. Anything tied to x (glide target, drag origin) moves with it. */
+        function wrapX() {
+            if (!loopW) return;
+            while (x <= -loopW) { x += loopW; startX += loopW; if (glideTo !== null) glideTo += loopW; }
+            while (x > 0)       { x -= loopW; startX -= loopW; if (glideTo !== null) glideTo -= loopW; }
+        }
+
+        function apply() {
+            wrapX();
+            track.style.transform = 'translate3d(' + x + 'px,0,0)';
+            // Arrow buttons: hidden when everything fits, dimmed at either end (never in a loop)
+            if (prevBtn) {
+                if (loopW) {
+                    prevBtn.classList.remove('is-off');
+                    nextBtn.classList.remove('is-off');
+                    prevBtn.hidden = nextBtn.hidden = false;
+                } else {
+                    prevBtn.classList.toggle('is-off', x >= -0.5);
+                    nextBtn.classList.toggle('is-off', x <= -maxShift + 0.5);
+                    prevBtn.hidden = nextBtn.hidden = !maxShift;
+                }
+            }
+        }
+
+        // Auto-scroll always moves toward the end. With enough cards to scroll it loops
+        // forever (see buildLoop); with few cards that all fit, nothing moves.
         function tick(ts) {
             requestAnimationFrame(tick);
             const dt = Math.min(0.05, (ts - lastTs) / 1000 || 0);
@@ -334,15 +415,19 @@ async function openLibrary(event) {
             const target = userPaused ? 0 : (isHovering ? HOVER_FACTOR : 1);
             factor += (target - factor) * Math.min(1, dt * 6);
 
-            const dx = dir * BASE_SPEED * factor * dt + inertia * dt;
+            const heading = loopW ? -1 : dir;
+            const dx = heading * BASE_SPEED * factor * dt + inertia * dt;
             inertia *= Math.pow(0.04, dt);
             if (Math.abs(inertia) < 5) inertia = 0;
 
             if (dx) {
                 x += dx;
-                if (x <= -maxShift) { x = -maxShift; dir = 1; inertia = 0; }
-                else if (x >= 0)    { x = 0;         dir = -1; inertia = 0; }
-                apply();
+                if (!loopW) {
+                    // Everything fits only barely: no loop, so turn around at the ends
+                    if (x <= -maxShift) { x = -maxShift; dir = 1; inertia = 0; }
+                    else if (x >= 0)    { x = 0;         dir = -1; inertia = 0; }
+                }
+                apply();     // in a loop, apply() wraps x back by one set
             }
         }
 
@@ -361,6 +446,7 @@ async function openLibrary(event) {
 
         /** Call after the cards change or the size changes. */
         function refresh() {
+            buildLoop();
             measure();
             const cards = track.querySelectorAll('.plant-card:not(.is-skeleton)');
             wrapper.classList.toggle('is-empty', cards.length === 0);
@@ -583,6 +669,271 @@ async function openLibrary(event) {
     }
 
     /* ------------------------------------------------------------------ */
+    /* Pinned scroll transition: tagline -> plant cards                    */
+    /*                                                                     */
+    /*   .pin-track  tall box; its extra height is the scroll distance     */
+    /*   .pin-stage  position: sticky, so the hero stays put while the     */
+    /*               page scrolls through the track                        */
+    /*   .pin-cards  overlay holding the slider; this is the ONLY thing    */
+    /*               the scroll progress moves as a whole                  */
+    /*                                                                     */
+    /* Nothing here intercepts wheel or touch input. The browser scrolls   */
+    /* as usual; we only read scrollY and turn it into progress P (0..1):  */
+    /*   P = 0   hero fully visible, cards below the screen                */
+    /*   P = 1   cards in place, tagline gone, sticky released             */
+    /* The same P drives the tagline fade, the layer rise and a staggered  */
+    /* per-card rise, so scrolling back up simply runs it in reverse.      */
+    /* Three layers still move independently (never share a transform):    */
+    /*   .pin-cards (vertical, here) > .slider-track (horizontal,          */
+    /*   carousel) and .pc-float (small per-card float, here) > .plant-card*/
+    /*   (entrance, hover tilt, lift)                                      */
+    /* ------------------------------------------------------------------ */
+
+    function initPinned(carousel) {
+        // Reduced motion: no pinning at all; the page keeps the plain layout
+        if (!carousel || reduceMotion) return null;
+
+        const trackEl = document.querySelector('.pin-track');
+        const stage = trackEl && trackEl.querySelector('.pin-stage');
+        const layer = stage && stage.querySelector('.pin-cards');
+        const tagline = stage && stage.querySelector('.hero-content');
+        const wrapper = carousel.wrapper;
+        const viewport = wrapper.querySelector('.slider-viewport');
+        const track = carousel.track;
+        if (!layer || !viewport) return null;
+
+        const CFG = {
+            RISE_END: 0.9,        // cards are in place at 90% of the progress; the rest is a short hold
+            FADE_START: 0.12,     // the tagline stays fully visible until here...
+            FADE_LEN: 0.58,       // ...then fades out gradually over this much progress
+            TAG_SHIFT: 28,        // px the tagline drifts up while it fades
+            LAYER_RATE: 9,        // easing speed of the whole card layer (1/s)
+            TAG_RATE: 7,          // easing speed of the tagline (1/s)
+            STAGGER: 0.18,        // how late the latest card starts rising (share of progress)
+            VEL_GAIN: 0.012,      // small extra lift while scrolling fast, px per px/s
+            VEL_MAX: 14,
+            ROT_GAIN: 0.0006,     // tiny sway, deg per px/s
+            ROT_MAX: 1,
+            VEL_SMOOTH: 10,
+            EDGE_GAP: 14,         // px kept free inside the clip
+            MAX_OFFSET: 56
+        };
+
+        let items = [];
+        let pinStart = 0;         // scrollY at which the stage becomes pinned
+        let travel = 1;           // scroll distance while pinned
+        let startOff = 600;       // px the layer sits below its final place at P = 0
+        let maxOff = 0;           // clip room for the per-card offsets
+        let scrollY = window.pageYOffset || 0;
+        let prevScrollY = scrollY;
+        let vel = 0;
+        let layerR = 0;           // eased rise progress of the layer
+        let tagO = 1, tagY = 0;   // eased tagline opacity / shift
+        let layerWY = NaN, layerWV = '';
+        let tagWO = NaN, tagWY = NaN;
+        let running = false;
+        let lastTs = 0;
+        let snap = true;          // jump straight to the target (first frame)
+
+        function frac(n) { return n - Math.floor(n); }
+        function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+        function clampTo(v, lim) { return Math.max(-lim, Math.min(lim, v)); }
+        function smoothstep(t) { return t * t * (3 - 2 * t); }
+        function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+        function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+
+        function measure() {
+            // offsetTop ignores transforms, so the moving layer cannot skew it
+            let top = 0;
+            let el = trackEl;
+            while (el) { top += el.offsetTop; el = el.offsetParent; }
+            const pinTop = parseFloat(window.getComputedStyle(stage).top) || 0;   // = the sticky top bar height
+            pinStart = top - pinTop;
+            travel = Math.max(1, trackEl.offsetHeight - stage.offsetHeight);
+            startOff = stage.clientHeight / 2 + wrapper.offsetHeight / 2 + 24;
+            const sample = items.length ? items[0].el : null;
+            const slack = sample ? (viewport.clientHeight - sample.offsetHeight) / 2 : 0;
+            maxOff = Math.max(0, Math.min(CFG.MAX_OFFSET, slack - CFG.EDGE_GAP));
+        }
+
+        function collect() {
+            const els = track.querySelectorAll('.pc-float');
+            // Clones of the looping carousel reuse their original's parameters (index modulo the
+            // number of real cards), so a card and its clone are always at the same height.
+            const realCount = track.querySelectorAll('.pc-float:not(.is-clone)').length || 1;
+            items = Array.prototype.map.call(els, function (el, n) {
+                const i = n % realCount;
+                return {
+                    el: el,
+                    depth: 0.7 + 0.6 * frac(i * 0.618034),
+                    rate: 4 + 4 * frac(i * 0.381966 + 0.2),
+                    delay: CFG.STAGGER * frac(i * 0.618034 + 0.3),
+                    tilt: (i % 2 ? 1 : -1) * (0.4 + 0.6 * frac(i * 0.754878)),
+                    y: 0, rot: 0, o: 1,
+                    fresh: true,                       // new cards start at their target, no pop
+                    wy: NaN, wr: NaN, wo: NaN
+                };
+            });
+            measure();
+            start();
+        }
+
+        function writeLayer() {
+            const y = Math.round((1 - easeInOutCubic(layerR)) * startOff * 10) / 10;
+            const vis = layerR < 0.002 ? 'hidden' : 'visible';   // off screen: not focusable, not clickable
+            if (y !== layerWY) { layerWY = y; layer.style.transform = 'translate3d(0,' + y + 'px,0)'; }
+            if (vis !== layerWV) { layerWV = vis; layer.style.visibility = vis; }
+        }
+
+        function writeTag() {
+            if (!tagline) return;
+            const o = Math.round(tagO * 1000) / 1000;
+            const y = Math.round(tagY * 100) / 100;
+            if (o === tagWO && y === tagWY) return;
+            tagWO = o;
+            tagWY = y;
+            tagline.style.opacity = o >= 0.999 ? '' : String(o);
+            tagline.style.translate = y ? '0 ' + y + 'px' : '';   // `translate` leaves any `transform` alone
+        }
+
+        function writeItem(it) {
+            const y = Math.round(it.y * 100) / 100;
+            const r = Math.round(it.rot * 100) / 100;
+            const o = Math.round(it.o * 1000) / 1000;
+            if (y !== it.wy || r !== it.wr) {
+                it.wy = y;
+                it.wr = r;
+                it.el.style.transform = 'translate3d(0,' + y + 'px,0) rotate(' + r + 'deg)';
+            }
+            if (o !== it.wo) {
+                it.wo = o;
+                it.el.style.opacity = o >= 0.999 ? '' : String(o);
+            }
+        }
+
+        function start() {
+            if (running) return;
+            running = true;
+            lastTs = performance.now();
+            requestAnimationFrame(frame);
+        }
+
+        function frame(ts) {
+            const dt = Math.min(0.05, Math.max(0.001, (ts - lastTs) / 1000));
+            lastTs = ts;
+
+            const dy = scrollY - prevScrollY;
+            prevScrollY = scrollY;
+            vel += (dy / dt - vel) * (1 - Math.exp(-CFG.VEL_SMOOTH * dt));
+            if (Math.abs(vel) < 1 && dy === 0) vel = 0;
+
+            // Progress through the pinned distance, and the share of it used for rising
+            const P = clamp01((scrollY - pinStart) / travel);
+            const r = clamp01(P / CFG.RISE_END);
+            let moving = vel !== 0;
+
+            // 1. the card layer rises as a whole
+            if (snap) {
+                layerR = r;
+            } else {
+                layerR += (r - layerR) * (1 - Math.exp(-CFG.LAYER_RATE * dt));
+                if (Math.abs(r - layerR) > 0.0005) moving = true;
+            }
+            writeLayer();
+
+            // 2. the tagline stays fully visible first, then fades gradually
+            const fe = smoothstep(clamp01((P - CFG.FADE_START) / CFG.FADE_LEN));
+            const tagTO = 1 - fe;
+            const tagTY = -fe * CFG.TAG_SHIFT;
+            if (snap) {
+                tagO = tagTO;
+                tagY = tagTY;
+            } else {
+                const kt = 1 - Math.exp(-CFG.TAG_RATE * dt);
+                tagO += (tagTO - tagO) * kt;
+                tagY += (tagTY - tagY) * kt;
+                if (Math.abs(tagTO - tagO) > 0.002 || Math.abs(tagTY - tagY) > 0.05) moving = true;
+            }
+            writeTag();
+
+            // 3. each card rises a little later / faster than its neighbours
+            const lift = -clampTo(vel * CFG.VEL_GAIN, CFG.VEL_MAX);
+            const sway = clampTo(vel * CFG.ROT_GAIN, CFG.ROT_MAX);
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i];
+                const q = clamp01((r - it.delay) / (1 - it.delay));
+                const arrive = (1 - easeOutCubic(q)) * maxOff * it.depth;
+                const ty = clampTo(arrive + lift * it.depth, maxOff);
+                const tr = sway * it.tilt;
+                const to = smoothstep(clamp01(q * 2.5));
+
+                if (snap || it.fresh) {
+                    it.y = ty; it.rot = tr; it.o = to;
+                    it.fresh = false;
+                } else {
+                    const k = 1 - Math.exp(-it.rate * dt);
+                    it.y += (ty - it.y) * k;
+                    it.rot += (tr - it.rot) * k;
+                    it.o += (to - it.o) * k;
+                    if (Math.abs(ty - it.y) > 0.05 || Math.abs(tr - it.rot) > 0.005 || Math.abs(to - it.o) > 0.005) moving = true;
+                }
+                it._ty = ty; it._tr = tr; it._to = to;
+                writeItem(it);
+            }
+            snap = false;
+
+            if (moving || dy !== 0) {
+                requestAnimationFrame(frame);
+                return;
+            }
+
+            // Settled: land exactly on the targets and stop the loop (no idle cost, no drift)
+            layerR = r;
+            tagO = tagTO;
+            tagY = tagTY;
+            writeLayer();
+            writeTag();
+            for (let j = 0; j < items.length; j++) {
+                items[j].y = items[j]._ty || 0;
+                items[j].rot = items[j]._tr || 0;
+                items[j].o = items[j]._to === undefined ? 1 : items[j]._to;
+                writeItem(items[j]);
+            }
+            running = false;
+        }
+
+        // Passive: only records the scroll position. The browser keeps full control of scrolling.
+        window.addEventListener('scroll', function () {
+            scrollY = window.pageYOffset || 0;
+            start();
+        }, { passive: true });
+
+        let measureTimer = null;
+        function scheduleMeasure() {
+            clearTimeout(measureTimer);
+            measureTimer = setTimeout(function () { measure(); start(); }, 150);
+        }
+        window.addEventListener('resize', scheduleMeasure);
+        window.addEventListener('load', scheduleMeasure);
+        if ('ResizeObserver' in window) {
+            new ResizeObserver(scheduleMeasure).observe(document.body);
+        }
+
+        // Cards arrive later from the API (and again on "Try again"): pick them up.
+        if ('MutationObserver' in window) {
+            new MutationObserver(collect).observe(track, { childList: true });
+        }
+
+        // Turn the pinned layout on (CSS is keyed to .pin-active, so no JS / reduced
+        // motion keeps the plain stacked layout), then re-measure the carousel,
+        // because the slider's width just changed.
+        trackEl.classList.add('pin-active');
+        carousel.refresh();
+        collect();
+        return { refresh: collect };
+    }
+
+    /* ------------------------------------------------------------------ */
     /* Wiring                                                              */
     /* ------------------------------------------------------------------ */
 
@@ -615,7 +966,8 @@ async function openLibrary(event) {
         const carousel = initCarousel();
         if (!carousel) return;
 
-        initReveal(carousel.wrapper);
+        // (The old scroll-reveal of the slider box is not used: the pinned transition replaces it.)
+        initPinned(carousel);       // before loading, so it sees the cards the moment they appear
 
         carousel.track.addEventListener('click', function (e) {
             if (e.target.closest('.plant-retry')) loadLatestPlants(carousel);

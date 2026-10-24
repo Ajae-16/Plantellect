@@ -31,31 +31,46 @@
         </div>
     </header>
 
-    <!-- Cucumber photo: only home.html and about.html use the --cucumber modifier -->
-    <div class="background-image background-image--cucumber"></div>
+    <!--
+        Pinned scroll transition (see home.js, initPinned).
+        .pin-track   tall box whose extra height is the scroll distance of the transition
+        .pin-stage   sticks under the top bar, so the hero stays put while it plays
+        .pin-cards   overlay that carries the slider up into the hero
+        The plant cards are NOT a separate section below the hero any more.
+    -->
+    <div class="pin-track" id="pinTrack">
+        <div class="pin-stage">
 
-    <div class="hero-container">
-        <div class="hero-content">
-            <h1>Explore,    and    Expand<br>Your Botanist Mind</h1>
-            <p>Identify, share, and discover plants with a
-            <br>community that grows knowledge together.</p>
+            <!-- Cucumber photo: only home.html and about.html use the --cucumber modifier -->
+            <div class="background-image background-image--cucumber"></div>
+
+            <div class="hero-container">
+                <div class="hero-content">
+                    <h1>Explore,    and    Expand<br>Your Botanist Mind</h1>
+                    <p>Identify, share, and discover plants with a
+                    <br>community that grows knowledge together.</p>
+                </div>
+            </div>
+
+            <!-- The 10 newest plants. Cards (and the loading skeletons) are filled in by home.js -->
+            <div class="pin-cards">
+                <div class="slider-wrapper" aria-label="Newest plants" aria-busy="true">
+                    <span class="slider-label">
+                        <span class="material-symbols-outlined" aria-hidden="true">eco</span>
+                        Newest plants
+                    </span>
+
+                    <div class="slider-viewport">
+                        <div class="slider-track" id="latestPlantsTrack"></div>
+                    </div>
+
+                    <button type="button" class="slider-pause" aria-label="Pause auto-scroll" aria-pressed="false">
+                        <span class="material-symbols-outlined" aria-hidden="true">pause</span>
+                    </button>
+                </div>
+            </div>
+
         </div>
-    </div>
-
-    <!-- The 10 newest plants. Cards (and the loading skeletons) are filled in by home.js -->
-    <div class="slider-wrapper" aria-label="Newest plants" aria-busy="true">
-        <span class="slider-label">
-            <span class="material-symbols-outlined" aria-hidden="true">eco</span>
-            Newest plants
-        </span>
-
-        <div class="slider-viewport">
-            <div class="slider-track" id="latestPlantsTrack"></div>
-        </div>
-
-        <button type="button" class="slider-pause" aria-label="Pause auto-scroll" aria-pressed="false">
-            <span class="material-symbols-outlined" aria-hidden="true">pause</span>
-        </button>
     </div>
 
     <div class="sidebar-scrim"></div>
@@ -65,6 +80,8 @@
     <script src="javascript/logout.js"></script>
     <script src="javascript/auth.js"></script>
     <script src="javascript/nav-toggle.js"></script>
+    <script src="javascript/badges.js"></script>
+    <script src="javascript/richtext.js"></script>
     <script src="javascript/home.js"></script>
 </body>
 </html>
