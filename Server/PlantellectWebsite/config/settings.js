@@ -92,7 +92,7 @@ module.exports = {
     },
     pagination: {
         // Every list route clamps to these instead of hardcoding a page size.
-        defaultPageSize: 10,
+        defaultPageSize: 12,
         maxPageSize: 50,
         allowClientOverride: true
     },

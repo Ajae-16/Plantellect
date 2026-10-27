@@ -101,8 +101,9 @@ async function openLibrary(event) {
         return p && (p.id || p.plantId);
     }
 
+    /** The plant's creation time in ms, or null when the API gave none (or an invalid one). */
     function dateOf(p) {
-        const raw = p && (p.dateUploaded || p.createdAt || p.approvedAt || p.updatedAt);
+        const raw = p && (p.dateUploaded || p.createdAt);
         const t = raw ? new Date(raw).getTime() : NaN;
         return isNaN(t) ? null : t;
     }
@@ -163,13 +164,39 @@ async function openLibrary(event) {
         return response.json();
     }
 
-    /** The newest plants, at most LATEST_LIMIT, newest first. */
-    async function fetchLatestPlants() {
-        const data = await fetchJson(API_BASE + '?page=1&pageSize=' + LATEST_LIMIT + '&sort=newest');
-        let plants = Array.isArray(data) ? data : (data.plants || []);
+    /**
+     * Every plant row the API will give us. Page 1 is asked for with sort=newest,
+     * but the 10 newest are decided HERE from the creation date, so the carousel
+     * is right even when the server ignores sort (or sorts by something else).
+     * The remaining pages are fetched in parallel; MAX_PAGES keeps it bounded.
+     */
+    const MAX_PAGES = 40;
 
-        // Order is decided by the server (newest created first, then id).
-        // Do not re-sort or reverse here.
+    async function fetchPlantRows() {
+        const first = await fetchJson(API_BASE + '?page=1&pageSize=' + LATEST_LIMIT + '&sort=newest');
+        if (Array.isArray(first)) return first;
+
+        let rows = first.plants || [];
+        const pageSize = first.pageSize || rows.length || LATEST_LIMIT;
+        const totalPages = Math.min(MAX_PAGES, Math.ceil((first.total || rows.length) / pageSize));
+
+        if (totalPages > 1) {
+            const pages = [];
+            for (let page = 2; page <= totalPages; page++) pages.push(page);
+            const rest = await Promise.all(pages.map(function (page) {
+                return fetchJson(API_BASE + '?page=' + page + '&pageSize=' + pageSize + '&sort=newest')
+                    .then(function (d) { return Array.isArray(d) ? d : (d.plants || []); })
+                    .catch(function () { return []; });   // one failed page must not empty the carousel
+            }));
+            rest.forEach(function (list) { rows = rows.concat(list); });
+        }
+        return rows;
+    }
+
+    /** The 10 most recently CREATED plants, newest first. */
+    async function fetchLatestPlants() {
+        let plants = await fetchPlantRows();
+
         // Never show the same plant twice (same id, or same scientific name)
         const seen = new Set();
         plants = plants.filter(function (p) {
@@ -181,13 +208,21 @@ async function openLibrary(event) {
             keys.forEach(function (k) { seen.add(k); });
             return true;
         });
+
+        // Newest created first. A plant with no usable date sorts last. The sort is
+        // stable, so plants created at the same moment keep the server's order.
+        plants.sort(function (a, b) {
+            const ta = dateOf(a);
+            const tb = dateOf(b);
+            return (tb === null ? -1 : tb) - (ta === null ? -1 : ta);
+        });
         plants = plants.slice(0, LATEST_LIMIT);
 
-        // A list row may not carry a photo or description; the detail route does.
+        // A list row may not carry a photo, description or date; the detail route does.
         await Promise.all(plants.map(async function (p) {
             const id = plantIdOf(p);
             if (!id) return;
-            if (imageUrlFrom(p, id) && blurbOf(p)) return;
+            if (imageUrlFrom(p, id) && blurbOf(p) && dateOf(p) !== null) return;
             try {
                 p._detail = await fetchJson(API_BASE + '/' + encodeURIComponent(id));
             } catch (err) {

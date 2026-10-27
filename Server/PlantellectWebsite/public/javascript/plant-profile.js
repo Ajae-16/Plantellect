@@ -17,6 +17,20 @@ function escapeHtml(str) {
 }
 
 /**
+ * The creation date as { iso, text }, or null when the API sent none (or
+ * something that is not a date). The API field is dateUploaded (createdAt on
+ * older responses).
+ */
+function formatCreatedAt(raw) {
+    const when = raw ? new Date(raw) : null;
+    if (!when || isNaN(when.getTime())) return null;
+    return {
+        iso: when.toISOString(),
+        text: when.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    };
+}
+
+/**
  * Renders a botanist's text with its paragraphs, bullets and emphasis (richtext.js).
  * An empty value reads "No information recorded yet."
  */
@@ -503,6 +517,22 @@ function setHeroImage(plant) {
     }
 }
 
+/** Shows "Added <date>" under the plant's names, or hides the line when there is no date. */
+function setAddedDate(plant) {
+    const addedEl = document.getElementById('plantAdded');
+    if (!addedEl) return;
+    const added = formatCreatedAt(plant && (plant.dateUploaded || plant.createdAt));
+    if (!added) {
+        addedEl.hidden = true;
+        addedEl.innerHTML = '';
+        return;
+    }
+    addedEl.innerHTML =
+        '<span class="material-symbols-outlined" aria-hidden="true">calendar_today</span>' +
+        `<time datetime="${escapeHtml(added.iso)}">Added ${escapeHtml(added.text)}</time>`;
+    addedEl.hidden = false;
+}
+
 async function loadPlantProfile() {
     const params = new URLSearchParams(window.location.search);
     const plantId = params.get('plantId') || params.get('plant');
@@ -540,6 +570,7 @@ async function loadPlantProfile() {
     document.getElementById('scientificName').textContent = plant.scientificName || '';
     const typeBadgeEl = document.getElementById('plantTypeBadge');
     if (typeBadgeEl) typeBadgeEl.innerHTML = PlantBadge.html(plant.typeLabel || plant.type, plant.toxicityLevel);
+    setAddedDate(plant);
 
     // Prefer the primary description, then the first approved one.
     const primary = (plant.descriptions || []).find(d => d.isPrimary) || (plant.descriptions || [])[0];

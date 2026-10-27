@@ -48,7 +48,7 @@ function openLibrary(event) {
 const libraryState = {
     search: '',
     page: 1,
-    pageSize: 10,
+    pageSize: 12,
     total: 0
 };
 
@@ -58,6 +58,38 @@ function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = String(str == null ? '' : str);
     return div.innerHTML;
+}
+
+/**
+ * The creation date as { iso, text }, or null when the API sent none (or
+ * something that is not a date). The API field is dateUploaded (createdAt on
+ * older responses).
+ */
+function formatCreatedAt(raw) {
+    const when = raw ? new Date(raw) : null;
+    if (!when || isNaN(when.getTime())) return null;
+    return {
+        iso: when.toISOString(),
+        text: when.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    };
+}
+
+// Toxicity labels. Adjust the keys if your backend uses different levels
+// (and update the matching .tox-* classes in library.css).
+const TOXICITY_LABELS = {
+    none: 'Non-toxic',
+    low: 'Low toxicity',
+    mild: 'Mild toxicity',
+    moderate: 'Moderate toxicity',
+    high: 'High toxicity',
+    severe: 'Severe toxicity'
+};
+
+function toxicityInfo(level) {
+    const key = String(level || 'none').toLowerCase();
+    const label = TOXICITY_LABELS[key] ||
+        (key.charAt(0).toUpperCase() + key.slice(1) + ' toxicity');
+    return { key: key, label: label };
 }
 
 function renderPlantCards(plants) {
@@ -71,6 +103,7 @@ function renderPlantCards(plants) {
 
     grid.innerHTML = plants.map(function (p) {
         const name = p.name.toUpperCase();
+        const tox = toxicityInfo(p.toxicityLevel);
         const image = p.imageUrl
             ? `<img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.name)} Plant">`
             : '<div class="image-box image-placeholder" aria-hidden="true">🌿</div>';
@@ -103,15 +136,25 @@ function renderPlantCards(plants) {
             noteText = benefitsText;
         }
 
-        const note = noteText
-            ? `<div class="plant-note ${noteClass}">
+        // Always the same structure (label, fixed 3-line text area, "More"),
+        // so the note sits in the same place on every card.
+        const hasText = noteText !== '';
+        const note = `<div class="plant-note ${noteClass}">
                    <span class="plant-note-label">${noteLabel}</span>
-                   <div class="plant-note-text">${escapeHtml(noteText)}</div>
-                   <span class="plant-more">More <span aria-hidden="true">&rarr;</span></span>
-               </div>`
-            : `<div class="plant-note">
+                   <div class="plant-note-text ${hasText ? '' : 'is-empty'}">${hasText ? escapeHtml(noteText) : 'No details added yet.'}</div>
                    <span class="plant-more">More <span aria-hidden="true">&rarr;</span></span>
                </div>`;
+
+        // The creation date. A div, not a p: ".plant-grid .plant-card p" would
+        // clamp it to 3 lines and pad it like a description. Left out entirely
+        // when the API sent no (or an invalid) date.
+        const added = formatCreatedAt(p.dateUploaded || p.createdAt);
+        const dateRow = added
+            ? `<div class="plant-card-date">
+                   <span class="material-symbols-outlined" aria-hidden="true">calendar_today</span>
+                   <time datetime="${escapeHtml(added.iso)}">Added ${escapeHtml(added.text)}</time>
+               </div>`
+            : '';
 
         return `
         <a class="plant-link" href="plant-profile.html?plantId=${encodeURIComponent(p.id)}"
@@ -119,7 +162,11 @@ function renderPlantCards(plants) {
             <div class="plant-card">
                 <div class="image-box">${image}</div>
                 <h3>${escapeHtml(name)}</h3>
-                <p class="plant-card-type">${PlantBadge.html(p.typeLabel || p.type, p.toxicityLevel)}</p>
+                <div class="plant-card-type">
+                    <span class="plant-chip plant-chip-type">${escapeHtml(p.typeLabel || p.type || 'Unknown type')}</span>
+                    <span class="plant-chip plant-chip-tox tox-${escapeHtml(tox.key)}">${escapeHtml(tox.label)}</span>
+                </div>
+                ${dateRow}
                 ${note}
             </div>
         </a>`;

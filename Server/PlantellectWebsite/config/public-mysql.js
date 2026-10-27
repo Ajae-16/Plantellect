@@ -33,7 +33,8 @@ async function listPublicPlants({ search, type, page, pageSize }) {
 
     const [rows] = await mysqlPool.query(
         `SELECT p.plantId, p.commonName, p.scientificName, p.quantity,
-                t.typeName, t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote,
+                t.typeName, t.label AS typeLabel, t.icon AS typeIcon, t.badgeClass AS typeBadgeClass,
+                t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote,
                 (SELECT i.imageId FROM plant_images i
                  WHERE i.plantId = p.plantId AND i.status = 'approved'
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId,
@@ -63,7 +64,9 @@ async function listPublicPlants({ search, type, page, pageSize }) {
             scientificName: r.scientificName,
             quantity: r.quantity,
             type: r.typeName,
-            typeLabel: r.typeName,   // kept for older clients; the name IS the label now
+            typeLabel: r.typeLabel,
+            typeIcon: r.typeIcon,
+            typeBadgeClass: r.typeBadgeClass,
             isMedicinal: Boolean(r.isMedicinal),
             isHarmful: Boolean(r.isHarmful),
             toxicityLevel: r.toxicityLevel,
@@ -83,7 +86,8 @@ async function listPublicPlants({ search, type, page, pageSize }) {
 async function getPublicPlantDetail(plantId) {
     const [rows] = await mysqlPool.query(
         `SELECT p.plantId, p.commonName, p.scientificName, p.quantity, p.createdAt,
-                t.typeName, t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote
+                t.typeName, t.label AS typeLabel, t.icon AS typeIcon, t.badgeClass AS typeBadgeClass,
+                t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote
          FROM plants p
          JOIN plant_types t ON p.typeId = t.typeId
          WHERE p.plantId = ? AND ${PUBLIC_VISIBILITY}`,
@@ -121,7 +125,9 @@ async function getPublicPlantDetail(plantId) {
         scientificName: p.scientificName,
         quantity: p.quantity,
         type: p.typeName,
-        typeLabel: p.typeName,
+        typeLabel: p.typeLabel,
+        typeIcon: p.typeIcon,
+        typeBadgeClass: p.typeBadgeClass,
         isMedicinal: Boolean(p.isMedicinal),
         isHarmful: Boolean(p.isHarmful),
         toxicityLevel: p.toxicityLevel,
@@ -176,7 +182,7 @@ async function getBotanistProfile(accountId) {
 
     const contributionSelect = `
         SELECT p.plantId, p.commonName, p.scientificName, pc.role, pc.createdAt,
-                t.typeName, t.toxicityLevel,
+                t.typeName, t.label AS typeLabel,
                 (SELECT i.imageId FROM plant_images i
                  WHERE i.plantId = p.plantId AND i.status = 'approved'
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId
@@ -219,8 +225,7 @@ async function getBotanistProfile(accountId) {
             scientificName: c.scientificName,
             role: c.role,
             type: c.typeName,
-            typeLabel: c.typeName,
-            toxicityLevel: c.toxicityLevel,
+            typeLabel: c.typeLabel,
             imageUrl: c.heroImageId ? `/api/plants/${c.plantId}/images/${c.heroImageId}` : null
         })),
         reported: reported.map((c) => ({
@@ -229,32 +234,27 @@ async function getBotanistProfile(accountId) {
             scientificName: c.scientificName,
             role: c.role,
             type: c.typeName,
-            typeLabel: c.typeName,
-            toxicityLevel: c.toxicityLevel,
+            typeLabel: c.typeLabel,
             imageUrl: c.heroImageId ? `/api/plants/${c.plantId}/images/${c.heroImageId}` : null
         }))
     };
 }
 
-/**
- * The type NAMES in use, for the suggestion list on the record form and for the
- * library filter. Every plant owns its own plant_types row, so this is a
- * GROUP BY on the name, not a list of rows: "Herbal" appears once however many
- * plants carry it. The column collation is case-insensitive, so "herbal" and
- * "Herbal" group together. Most-used first, so the common names are on top.
- */
 async function listPlantTypes() {
     const [rows] = await mysqlPool.query(
-        `SELECT MIN(t.typeName) AS typeName, COUNT(*) AS plantCount
-         FROM plant_types t
-         JOIN plants p ON p.typeId = t.typeId
-         GROUP BY t.typeName
-         ORDER BY plantCount DESC, typeName ASC`
+        `SELECT typeId, typeName, label, icon, badgeClass, isMedicinal, isHarmful, toxicityLevel, cautionNote
+         FROM plant_types ORDER BY label ASC`
     );
     return rows.map((r) => ({
+        typeId: r.typeId,
         typeName: r.typeName,
-        label: r.typeName,   // kept for older clients
-        plantCount: Number(r.plantCount)
+        label: r.label,
+        icon: r.icon,
+        badgeClass: r.badgeClass,
+        isMedicinal: Boolean(r.isMedicinal),
+        isHarmful: Boolean(r.isHarmful),
+        toxicityLevel: r.toxicityLevel,
+        cautionNote: r.cautionNote
     }));
 }
 

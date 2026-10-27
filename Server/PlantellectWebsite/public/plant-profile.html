@@ -31,7 +31,13 @@
             <div class="plant-titles">
                 <h1 id="commonName">Loading...</h1>
                 <h3 id="scientificName"></h3>
-                <span id="plantTypeBadge"></span>
+                <!-- One row for the type badge and the creation date, so they share a line
+                     (and wrap together on a narrow screen) instead of stacking. -->
+                <div class="plant-meta-row">
+                    <span id="plantTypeBadge"></span>
+                    <!-- Filled by plant-profile.js: the date the plant was created. Hidden when the API sends none. -->
+                    <p class="plant-added" id="plantAdded" hidden></p>
+                </div>
                 <!-- Filled by plant-profile.js: whose description the cards below show. -->
                 <p class="primary-byline" id="primaryByline" hidden></p>
             </div>

@@ -163,6 +163,41 @@ html[data-theme="dark"] .profile-page {
     color: var(--pf-accent);
 }
 
+/* Type badge + creation date share one row; the byline gets its own row below.
+   Selectors do not depend on .profile-page, and the icon size is !important,
+   because the icon font otherwise renders at its large default size. */
+.plant-titles .plant-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    margin-top: 12px;
+}
+
+.plant-titles .plant-added {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1;
+    color: var(--pf-muted);
+    white-space: nowrap;
+}
+.plant-titles .plant-added[hidden] { display: none; }
+.plant-titles .plant-added .material-symbols-outlined {
+    font-size: 15px !important;
+    width: 15px;
+    height: 15px;
+    line-height: 1;
+    color: var(--pf-accent);
+}
+
+.plant-titles .primary-byline {
+    margin: 12px 0 0;
+}
+.plant-titles .primary-byline[hidden] { display: none; }
+
 /* ---------- Info cards ---------- */
 .profile-page .info-grid {
     display: grid;

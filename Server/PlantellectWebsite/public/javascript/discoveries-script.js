@@ -28,6 +28,15 @@ const REASON_LABELS = {
     duplicate: 'Duplicate of another report'
 };
 
+/** Readable role names. The role itself (card.reporterRole) comes from the server. */
+const ROLE_LABELS = {
+    user: 'User',
+    botanist: 'Botanist',
+    admin: 'Admin',
+    superadmin: 'Superadmin',
+    system: 'System'
+};
+
 let myAccountId = null;
 let currentPage = 1;
 const params = new URLSearchParams(window.location.search);
@@ -70,6 +79,18 @@ function formatWhen(value) {
     return date.toLocaleDateString();
 }
 
+/** True when the viewer is the person who filed this report. */
+function isReporterOf(card) {
+    return Boolean(myAccountId) && card.reporterId === myAccountId;
+}
+
+/** The reporter's role badge. Renders nothing until the API sends reporterRole. */
+function renderReporterRole(card) {
+    if (!card.reporterRole) return '';
+    const label = ROLE_LABELS[card.reporterRole] || String(card.reporterRole).replace(/_/g, ' ');
+    return `<span class="reporter-role role-${escapeHtml(card.reporterRole)}">${escapeHtml(label)}</span>`;
+}
+
 /** The report's own photos, from the botanist route. */
 function renderPhotos(card) {
     if (!card.images || card.images.length === 0) {
@@ -103,9 +124,14 @@ function renderPredictions(card) {
  * What you may DO with the report: claim it, work on it, or override a dead claim.
  * Rendered from the card's own fields, so it can only offer what the server would
  * accept.
+ *
+ * The person who filed a report cannot claim it or record it: they would be
+ * identifying their own submission. The server must enforce the same rule; hiding
+ * the buttons here only stops the client from inviting a refusal.
  */
 function renderActions(card) {
     const mine = card.claimedBy && card.claimedBy === myAccountId;
+    const isReporter = isReporterOf(card);
     const buttons = [];
 
     if (mine) {
@@ -113,9 +139,11 @@ function renderActions(card) {
         if (card.resolvedBy === myAccountId) {
             buttons.push(`<button type="button" class="btn discoveries-btn-secondary" data-action="reopen" data-id="${escapeHtml(card.requestId)}">Undo resolve</button>`);
         }
-        buttons.push(`<a class="btn discoveries-btn" href="record.html?from=${encodeURIComponent(card.requestId)}">Record it</a>`);
+        if (!isReporter) {
+            buttons.push(`<a class="btn discoveries-btn" href="record.html?from=${encodeURIComponent(card.requestId)}">Record it</a>`);
+        }
         buttons.push(`<button type="button" class="btn discoveries-btn-secondary" data-action="unclaim" data-id="${escapeHtml(card.requestId)}">Release</button>`);
-    } else if (card.claimable) {
+    } else if (card.claimable && !isReporter) {
         buttons.push(`<button type="button" class="btn discoveries-btn" data-action="claim" data-id="${escapeHtml(card.requestId)}">Claim</button>`);
     }
 
@@ -123,10 +151,11 @@ function renderActions(card) {
         buttons.push(`<button type="button" class="btn discoveries-btn-secondary" data-action="reinstate" data-id="${escapeHtml(card.requestId)}">Disagree? Reinstate</button>`);
     }
 
-    // A live claim is the admin's business, not a dead one: releaseDiscovery
-    // refuses for a non-admin while the holder can still authenticate, so
-    // offering the button to a botanist would only ever produce a 403.
-    if (card.claimedBy) {
+    // Someone else's claim only. Your own claim already has "Release" above, so
+    // offering this too would be two buttons for the same thing. The server
+    // refuses for a non-admin while the holder can still authenticate, which
+    // is the one case where the server, not this file, decides.
+    if (card.claimedBy && !mine) {
         buttons.push(`<button type="button" class="btn discoveries-btn-quiet" data-action="release" data-id="${escapeHtml(card.requestId)}">Release claim</button>`);
     }
 
@@ -174,6 +203,17 @@ function renderJudgementMenu(card) {
         </details>`;
 }
 
+/** The explanation shown in the verdict panel, depending on who is looking. */
+function disqualifyHint(card) {
+    if (card.claimedBy === myAccountId) {
+        return 'Recording the verdict hands the report back to the queue and releases your claim, so the rest of the team can vote on it.';
+    }
+    if (isReporterOf(card)) {
+        return 'You filed this report, so you cannot claim it or record a verdict on it. Another botanist has to.';
+    }
+    return 'You have to claim this report before you can record a verdict &mdash; a verdict must belong to somebody responsible for the report. Claim it, or ask the holder to release it.';
+}
+
 function renderCard(card) {
     const flags = [];
     if (card.claimedBy) {
@@ -194,7 +234,10 @@ function renderCard(card) {
         <article class="discovery-card" data-request="${escapeHtml(card.requestId)}">
             <header class="discovery-card-head">
                 <div>
-                    <h2 class="discovery-reporter">${escapeHtml(card.reporterName || card.reporterId)}</h2>
+                    <div class="discovery-reporter-line">
+                        <h2 class="discovery-reporter">${escapeHtml(card.reporterName || card.reporterId)}</h2>
+                        ${renderReporterRole(card)}
+                    </div>
                     <p class="discovery-muted">Reported ${formatWhen(card.submittedAt)}${card.location ? ' &middot; ' + escapeHtml(card.location) : ''}</p>
                 </div>
                 <a class="discovery-id" href="record.html?from=${encodeURIComponent(card.requestId)}">${escapeHtml(card.requestId)}</a>
@@ -209,9 +252,7 @@ function renderCard(card) {
                 <select id="disqReason-${escapeHtml(card.requestId)}">
                     ${Object.keys(REASON_LABELS).map((key) => `<option value="${key}">${escapeHtml(REASON_LABELS[key])}</option>`).join('')}
                 </select>
-                <p class="discovery-muted">${card.claimedBy === myAccountId
-                    ? 'Recording the verdict hands the report back to the queue and releases your claim, so the rest of the team can vote on it.'
-                    : 'You have to claim this report before you can record a verdict &mdash; a verdict must belong to somebody responsible for the report. Claim it, or ask the holder to release it.'}</p>
+                <p class="discovery-muted">${disqualifyHint(card)}</p>
                 <button type="button" class="btn discoveries-btn" data-action="disqualify" data-id="${escapeHtml(card.requestId)}">Record verdict</button>
                 <button type="button" class="btn discoveries-btn-secondary" data-action="cancel-disqualify" data-id="${escapeHtml(card.requestId)}">Cancel</button>
             </div>

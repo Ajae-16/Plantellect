@@ -390,3 +390,20 @@
         justify-content: space-between;
     }
 }
+
+/* Single combined name/email search */
+@media (min-width: 600px) {
+    .users-search.users-search--wide { max-width: 340px; }
+}
+
+/* Per-row role dropdown (sits in the actions group) */
+.filter-select.role-select {
+    padding: 6px 12px;
+    font-size: 13px;
+    height: 34px;
+    max-width: 130px;
+}
+.filter-select.role-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

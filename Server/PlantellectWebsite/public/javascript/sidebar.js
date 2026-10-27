@@ -206,17 +206,19 @@
     function readSessionUser() {
         try {
             return {
+                accountId: sessionStorage.getItem('accountId') || null,
                 username: sessionStorage.getItem('username') || '',
                 roles: JSON.parse(sessionStorage.getItem('roles') || '[]'),
                 permissions: JSON.parse(sessionStorage.getItem('permissions') || '[]')
             };
         } catch (e) {
-            return { username: '', roles: [], permissions: [] };
+            return { accountId: null, username: '', roles: [], permissions: [] };
         }
     }
 
     function writeSessionUser(user) {
         try {
+            sessionStorage.setItem('accountId', user.accountId || '');
             sessionStorage.setItem('username', user.username || '');
             sessionStorage.setItem('roles', JSON.stringify(user.roles || []));
             sessionStorage.setItem('permissions', JSON.stringify(user.permissions || []));
@@ -225,6 +227,7 @@
 
     function clearSessionUser() {
         try {
+            sessionStorage.removeItem('accountId');
             sessionStorage.removeItem('username');
             sessionStorage.removeItem('roles');
             sessionStorage.removeItem('permissions');
@@ -286,12 +289,11 @@
                         var cached = readSessionUser();
                         if (cached.username || cached.roles.length) {
                             plantAuthUser = {
-                                account: null,
+                                accountId: cached.accountId,
                                 username: cached.username,
                                 email: '',
                                 roles: cached.roles,
                                 permissions: cached.permissions
-
                             };
                         }
                     }
@@ -302,13 +304,23 @@
         return result.state === 'user' ? result.user : null;
     });
 
+    /* The one role worth showing next to the name: highest privilege first. */
+    function primaryRole(roles) {
+        var order = ['superadmin', 'admin', 'botanist'];
+        for (var i = 0; i < order.length; i++) {
+            if (roles.indexOf(order[i]) !== -1) return order[i];
+        }
+        return roles[0] || '';
+    }
+
     /**
-     * The header's username (ADMIN link for admins) / SIGN IN + SIGN UP, from
-     * session state.
+     * The header's username + role badge (ADMIN link for admins) / SIGN IN +
+     * SIGN UP, from session state.
      *
      * Sign out is NOT in the top bar any more: it lives in the sidebar
      * (.sidebar-logout-link). Only the username is shown here, as a link to the
-     * profile page. The username is escaped: it comes from an accounts row.
+     * profile page, followed by a small role badge. The username is escaped: it
+     * comes from an accounts row.
      */
     function renderAuthLinks(user) {
         var authLinks = document.querySelector('.auth-links');
@@ -324,13 +336,15 @@
         var isAdmin = roles.indexOf('admin') !== -1 || roles.indexOf('superadmin') !== -1;
         var adminLink = isAdmin ? '<a href="/admin/dashboard">ADMIN</a>' : '';
         var name = user.username || '';
+        var role = primaryRole(roles);
         // data-initial feeds the round avatar that base.css shows on small
         // screens, where the full name does not fit in the top bar.
         authLinks.innerHTML = adminLink +
             '<a href="profile.html" class="auth-username" title="' + escapeText(name) + '"' +
             ' aria-label="Profile: ' + escapeText(name) + '"' +
             ' data-initial="' + escapeText((name.charAt(0) || '?').toUpperCase()) + '">' +
-            escapeText(name) + '</a>';
+            escapeText(name) + '</a>' +
+            (role ? '<span class="auth-role">' + escapeText(role.replace(/_/g, ' ')) + '</span>' : '');
     }
 
     window.plantAuth = {

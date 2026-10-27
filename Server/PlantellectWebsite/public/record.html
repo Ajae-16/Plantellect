@@ -39,6 +39,16 @@
             <p class="record-muted">Submit a species, add to one already recorded, request a change, or track what you have sent.</p>
         </div>
 
+        <!-- Shown by record-script.js only when the page was opened with ?plantId=
+             (the plant profile's Contribute button). The species already exists, so the
+             NEW PLANT tab is hidden and this says why. The plant pickers on the other
+             tabs are locked to this plant. -->
+        <p id="recordPlantContext" class="record-hint" hidden>
+            Working on <strong id="recordPlantContextName"></strong>. You opened this from a plant page,
+            so only the tabs for that plant are shown.
+            <a href="record.html?tab=new">Record a new plant instead</a>
+        </p>
+
         <!-- Shown instead of every form when the session has no record_plant. There
              is no self-service upgrade: botanist status is granted at
              registration with a certificate. -->
@@ -104,12 +114,16 @@
                         </div>
                         <div class="record-field">
                             <label for="newTypeName">Type *</label>
-                            <input type="text" id="newTypeName" name="typeName" required autocomplete="off"
-                                   spellcheck="false" maxlength="50"
-                                   placeholder="Click to see the names already in use…">
-                            <!-- Opens on click, narrows as you type. A name that is not listed is
-                                 simply a new one; nothing here is locked. -->
-                            <div id="newTypeSuggest" class="record-picker" hidden></div>
+                            <!-- A dropdown of the types already in use, filled by
+                                 record-script.js (loadTypes). Its last entry, "Others",
+                                 reveals the text box below for a type that is not in the
+                                 list yet. -->
+                            <select id="newTypeName" name="typeName" required>
+                                <option value="">Loading types…</option>
+                            </select>
+                            <input type="text" id="newTypeOther" name="typeOther" maxlength="50"
+                                   autocomplete="off" placeholder="Type the new plant type"
+                                   aria-label="New plant type" hidden>
                         </div>
                     </div>
 
@@ -144,22 +158,23 @@
                         <p class="record-muted">
                             Left blank, a level is recorded as <strong>Unspecified</strong> rather than
                             guessed &mdash; a plausible wrong value reads as a fact nobody will correct.
+                            Start typing and values already in the library are suggested.
                         </p>
                         <div class="record-grid">
                             <div class="record-field"><label for="newKingdom">Kingdom</label>
-                                <input type="text" id="newKingdom" name="kingdom" autocomplete="off"></div>
+                                <input type="text" id="newKingdom" name="kingdom" autocomplete="off" list="taxList-kingdom"></div>
                             <div class="record-field"><label for="newPhylum">Phylum</label>
-                                <input type="text" id="newPhylum" name="phylum" autocomplete="off"></div>
+                                <input type="text" id="newPhylum" name="phylum" autocomplete="off" list="taxList-phylum"></div>
                             <div class="record-field"><label for="newPlantClass">Class</label>
-                                <input type="text" id="newPlantClass" name="plantClass" autocomplete="off"></div>
+                                <input type="text" id="newPlantClass" name="plantClass" autocomplete="off" list="taxList-class"></div>
                             <div class="record-field"><label for="newOrder">Order</label>
-                                <input type="text" id="newOrder" name="order" autocomplete="off"></div>
+                                <input type="text" id="newOrder" name="order" autocomplete="off" list="taxList-order"></div>
                             <div class="record-field"><label for="newFamily">Family</label>
-                                <input type="text" id="newFamily" name="family" autocomplete="off"></div>
+                                <input type="text" id="newFamily" name="family" autocomplete="off" list="taxList-family"></div>
                             <div class="record-field"><label for="newGenus">Genus</label>
-                                <input type="text" id="newGenus" name="genus" autocomplete="off"></div>
+                                <input type="text" id="newGenus" name="genus" autocomplete="off" list="taxList-genus"></div>
                             <div class="record-field"><label for="newSpecies">Species (epithet)</label>
-                                <input type="text" id="newSpecies" name="species" autocomplete="off"></div>
+                                <input type="text" id="newSpecies" name="species" autocomplete="off" list="taxList-species"></div>
                         </div>
                     </details>
 
@@ -189,8 +204,6 @@
 
                     <details class="record-details" open>
                         <summary>Description (optional, but names alone are not publishable)</summary>
-                        <p class="rt-hint">Your Enter key is kept, and you can use bold, bullets and highlights.
-                            <button type="button" class="rt-guide-link" data-rt-guide>Open the formatting guide</button></p>
                         <div class="record-field">
                             <label for="newUses">Uses</label>
                             <textarea data-richtext id="newUses" name="uses" rows="3"></textarea>
@@ -214,8 +227,10 @@
                         <img id="newCarriedImg" alt="The photo you scanned">
                         <div>
                             <p>Use the photo you scanned</p>
-                            <button type="button" class="btn record-btn-secondary" id="newUseCarried">Use this photo</button>
-                            <button type="button" class="btn record-btn-secondary" id="newDropCarried">Discard it</button>
+                            <div class="record-actions">
+                                <button type="button" class="btn record-btn-secondary" id="newUseCarried">Use this photo</button>
+                                <button type="button" class="btn record-btn-secondary" id="newDropCarried">Discard it</button>
+                            </div>
                         </div>
                     </div>
 
@@ -283,14 +298,17 @@
                         <div class="record-taxonomy-request" id="taxonomyRequest" hidden>
                             <p class="record-muted">
                                 Change only what is wrong. A blank level stays as recorded.
+                                Start typing and values already in the library are suggested.
                             </p>
                             <div class="record-grid" id="taxonomyEditGrid"></div>
                             <div class="record-field">
                                 <label for="taxonomyReason">Why (optional)</label>
                                 <textarea id="taxonomyReason" rows="2" maxlength="500"></textarea>
                             </div>
-                            <button type="button" class="btn record-submit" id="taxonomySubmit">Send taxonomy update</button>
-                            <button type="button" class="btn record-btn-secondary" id="taxonomyCancel">Cancel</button>
+                            <div class="record-actions">
+                                <button type="button" class="btn record-submit" id="taxonomySubmit">Send taxonomy update</button>
+                                <button type="button" class="btn record-btn-secondary" id="taxonomyCancel">Cancel</button>
+                            </div>
                         </div>
                     </div>
 
@@ -301,15 +319,15 @@
                         <img id="contributeCarriedImg" alt="The photo you scanned">
                         <div>
                             <p id="contributeCarriedLabel">Use the photo you scanned</p>
-                            <button type="button" class="btn record-btn-secondary" id="contributeUseCarried">Use this photo</button>
-                            <button type="button" class="btn record-btn-secondary" id="contributeDropCarried">Discard it</button>
+                            <div class="record-actions">
+                                <button type="button" class="btn record-btn-secondary" id="contributeUseCarried">Use this photo</button>
+                                <button type="button" class="btn record-btn-secondary" id="contributeDropCarried">Discard it</button>
+                            </div>
                         </div>
                     </div>
 
                     <details class="record-details" open>
                         <summary>Description and measurements</summary>
-                        <p class="rt-hint">Your Enter key is kept, and you can use bold, bullets and highlights.
-                            <button type="button" class="rt-guide-link" data-rt-guide>Open the formatting guide</button></p>
                         <div class="record-field">
                             <label for="contributeUses">Uses</label>
                             <textarea data-richtext id="contributeUses" name="uses" rows="3"></textarea>
@@ -460,6 +478,17 @@
         </div>
     </div>
 
+    <!-- Suggestions for every taxonomy box on this page (new plant, taxonomy update,
+         change request). Empty here; record-script.js fills them from
+         GET /api/plants/taxonomy-suggestions. -->
+    <datalist id="taxList-kingdom"></datalist>
+    <datalist id="taxList-phylum"></datalist>
+    <datalist id="taxList-class"></datalist>
+    <datalist id="taxList-order"></datalist>
+    <datalist id="taxList-family"></datalist>
+    <datalist id="taxList-genus"></datalist>
+    <datalist id="taxList-species"></datalist>
+
     <!-- One preview dialog for every thumbnail on the page. Closes with the cross,
          Escape or a click on the backdrop, and returns focus to the thumbnail that
          opened it. -->
@@ -482,6 +511,9 @@
     <script src="javascript/badges.js"></script>
     <script src="javascript/richtext.js"></script>
     <script src="javascript/record-script.js"></script>
+    <!-- record-type-select.js is no longer loaded: record-script.js now fills the
+         NEW PLANT Type dropdown itself (with "Others"), and a second script
+         rebuilding the same <select> would wipe that entry. -->
 
 </body>
 </html>

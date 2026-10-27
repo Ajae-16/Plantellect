@@ -277,6 +277,19 @@ body, html {
     box-shadow: var(--box-shadow-card);
 }
 
+/* Nothing on this page is mirrored except the front-camera video (see the
+   .scan-camera-video--mirrored rule in the camera section below).
+   !important so no other stylesheet can flip a photo. */
+.scan-preview,
+.scan-preview img,
+.scan-camera-overlay,
+.scan-camera-video {
+    transform: none !important;
+    -webkit-transform: none !important;
+    scale: none !important;
+    rotate: none !important;
+}
+
 /* The preview lives inside the drop zone. Same element, same object URL, same
    revoke — so the dashed border frames the photo the user just chose, and there
    is no second blob to leak when the next file replaces it. */
@@ -483,25 +496,68 @@ a.scan-prediction-name:hover {
    The ONLY genuinely-modal piece left, because it only exists
    while a MediaStream is live. Scoped to .scan-camera-overlay
    so these overlay rules cannot leak onto the page sections.
+   scan.js creates the elements and sets these classes; it sets
+   no inline styles.
    ========================================================= */
 
 .scan-camera-overlay {
     position: fixed;
     inset: 0;
-    z-index: var(--z-index-popup);
+    z-index: 2147483000;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1rem;
-    padding: 1.5rem;
-    background-color: var(--color-overlay-darker);
+    gap: 12px;
+    box-sizing: border-box;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    background-color: rgba(0, 0, 0, 0.92);
+}
+
+/* .btn sets a display value that would otherwise beat the hidden attribute
+   (the "Flip view" button is toggled with it). */
+.scan-camera-overlay [hidden] {
+    display: none !important;
 }
 
 .scan-camera-video {
-    max-width: min(90vw, 560px);
-    border-radius: var(--border-radius-md);
-    background-color: var(--color-black);
+    display: block;
+    width: 100%;
+    max-width: 640px;
+    flex: 1 1 auto;
+    min-height: 0;
+    object-fit: contain;
+    background-color: #000;
+    border-radius: 12px;
+}
+
+/* Only the front camera is ever mirrored, and only via this class. Higher
+   specificity than the "never mirrored" rule in the preview section, so it wins. */
+.scan-camera-video.scan-camera-video--mirrored {
+    transform: scaleX(-1) !important;
+    -webkit-transform: scaleX(-1) !important;
+}
+
+.scan-camera-status {
+    margin: 0;
+    flex: 0 0 auto;
+    color: #fff;
+    font-size: 14px;
+    text-align: center;
+}
+
+.scan-camera-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 640px;
+    flex: 0 0 auto;
+}
+
+.scan-camera-btn {
+    min-height: 44px;
 }
 
 /* =========================================================

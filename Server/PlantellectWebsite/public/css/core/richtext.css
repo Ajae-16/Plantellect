@@ -47,7 +47,7 @@
     background: rgba(128, 128, 128, 0.2); border-color: rgba(128, 128, 128, 0.4); outline: none;
 }
 .rt-toolbar .rt-sep { width: 1px; height: 18px; background: rgba(128, 128, 128, 0.4); margin: 0 2px; }
-.rt-toolbar .rt-help { margin-left: auto; font-size: 0.8rem; text-decoration: underline; }
+.rt-toolbar .rt-help { margin-left: auto; }
 .rt-hint { margin: 4px 0 0; font-size: 0.78rem; opacity: 0.75; }
 .rt-hint code, .rt-guide code {
     padding: 0 4px; border-radius: 4px; background: rgba(128, 128, 128, 0.2);
@@ -62,21 +62,74 @@
 
 /* ---------- formatting guide dialog ---------- */
 .rt-guide {
-    width: min(680px, 94vw); max-height: 88vh; overflow: auto;
-    padding: 20px 22px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 12px;
-    background: var(--color-bg-light, #fbf9f1); color: var(--color-dark-jungle-green, #2c3427);
+    --g-bg: #fbf9f1; --g-surface: #ffffff; --g-surface-2: #f1efe2;
+    --g-text: #2c3427; --g-muted: #5a6654; --g-border: #dcd7c9;
+    --g-accent: #2e6417; --g-accent-soft: rgba(46, 100, 23, 0.1);
+    width: min(720px, 94vw); max-height: min(86vh, 780px);
+    padding: 0; overflow: hidden;
+    border: 1px solid var(--g-border); border-radius: 16px;
+    background: var(--g-bg); color: var(--g-text);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
 }
-.rt-guide::backdrop { background: rgba(0, 0, 0, 0.45); }
-.rt-guide h2 { margin: 0 0 6px; font-size: 1.2rem; }
-.rt-guide p { margin: 0 0 10px; font-size: 0.92rem; }
-.rt-guide table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 0.9rem; }
-.rt-guide th, .rt-guide td { padding: 6px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid rgba(128, 128, 128, 0.3); }
-.rt-guide th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7; }
-.rt-guide pre { margin: 0; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
-.rt-guide .rt-guide-actions { text-align: right; margin-top: 12px; }
-.rt-guide .rt-guide-actions button {
-    padding: 6px 16px; border: 0; border-radius: 8px; cursor: pointer;
-    background: var(--color-forest-green, #2e6417); color: #fff; font: inherit;
+.rt-guide[open] { display: flex; flex-direction: column; }
+/* CENTER: pages with a global `* { margin: 0 }` reset (record.css) remove the dialog's
+   default `margin: auto`, which pins it to the top-left. Restore it explicitly. */
+.rt-guide { margin: auto; position: fixed; inset: 0; }
+.rt-guide::backdrop { background: rgba(15, 22, 12, 0.55); backdrop-filter: blur(3px); }
+
+.rt-guide-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding: 18px 22px 14px; border-bottom: 1px solid var(--g-border);
+}
+.rt-guide-head h2 { margin: 0; font-size: 1.3rem; }
+.rt-guide-head p { margin: 6px 0 0; font-size: 0.9rem; line-height: 1.5; color: var(--g-muted); max-width: 52ch; }
+.rt-guide-x {
+    flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%;
+    background: var(--g-accent-soft); color: var(--g-text); font-size: 22px; line-height: 1; cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+.rt-guide-x:hover, .rt-guide-x:focus-visible { background: var(--g-border); outline: none; }
+
+.rt-guide-body { flex: 1; min-height: 0; overflow: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 22px; }
+.rt-guide-group h3, .rt-guide-tips h3 {
+    margin: 0 0 10px; font-size: 0.75rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--g-accent);
+}
+.rt-guide-items { display: grid; gap: 10px; }
+.rt-guide-item {
+    display: flex; flex-direction: column; gap: 10px; padding: 12px 14px;
+    background: var(--g-surface); border: 1px solid var(--g-border); border-radius: 12px;
+}
+.rt-guide-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 0.9rem; }
+.rt-guide .rt-guide-key {
+    padding: 3px 10px; border-radius: 6px; background: var(--g-accent-soft);
+    color: var(--g-accent); font-weight: 700; font-size: 0.85rem;
+}
+.rt-guide-demo { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: stretch; }
+.rt-guide-col {
+    display: flex; flex-direction: column; gap: 4px; min-width: 0;
+    padding: 8px 10px; border-radius: 8px; background: var(--g-surface-2); font-size: 0.88rem;
+}
+.rt-guide-tag { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--g-muted); }
+.rt-guide-arrow { align-self: center; font-weight: 700; color: var(--g-accent); }
+.rt-guide pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
+
+.rt-guide-tips { padding: 12px 16px; border-radius: 12px; background: var(--g-accent-soft); border-left: 4px solid var(--g-accent); }
+.rt-guide-tips ul { margin: 0; padding-left: 1.1rem; font-size: 0.88rem; line-height: 1.55; }
+.rt-guide-tips li + li { margin-top: 4px; }
+
+.rt-guide-foot { padding: 12px 22px; text-align: right; border-top: 1px solid var(--g-border); background: var(--g-bg); }
+.rt-guide-done {
+    padding: 9px 22px; border: 0; border-radius: 10px; cursor: pointer;
+    background: var(--g-accent); color: #fff; font: inherit; font-weight: 700;
+    transition: filter 0.2s ease;
+}
+.rt-guide-done:hover { filter: brightness(1.1); }
+.rt-guide-done:focus-visible { outline: 3px solid var(--g-accent-soft); outline-offset: 2px; }
+
+@media (max-width: 560px) {
+    .rt-guide-demo { grid-template-columns: 1fr; }
+    .rt-guide-arrow { justify-self: center; transform: rotate(90deg); }
 }
 
 /* ---------- colour-coded contributor boxes (plant profile) ---------- */
@@ -120,12 +173,13 @@ html[data-theme="dark"] {
     --contrib-7-bg: #343013; --contrib-7-fg: #f1e6a3;
     --contrib-8-bg: #212442; --contrib-8-fg: #cfd2f6;
 }
-html[data-theme="dark"] .rt-guide { background: #2c3427; color: #eef2e8; }
-
-.rt-guide-link {
-    padding: 0; border: 0; background: none; color: inherit; font: inherit;
-    text-decoration: underline; cursor: pointer;
+/* FIX: --g-text was #4b4839 (dark brown on dark green). Now a light cream. */
+html[data-theme="dark"] .rt-guide {
+    --g-bg: #232a1f; --g-surface: #2c3427; --g-surface-2: #1b2118;
+    --g-text: #f2efe0; --g-muted: rgba(242, 239, 224, 0.82); --g-border: rgba(220, 215, 201, 0.28);
+    --g-accent: #c6e78f; --g-accent-soft: rgba(198, 231, 143, 0.16);
 }
+html[data-theme="dark"] .rt-guide-done { color: #2c3427; }
 
 /* The textarea fills the editor, whatever the page's own textarea rules say. */
 .rt-editor textarea {
@@ -134,3 +188,46 @@ html[data-theme="dark"] .rt-guide { background: #2c3427; color: #eef2e8; }
 }
 .rt-editor + .rt-hint, .rt-editor { margin-bottom: 4px; }
 .rt-hint + label, .rt-hint + .plant-field, p.rt-hint:has(.rt-guide-link) { margin-bottom: 8px; }
+
+/* ---------- editor toolbar: cleaner, attached to the textarea ---------- */
+.rt-toolbar { gap: 2px; padding: 5px 6px; margin-bottom: 0; border-bottom: 0; border-radius: 10px 10px 0 0; }
+.rt-toolbar + textarea { border-top-left-radius: 0 !important; border-top-right-radius: 0 !important; }
+.rt-toolbar button { height: 30px; border-radius: 7px; font-weight: 600; }
+
+/* ---------- "Formatting guide" opens a dialog, so it must look like a button ---------- */
+.rt-toolbar .rt-help,
+.rt-guide-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; height: auto; min-height: 28px;
+    border: 1.5px solid var(--color-forest-green, #2e6417);
+    border-radius: 999px;
+    background: rgba(46, 100, 23, 0.1);
+    color: var(--color-forest-green, #2e6417);
+    font: inherit; font-weight: 700; font-size: 0.82rem; text-decoration: none; cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+/* Small "?" badge, drawn with CSS only. Delete these two rules if richtext.js already adds an icon. */
+.rt-toolbar .rt-help::before,
+.rt-guide-link::before {
+    content: '?';
+    display: inline-grid; place-items: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: currentColor; font-size: 0.7rem; line-height: 1;
+}
+.rt-toolbar .rt-help:hover, .rt-toolbar .rt-help:focus-visible,
+.rt-guide-link:hover, .rt-guide-link:focus-visible {
+    background: var(--color-forest-green, #2e6417); color: #fff;
+    border-color: var(--color-forest-green, #2e6417);
+    outline: 3px solid rgba(46, 100, 23, 0.25); outline-offset: 2px;
+}
+html[data-theme="dark"] .rt-toolbar .rt-help,
+html[data-theme="dark"] .rt-guide-link {
+    color: #c6e78f; border-color: #c6e78f; background: rgba(198, 231, 143, 0.14);
+}
+html[data-theme="dark"] .rt-toolbar .rt-help:hover,
+html[data-theme="dark"] .rt-toolbar .rt-help:focus-visible,
+html[data-theme="dark"] .rt-guide-link:hover,
+html[data-theme="dark"] .rt-guide-link:focus-visible { background: #c6e78f; color: #1b2118; }
+
+/* the syntax cheat-line only shows while you are typing in that box */
+.rt-editor:not(:focus-within) > .rt-hint { display: none; }

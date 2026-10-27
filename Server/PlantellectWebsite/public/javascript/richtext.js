@@ -129,29 +129,56 @@
         ['!!important!!', 'Red emphasis. Best for warnings.', '!!Toxic to pets!!']
     ];
 
+    // Which EXAMPLES rows belong under which heading in the guide.
+    var GUIDE_GROUPS = [
+        { title: 'Lines and paragraphs', rows: [0, 1] },
+        { title: 'Lists',                rows: [2, 3] },
+        { title: 'Text style',           rows: [4, 5, 6, 7] },
+        { title: 'Emphasis',             rows: [8, 9] }
+    ];
+
     var guideDialog = null;
 
     function buildGuide() {
         if (guideDialog) return guideDialog;
-        var rows = EXAMPLES.map(function (row) {
-            return '<tr><td><code>' + esc(row[0]) + '</code></td><td>' + esc(row[1]) + '</td>' +
-                '<td><pre>' + esc(row[2]) + '</pre></td><td class="rt">' + html(row[2]) + '</td></tr>';
+
+        var groups = GUIDE_GROUPS.map(function (group) {
+            var cards = group.rows.map(function (i) {
+                var row = EXAMPLES[i];
+                return '<div class="rt-guide-item">' +
+                    '<div class="rt-guide-item-head"><code class="rt-guide-key">' + esc(row[0]) + '</code>' +
+                    '<span>' + esc(row[1]) + '</span></div>' +
+                    '<div class="rt-guide-demo">' +
+                        '<div class="rt-guide-col"><span class="rt-guide-tag">You type</span><pre>' + esc(row[2]) + '</pre></div>' +
+                        '<span class="rt-guide-arrow" aria-hidden="true">&rarr;</span>' +
+                        '<div class="rt-guide-col"><span class="rt-guide-tag">You get</span><div class="rt">' + html(row[2]) + '</div></div>' +
+                    '</div></div>';
+            }).join('');
+            return '<section class="rt-guide-group"><h3>' + esc(group.title) + '</h3>' +
+                '<div class="rt-guide-items">' + cards + '</div></section>';
         }).join('');
+
+        var tips =
+            '<section class="rt-guide-tips"><h3>Tips</h3><ul>' +
+            '<li>Keep one idea per bullet.</li>' +
+            '<li>Use <code>==highlight==</code> for the one thing a reader must remember, and <code>!!important!!</code> only for warnings, or nothing stands out.</li>' +
+            '<li>Marks must touch the words: <code>**bold**</code>, not <code>** bold **</code>.</li>' +
+            '<li>Your notes are shown under your name in your own colour.</li>' +
+            '</ul></section>';
+
         guideDialog = document.createElement('dialog');
         guideDialog.className = 'rt-guide';
+        guideDialog.setAttribute('aria-labelledby', 'rtGuideTitle');
         guideDialog.innerHTML =
-            '<h2>Formatting guide</h2>' +
-            '<p>Descriptions are saved as plain text, so the Enter key and these marks are what keep your ' +
-            'paragraphs, lists and emphasis when the plant page is shown. Wrap the words you want to change ' +
-            'in the marks below; the toolbar above each box adds them for you.</p>' +
-            '<table><thead><tr><th>Type</th><th>What it does</th><th>Example</th><th>Shown as</th></tr></thead>' +
-            '<tbody>' + rows + '</tbody></table>' +
-            '<p><strong>Tips.</strong> Keep one idea per bullet. Use <code>==highlight==</code> for the one thing a reader ' +
-            'must remember and <code>!!important!!</code> only for warnings, or nothing stands out. Marks must touch the ' +
-            'words (<code>**bold**</code>, not <code>** bold **</code>). Your notes are shown under your name in your own colour.</p>' +
-            '<div class="rt-guide-actions"><button type="button" data-close>Got it</button></div>';
+            '<header class="rt-guide-head"><div>' +
+                '<h2 id="rtGuideTitle">Formatting guide</h2>' +
+                '<p>Descriptions are saved as plain text. Wrap words in these marks and they keep their paragraphs, lists and emphasis on the plant page. The toolbar above each box adds them for you.</p>' +
+            '</div><button type="button" class="rt-guide-x" data-close aria-label="Close guide">&times;</button></header>' +
+            '<div class="rt-guide-body">' + groups + tips + '</div>' +
+            '<footer class="rt-guide-foot"><button type="button" class="rt-guide-done" data-close>Got it</button></footer>';
+
         guideDialog.addEventListener('click', function (e) {
-            if (e.target === guideDialog || e.target.hasAttribute('data-close')) guideDialog.close();
+            if (e.target === guideDialog || (e.target.closest && e.target.closest('[data-close]'))) guideDialog.close();
         });
         document.body.appendChild(guideDialog);
         return guideDialog;

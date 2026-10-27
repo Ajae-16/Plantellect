@@ -18,6 +18,19 @@
  * setting, so nothing here hardcodes it. The values below are only the fallback
  * for a failed fetch, and a stale client limit is only a worse error message —
  * the server's upload middleware enforces the real one.
+ *
+ * Plant TYPE is chosen from a dropdown of the names already in use
+ * (GET /api/plants/types), on the NEW PLANT tab and in the REQUEST CHANGE type
+ * editor. The last entry, "Others", reveals a text box for a type that is not in
+ * the list yet. A typed name that matches an existing one (ignoring case) is sent
+ * with the existing spelling, so "Herbal" and "herbal" cannot drift apart.
+ *
+ * Taxonomy boxes suggest the values already in the library
+ * (GET /api/plants/taxonomy-suggestions) through native <datalist> elements. If
+ * that endpoint is missing or fails, the boxes simply work as plain text.
+ *
+ * Validation problems are shown BELOW the box they belong to; the page opens any
+ * collapsed section holding one, scrolls to the first and focuses it.
  */
 
 (function () {
@@ -26,6 +39,9 @@
     var PAGE_SIZE = 10;     // settings.pagination.defaultPageSize
     var MAX_PAGE_SIZE = 50; // settings.pagination.maxPageSize
     var DEBOUNCE_MS = 300;
+
+    // Value of the "Others" entry in a type dropdown. Never a real type name.
+    var OTHER_VALUE = '__other__';
 
     // Fallback only; replaced by loadLimits().
     var limits = {
@@ -77,6 +93,7 @@
     var mineTotal = 0;
     var mineStale = false;
     var typeNames = [];             // [{ typeName, plantCount }] from /api/plants/types, most used first
+    var taxonomyValues = {};        // level -> [values already in the library], for the suggestions
     var contributePlant = null;     // { id, name, scientificName, lookup }
     var changePlant = null;         // the /editable payload for the plant chosen on the change tab
     var changeDescription = null;   // the one of the botanist's own descriptions the description half edits
@@ -92,6 +109,8 @@
     var discoveryImages = [];       // the claimed report's photos: [{ imageId, url, originalFilename }]
     var chosenReportPhotos = { 'new': {}, contribute: {} };
     var modalOpener = null;
+    var fromProfile = false;        // opened with ?plantId= (the plant profile's Contribute button)
+    var lockedPlant = null;         // set when opened from a plant card: the one plant this page may touch
 
     // ------------------------------------------------------------ helpers ----
     function byId(id) { return document.getElementById(id); }
@@ -103,10 +122,93 @@
         el.notice.hidden = !text;
     }
 
+    /** A problem that is not about one box (the server refused, say): show it and scroll to it. */
+    function showProblem(message) {
+        setNotice(message, 'error');
+        if (el.notice) el.notice.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
     function setGate(text) {
         if (!el.gate) return;
         el.gate.textContent = text || '';
         el.gate.hidden = !text;
+    }
+
+    // ------------------------------------------------------- field errors ----
+    /**
+     * An error is a <p class="record-field-error"> placed right below the box it
+     * belongs to (below the whole row when the box sits in a search row, below the
+     * whole group for a checkbox). It is removed as soon as the botanist edits
+     * that box.
+     */
+    function errorAnchor(input) {
+        if (input.type === 'checkbox') return input.closest('fieldset') || input;
+        return input.closest('.record-search-row') || input;
+    }
+
+    function clearFieldError(input) {
+        if (!input) return;
+        if (input.id) {
+            var node = byId('err-' + input.id);
+            if (node) node.remove();
+        }
+        if (input.removeAttribute) {
+            input.removeAttribute('aria-invalid');
+            input.removeAttribute('aria-describedby');
+        }
+    }
+
+    function clearFieldErrors(scope) {
+        var root = scope || document;
+        root.querySelectorAll('.record-field-error').forEach(function (node) { node.remove(); });
+        root.querySelectorAll('[aria-invalid="true"]').forEach(function (input) {
+            input.removeAttribute('aria-invalid');
+            input.removeAttribute('aria-describedby');
+        });
+    }
+
+    function setFieldError(input, message) {
+        clearFieldError(input);
+        var node = document.createElement('p');
+        node.className = 'record-field-error';
+        node.id = 'err-' + input.id;
+        node.setAttribute('role', 'alert');
+        node.textContent = message;
+        errorAnchor(input).insertAdjacentElement('afterend', node);
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', node.id);
+    }
+
+    /**
+     * errors: [{ input, message }]. Shows each one below its box, opens every
+     * collapsed section that holds one, scrolls to the first (in page order) and
+     * focuses it. Returns true when there was anything to show.
+     */
+    function reportErrors(errors, scope) {
+        clearFieldErrors(scope);
+        var valid = errors.filter(function (error) { return error && error.input && error.input.id; });
+        if (valid.length === 0) return false;
+
+        valid.sort(function (a, b) {
+            if (a.input === b.input) return 0;
+            return (a.input.compareDocumentPosition(b.input) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
+        });
+        valid.forEach(function (error) {
+            setFieldError(error.input, error.message);
+            var section = error.input.closest('details');
+            while (section) {
+                section.open = true;
+                section = section.parentElement ? section.parentElement.closest('details') : null;
+            }
+        });
+
+        var first = valid[0].input;
+        var target = first.closest('.record-field') || first;
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        try { first.focus({ preventScroll: true }); } catch (err) { first.focus(); }
+
+        setNotice('Please fix the highlighted ' + (valid.length === 1 ? 'field' : 'fields') + ' below.', 'error');
+        return true;
     }
 
     /** Serialises the measurement inputs a panel owns, skipping blanks. */
@@ -174,47 +276,115 @@
         return Boolean(type) && !type.isHarmful && (type.toxicityLevel || 'none') === 'none';
     }
 
-    /** The typed type name: trimmed, single spaces, the case it was typed in. */
+    /** A type name: trimmed, single spaces, the case it was stored in. */
     function normalizeTypeName(text) {
         return String(text == null ? '' : text).trim().replace(/\s+/g, ' ');
     }
 
     /**
-     * The list of type names already in use, attached to a text box. It opens on
-     * click or focus, narrows as you type, and a pick fills the box. Nothing is
-     * locked: a name that is not listed is simply a new one. The list is only there
-     * so two botanists land on "Herbal" instead of "Herbal" and "Medical Herb".
+     * The type name a type <select> and its "Others" text box stand for. When
+     * "Others" is chosen the typed name is used, but a name that already exists
+     * (ignoring case) is returned with the existing spelling.
      */
-    function attachTypeSuggest(input, listEl) {
-        function render() {
-            var query = normalizeTypeName(input.value).toLowerCase();
-            var matches = typeNames.filter(function (t) {
-                return !query || t.typeName.toLowerCase().indexOf(query) !== -1;
-            }).slice(0, 12);
-            listEl.innerHTML = '';
-            if (matches.length === 0) { listEl.hidden = true; return; }
-            matches.forEach(function (t) {
-                var button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'record-picker-item';
-                button.innerHTML = escapeHtml(t.typeName) +
-                    ' <em>(' + t.plantCount + ' plant' + (t.plantCount === 1 ? '' : 's') + ')</em>';
-                // Keep focus in the box, so picking does not blur it first.
-                button.addEventListener('mousedown', function (e) { e.preventDefault(); });
-                button.addEventListener('click', function () {
-                    input.value = t.typeName;
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    listEl.hidden = true;
-                });
-                listEl.appendChild(button);
-            });
-            listEl.hidden = false;
+    function chosenTypeName(select, otherInput) {
+        if (!select) return '';
+        if (select.value !== OTHER_VALUE) return normalizeTypeName(select.value);
+        var typed = normalizeTypeName(otherInput ? otherInput.value : '');
+        var lower = typed.toLowerCase();
+        for (var i = 0; i < typeNames.length; i++) {
+            if (typeNames[i].typeName.toLowerCase() === lower) return typeNames[i].typeName;
         }
-        input.addEventListener('focus', render);
-        input.addEventListener('click', render);
-        input.addEventListener('input', render);
-        input.addEventListener('blur', function () { listEl.hidden = true; });
-        input.addEventListener('keydown', function (e) { if (e.key === 'Escape') listEl.hidden = true; });
+        return typed;
+    }
+
+    /** Shows the "Others" text box only while "Others" is chosen. */
+    function syncTypeOther(select, otherInput) {
+        if (!select || !otherInput) return;
+        var other = select.value === OTHER_VALUE;
+        otherInput.hidden = !other;
+        if (!other) {
+            otherInput.value = '';
+            clearFieldError(otherInput);
+        }
+    }
+
+    /**
+     * Fills a <select> with the type names already in use, most used first, and
+     * "Others" last. `selected` is kept chosen; if it is not in the list (a plant
+     * whose own type name nobody else uses) it is added so the current value is
+     * never lost. With no `selected`, the current choice (including "Others") stays.
+     */
+    function fillTypeSelect(select, selected) {
+        if (!select) return;
+        var keepOther = selected == null && select.value === OTHER_VALUE;
+        var wanted = keepOther ? '' : normalizeTypeName(selected != null ? selected : select.value);
+        select.innerHTML = '';
+
+        var first = document.createElement('option');
+        first.value = '';
+        first.textContent = typeNames.length ? 'Select a type\u2026' : 'No types available yet';
+        select.appendChild(first);
+
+        var seen = false;
+        typeNames.forEach(function (type) {
+            var option = document.createElement('option');
+            option.value = type.typeName;
+            option.textContent = type.typeName +
+                ' (' + type.plantCount + ' plant' + (type.plantCount === 1 ? '' : 's') + ')';
+            select.appendChild(option);
+            if (type.typeName === wanted) seen = true;
+        });
+
+        if (wanted && !seen) {
+            var extra = document.createElement('option');
+            extra.value = wanted;
+            extra.textContent = wanted;
+            select.appendChild(extra);
+        }
+
+        var others = document.createElement('option');
+        others.value = OTHER_VALUE;
+        others.textContent = 'Others';
+        select.appendChild(others);
+
+        select.value = keepOther ? OTHER_VALUE : wanted;
+    }
+
+    // ------------------------------------------------ taxonomy suggestions ----
+    /** Fills the seven <datalist> elements in record.html from taxonomyValues. */
+    function fillTaxonomyLists() {
+        TAXONOMY_FIELDS.forEach(function (field) {
+            var list = byId('taxList-' + field.level);
+            if (!list) return;
+            list.innerHTML = '';
+            (taxonomyValues[field.level] || []).forEach(function (text) {
+                var option = document.createElement('option');
+                option.value = text;
+                list.appendChild(option);
+            });
+        });
+    }
+
+    async function loadTaxonomySuggestions() {
+        try {
+            var data = await api('/api/plants/taxonomy-suggestions');
+            var values = (data && data.values) || {};
+            TAXONOMY_FIELDS.forEach(function (field) {
+                var seen = {};
+                taxonomyValues[field.level] = (values[field.level] || [])
+                    .map(function (text) { return normalizeText(text); })
+                    .filter(function (text) {
+                        var key = text.toLowerCase();
+                        if (!text || text === UNSPECIFIED || seen[key]) return false;
+                        seen[key] = true;
+                        return true;
+                    })
+                    .sort(function (a, b) { return a.localeCompare(b); });
+            });
+        } catch (err) {
+            // No suggestions: the boxes still work as plain text.
+        }
+        fillTaxonomyLists();
     }
 
     // ------------------------------------------------------- preview modal ----
@@ -429,6 +599,16 @@
     // --------------------------------------------------------------- tabs ----
     var TAB_IDS = ['new', 'contribute', 'change', 'mine'];
 
+    /** Opened from a plant page: the plant exists, so "New plant" does not apply. */
+    function initPlantContext() {
+        var params = new URLSearchParams(window.location.search);
+        fromProfile = Boolean(params.get('plantId')) && !discoveryParam();
+        if (!fromProfile) return;
+        var newTab = byId('tab-new');
+        if (newTab) newTab.hidden = true;
+        var note = byId('recordPlantContext');
+        if (note) note.hidden = false;
+    }
     /** Deep-link precedence: plantId picks contribute (or change, when ?tab=change),
      *  a scanned name forces new, else ?tab=, else new. */
     function initialTab() {
@@ -441,6 +621,7 @@
     }
 
     function showTab(tab, updateUrl) {
+        if (fromProfile && tab === 'new') tab = 'contribute';   // that tab is hidden here
         if (TAB_IDS.indexOf(tab) === -1) tab = 'new';
         activeTab = tab;
 
@@ -595,56 +776,73 @@
     }
 
     // --------------------------------------------------------- new plant ----
+    /** Returns [{ input, message }], one per problem, each tied to the box it belongs to. */
     function validateNewPlant(parts) {
-        var problems = [];
-        if (!value('newCommonName')) problems.push('Common name is required.');
-        if (!value('newScientificName')) problems.push('Scientific name is required.');
-        var typeName = normalizeTypeName(el.newTypeName.value);
-        if (!typeName) problems.push('Type a plant type.');
-        else if (typeName.length > 50) problems.push('The plant type is at most 50 characters.');
-        if (byId('newIsHarmful').checked && !el.newToxicityLevel.value) {
-            problems.push('Choose a toxicity level for a harmful plant.');
+        var errors = [];
+        function add(id, message) { errors.push({ input: byId(id), message: message }); }
+
+        if (!value('newCommonName')) add('newCommonName', 'Enter the common name.');
+        if (!value('newScientificName')) add('newScientificName', 'Enter the scientific name.');
+
+        if (el.newTypeName.value === OTHER_VALUE) {
+            var other = normalizeTypeName(el.newTypeOther.value);
+            if (!other) add('newTypeOther', 'Type the plant type, or pick one from the list.');
+            else if (other.length > 50) add('newTypeOther', 'The plant type is at most 50 characters.');
+        } else if (!el.newTypeName.value) {
+            add('newTypeName', 'Choose a plant type, or pick "Others" to enter a new one.');
+        } else if (normalizeTypeName(el.newTypeName.value).length > 50) {
+            add('newTypeName', 'The plant type is at most 50 characters.');
         }
+
+        if (byId('newIsHarmful').checked && !el.newToxicityLevel.value) {
+            add('newToxicityLevel', 'Choose a toxicity level for a harmful plant.');
+        }
+
         var min = el.newHeightMinCm.value;
         var max = el.newHeightMaxCm.value;
         if (min !== '' && max !== '' && Number(min) > Number(max)) {
-            problems.push('Height min cannot exceed height max.');
+            add('newHeightMaxCm', 'Height max must be at least the height min.');
         }
         var wmin = el.newWidthMinCm.value;
         var wmax = el.newWidthMaxCm.value;
         if (wmin !== '' && wmax !== '' && Number(wmin) > Number(wmax)) {
-            problems.push('Width min cannot exceed width max.');
+            add('newWidthMaxCm', 'Width max must be at least the width min.');
         }
+
         // Mirrors validatePlantDraft: public visibility requires an approved
         // primary description, so names and photos alone would be "Approved" and
         // invisible.
         var caution = harmfulVisible('new') ? value('newHarmful') : '';
         if (byId('newIsHarmful').checked && !caution) {
-            problems.push('Describe the things to watch out for, or untick "harmful".');
+            add('newHarmful', 'Describe the things to watch out for, or untick "Harmful plant".');
         }
         if (!hasAnyPartValue(parts) && !value('newUses') && !value('newBenefits') && !caution) {
-            problems.push('Add a description or some measurements — names and photos alone are never published.');
+            add('newUses', 'Add a description or some measurements — names and photos alone are never published.');
         }
-        return problems;
+        return errors;
     }
 
     async function submitNewPlant(event) {
         event.preventDefault();
         setNotice('', null);
+        clearFieldErrors(el.newPlantForm);
 
         // Looked up again at submit: the blur check can be stale, and the answer
         // decides whether this is a plant or a contribution.
         await refreshExistingForNew();
         if (existingForNew) {
-            setNotice('"' + existingForNew.scientificName + '" is already in the library. ' +
-                'Use "Add to it instead" so your description and photos go to that plant.', 'warning');
+            reportErrors([{
+                input: byId('newScientificName'),
+                message: '"' + existingForNew.scientificName + '" is already in the library. ' +
+                    'Use "Add to it instead" so your description and photos go to that plant.'
+            }], el.newPlantForm);
             return;
         }
 
         var parts = readParts('new');
-        var problems = validateNewPlant(parts);
-        if (problems.length > 0) {
-            setNotice(problems.join(' '), 'error');
+        var errors = validateNewPlant(parts);
+        if (errors.length > 0) {
+            reportErrors(errors, el.newPlantForm);
             return;
         }
 
@@ -652,7 +850,7 @@
         form.append('commonName', value('newCommonName'));
         form.append('scientificName', value('newScientificName'));
         var typeHarmful = byId('newIsHarmful').checked;
-        form.append('typeName', normalizeTypeName(el.newTypeName.value));
+        form.append('typeName', chosenTypeName(el.newTypeName, el.newTypeOther));
         form.append('isMedicinal', el.newTypeMedicinal.checked ? '1' : '0');
         form.append('isHarmful', typeHarmful ? '1' : '0');
         form.append('toxicityLevel', typeHarmful ? el.newToxicityLevel.value : 'none');
@@ -707,12 +905,14 @@
             setNotice(text + (warnings.length ? ' ' + warnings.join(' ') : ''), warnings.length ? 'warning' : 'success');
 
             el.newPlantForm.reset();
+            syncTypeOther(el.newTypeName, el.newTypeOther);
             newList.clear();
             hideCarried('new');
             existingForNew = null;
             renderDuplicate();
             applyHarmfulVisibility('new', false);
             await loadTypes();
+            loadTaxonomySuggestions();
             finishDiscovery();
             mineStale = true;
             showTab('mine');
@@ -730,7 +930,7 @@
             }
             // Surfaced verbatim: the server's 400/409 message is specific, and a
             // generic failure string would throw that away.
-            setNotice(err.message, 'error');
+            showProblem(err.message);
         } finally {
             setBusy(false);
         }
@@ -803,6 +1003,8 @@
         renderReportPhotoPickers();
 
         el.newPlantForm.reset();
+        syncTypeOther(el.newTypeName, el.newTypeOther);
+        clearFieldErrors(el.newPlantForm);
         hideCarried('new');
         existingForNew = null;
         renderDuplicate();
@@ -906,6 +1108,7 @@
     }
 
     function debouncedSearch(immediate) {
+        if (lockedPlant) return;   // opened from a plant card: the picker is disabled
         if (searchTimer) clearTimeout(searchTimer);
         searchTimer = setTimeout(async function () {
             // A chosen plant fills the box with its label, which would match
@@ -1030,6 +1233,8 @@
             edit.id = 'taxonomyEdit-' + field.key;
             edit.autocomplete = 'off';
             edit.maxLength = 100;
+            // Suggestions: the values already in the library for this level.
+            edit.setAttribute('list', 'taxList-' + field.level);
             // A gap starts blank (blank = no change); a recorded level starts as
             // its current value, so a correction is an edit, not a retype.
             edit.value = gap ? '' : (current || '');
@@ -1052,6 +1257,7 @@
 
     async function submitTaxonomy() {
         setNotice('', null);
+        clearFieldErrors(el.taxonomyRequest);
         if (!contributePlant) return;
         var body = { reason: el.taxonomyReason.value.trim() };
         var changed = 0;
@@ -1064,7 +1270,10 @@
             }
         });
         if (changed === 0) {
-            setNotice('Change at least one level before sending an update.', 'error');
+            reportErrors([{
+                input: byId('taxonomyEdit-' + TAXONOMY_FIELDS[0].key),
+                message: 'Change at least one level before sending an update.'
+            }], el.taxonomyRequest);
             return;
         }
         setBusy(true);
@@ -1082,39 +1291,52 @@
             }
             mineStale = true;
         } catch (err) {
-            setNotice(err.message, 'error');
+            showProblem(err.message);
         } finally {
             setBusy(false);
         }
     }
 
     // ------------------------------------------------------- contribution ----
+    /** Returns [{ input, message }]. */
     function validateContribution(parts) {
-        var problems = [];
-        if (!contributePlant) problems.push('Choose a plant to add to.');
+        var errors = [];
+        if (!contributePlant) {
+            errors.push({ input: el.contributeSearch, message: 'Choose a plant to add to.' });
+        }
         var caution = harmfulVisible('contribute') ? value('contributeHarmful') : '';
         if (byId('contributeIsHarmful').checked && !caution) {
-            problems.push('Describe the things to watch out for, or untick "harmful".');
+            errors.push({
+                input: byId('contributeHarmful'),
+                message: 'Describe the things to watch out for, or untick "This plant is harmful".'
+            });
         }
         var photos = contributeList.count() + chosenIds('contribute').length;
         if (!hasAnyPartValue(parts) && !value('contributeUses') && !value('contributeBenefits') &&
             !caution && photos === 0) {
-            problems.push('Add a description, some measurements, or one photo.');
+            errors.push({
+                input: byId('contributeUses'),
+                message: 'Add a description, some measurements, or at least one photo.'
+            });
         }
         if (photos > limits.maxFilesPerRequest) {
-            problems.push('At most ' + limits.maxFilesPerRequest + ' photos per submission.');
+            errors.push({
+                input: el.contributeImages,
+                message: 'At most ' + limits.maxFilesPerRequest + ' photos per submission.'
+            });
         }
-        return problems;
+        return errors;
     }
 
     async function submitContribution(event) {
         event.preventDefault();
         setNotice('', null);
+        clearFieldErrors(el.contributeForm);
 
         var parts = readParts('contribute');
-        var problems = validateContribution(parts);
-        if (problems.length > 0) {
-            setNotice(problems.join(' '), 'error');
+        var errors = validateContribution(parts);
+        if (errors.length > 0) {
+            reportErrors(errors, el.contributeForm);
             return;
         }
 
@@ -1153,11 +1375,16 @@
             contributeList.clear();
             hideCarried('contribute');
             clearSelection();
+            // Opened from a plant card: keep that plant chosen, or the locked
+            // picker would be left empty with no way to pick another.
+            if (lockedPlant) {
+                await selectPlant({ id: lockedPlant.id, name: lockedPlant.name, scientificName: lockedPlant.scientificName });
+            }
             finishDiscovery();
             mineStale = true;
             showTab('mine');
         } catch (err) {
-            setNotice(err.message, 'error');
+            showProblem(err.message);
         } finally {
             setBusy(false);
         }
@@ -1194,6 +1421,8 @@
         if (el.changeDescToggle) el.changeDescToggle.checked = false;
         if (el.changeBaseBody) el.changeBaseBody.hidden = true;
         if (el.changeDescBody) el.changeDescBody.hidden = true;
+        var panel = byId('panel-change');
+        if (panel) clearFieldErrors(panel);
     }
 
     async function selectChangePlant(plant) {
@@ -1219,8 +1448,9 @@
     }
 
     /**
-     * The plant's OWN type, edited in place: name, medicinal, harmful + toxicity
-     * level, caution note. It is pre-filled with what the plant has now and sent as
+     * The plant's OWN type, edited in place: name (a dropdown of the names in
+     * use, with "Others" for a new one), medicinal, harmful + toxicity level,
+     * caution note. It is pre-filled with what the plant has now and sent as
      * `type` only when something differs. It cannot affect any other plant.
      */
     function buildChangeTypeEditor(data) {
@@ -1237,8 +1467,9 @@
         }));
         box.innerHTML =
             '<legend>This plant\u2019s type</legend>' +
-            '<input type="text" id="change-typeName" maxlength="50" autocomplete="off" spellcheck="false">' +
-            '<div id="change-typeSuggest" class="record-picker" hidden></div>' +
+            '<select id="change-typeName" aria-label="Plant type"></select>' +
+            '<input type="text" id="change-typeOther" maxlength="50" autocomplete="off" ' +
+                'placeholder="Type the new plant type" aria-label="New plant type" hidden>' +
             '<label><input type="checkbox" id="change-isMedicinal"> Medicinal plant</label>' +
             '<label><input type="checkbox" id="change-isHarmful"> Harmful plant</label>' +
             '<div id="change-toxicityField" hidden>' +
@@ -1253,7 +1484,9 @@
             '<label for="change-cautionNote">Caution note</label>' +
             '<textarea id="change-cautionNote" rows="2" maxlength="1000"></textarea>' +
             '<p class="record-muted" id="change-typeHint"></p>';
-        box.querySelector('#change-typeName').value = current.typeName;
+        var typeSelect = box.querySelector('#change-typeName');
+        var typeOther = box.querySelector('#change-typeOther');
+        fillTypeSelect(typeSelect, current.typeName);
         box.querySelector('#change-isMedicinal').checked = Boolean(current.isMedicinal);
         box.querySelector('#change-isHarmful').checked = Boolean(current.isHarmful);
         box.querySelector('#change-toxicityLevel').value = current.isHarmful ? current.toxicityLevel : '';
@@ -1261,18 +1494,21 @@
         box.querySelector('#change-cautionNote').value = current.cautionNote || '';
         if (window.RichText) RichText.attach(box.querySelector('#change-cautionNote'));
 
-        attachTypeSuggest(box.querySelector('#change-typeName'), box.querySelector('#change-typeSuggest'));
         function refresh() {
             var harmful = box.querySelector('#change-isHarmful').checked;
             box.querySelector('#change-toxicityField').hidden = !harmful;
             if (!harmful) box.querySelector('#change-toxicityLevel').value = '';
-            var name = normalizeTypeName(box.querySelector('#change-typeName').value);
+            syncTypeOther(typeSelect, typeOther);
+            var name = chosenTypeName(typeSelect, typeOther);
             box.querySelector('#change-typeHint').innerHTML = name
                 ? 'Badge preview: ' + PlantBadge.html(name, harmful ? box.querySelector('#change-toxicityLevel').value : 'none')
                 : '';
         }
         box.addEventListener('input', refresh);
-        box.addEventListener('change', refresh);
+        box.addEventListener('change', function (event) {
+            refresh();
+            if (event.target === typeSelect && typeSelect.value === OTHER_VALUE) typeOther.focus();
+        });
         refresh();
         return box;
     }
@@ -1280,7 +1516,7 @@
     function readChangeType() {
         var harmful = byId('change-isHarmful').checked;
         return {
-            typeName: normalizeTypeName(byId('change-typeName').value),
+            typeName: chosenTypeName(byId('change-typeName'), byId('change-typeOther')),
             isMedicinal: byId('change-isMedicinal').checked,
             isHarmful: harmful,
             toxicityLevel: harmful ? byId('change-toxicityLevel').value : 'none',
@@ -1317,8 +1553,9 @@
     }
 
     /**
-     * The plant's OWN taxonomy, one box per level. A recorded level starts as its
-     * value; a gap (Unspecified) starts blank. Blank or unchanged means "no change".
+     * The plant's OWN taxonomy, one box per level, each suggesting the values
+     * already in the library. A recorded level starts as its value; a gap
+     * (Unspecified) starts blank. Blank or unchanged means "no change".
      */
     function buildChangeTaxonomyEditor(data) {
         var box = document.createElement('fieldset');
@@ -1332,7 +1569,9 @@
             var recorded = data.taxonomy ? data.taxonomy[field.level] : '';
             var current = recorded === UNSPECIFIED ? '' : recorded;
             var wrap = buildChangeField('change-tax-' + field.key, field.label, 'text', current, false);
-            if (recorded === UNSPECIFIED) wrap.querySelector('input').placeholder = UNSPECIFIED;
+            var input = wrap.querySelector('input');
+            input.setAttribute('list', 'taxList-' + field.level);
+            if (recorded === UNSPECIFIED) input.placeholder = UNSPECIFIED;
             grid.appendChild(wrap);
         });
         box.appendChild(grid);
@@ -1409,8 +1648,9 @@
         el.changeForm.hidden = false;
     }
 
-    /** Reads the plant-info half. Returns { section } or { error }. */
+    /** Reads the plant-info half. Returns { section } or { errors: [{ input, message }] }. */
     function readBaseChange() {
+        var errors = [];
         var section = { taxonomy: {}, reason: normalizeText(el.changeBaseReason.value) };
         var changed = 0;
         BASE_TEXT_FIELDS.forEach(function (field) {
@@ -1435,25 +1675,48 @@
             var typeChanged = ['typeName', 'isMedicinal', 'isHarmful', 'toxicityLevel', 'cautionNote']
                 .some(function (key) { return wanted[key] !== was[key]; });
             if (typeChanged) {
-                // The box is pre-filled, so a blank name is a mistake, not "no change".
-                if (!wanted.typeName) return { error: 'The plant type cannot be blank.' };
-                if (wanted.isHarmful && !wanted.toxicityLevel) {
-                    return { error: 'Choose a toxicity level for a harmful plant.' };
+                var typeSelect = byId('change-typeName');
+                // The dropdown starts on the current type, so a blank name is a mistake, not "no change".
+                if (!wanted.typeName) {
+                    var picksOther = typeSelect.value === OTHER_VALUE;
+                    errors.push({
+                        input: picksOther ? byId('change-typeOther') : typeSelect,
+                        message: picksOther ? 'Type the new plant type, or pick one from the list.' : 'Choose a plant type.'
+                    });
+                } else if (wanted.typeName.length > 50) {
+                    errors.push({
+                        input: typeSelect.value === OTHER_VALUE ? byId('change-typeOther') : typeSelect,
+                        message: 'The plant type is at most 50 characters.'
+                    });
+                } else if (wanted.isHarmful && !wanted.toxicityLevel) {
+                    errors.push({
+                        input: byId('change-toxicityLevel'),
+                        message: 'Choose a toxicity level for a harmful plant.'
+                    });
+                } else {
+                    section.type = wanted;
+                    changed++;
                 }
-                section.type = wanted;
-                changed++;
             }
         }
-        if (changed === 0) {
-            return { error: 'Plant info: edit at least one field, or untick it to leave the plant info alone.' };
+        if (changed === 0 && errors.length === 0) {
+            errors.push({
+                input: changeInput(BASE_TEXT_FIELDS[0].key),
+                message: 'Edit at least one field, or untick "Change the plant info" to leave it alone.'
+            });
         }
-        if (!section.reason) return { error: 'Say why the plant info needs changing.' };
-        return { section: section };
+        if (!section.reason) {
+            errors.push({ input: el.changeBaseReason, message: 'Say why the plant info needs changing.' });
+        }
+        return errors.length ? { errors: errors } : { section: section };
     }
 
-    /** Reads the description half. Returns { section } or { error }. */
+    /** Reads the description half. Returns { section } or { errors: [{ input, message }] }. */
     function readDescriptionChange() {
-        if (!changeDescription) return { error: 'Choose which of your descriptions to change.' };
+        if (!changeDescription) {
+            return { errors: [{ input: el.changeDescToggle, message: 'Choose which of your descriptions to change.' }] };
+        }
+        var errors = [];
         var section = {
             descriptionId: changeDescription.descriptionId,
             parts: {},
@@ -1470,17 +1733,25 @@
             changed++;
         });
         if (changed === 0) {
-            return { error: 'Your description: edit at least one field, or untick it to leave your description alone.' };
+            errors.push({
+                input: byId('changeDesc-' + DESC_FIELDS[0].key) || el.changeDescReason,
+                message: 'Edit at least one field, or untick "Change my description" to leave it alone.'
+            });
         }
-        if (!section.reason) return { error: 'Say why your description needs changing.' };
-        return { section: section };
+        if (!section.reason) {
+            errors.push({ input: el.changeDescReason, message: 'Say why your description needs changing.' });
+        }
+        return errors.length ? { errors: errors } : { section: section };
     }
 
     async function submitChange(event) {
         event.preventDefault();
         setNotice('', null);
+        var panel = byId('panel-change');
+        clearFieldErrors(panel);
+
         if (!changePlant) {
-            setNotice('Choose a plant first.', 'error');
+            reportErrors([{ input: el.changeSearch, message: 'Choose a plant first.' }], panel);
             return;
         }
 
@@ -1489,20 +1760,26 @@
         var baseOn = el.changeBaseToggle.checked && !el.changeBaseToggle.disabled;
         var descOn = el.changeDescToggle.checked && !el.changeDescToggle.disabled;
         if (!baseOn && !descOn) {
-            setNotice('Tick what you want to change: the plant info, your description, or both.', 'error');
+            reportErrors([{
+                input: el.changeBaseToggle,
+                message: 'Tick what you want to change: the plant info, your description, or both.'
+            }], panel);
             return;
         }
 
         var body = {};
+        var errors = [];
         if (baseOn) {
             var base = readBaseChange();
-            if (base.error) { setNotice(base.error, 'error'); return; }
-            body.base = base.section;
+            if (base.errors) errors = errors.concat(base.errors); else body.base = base.section;
         }
         if (descOn) {
             var desc = readDescriptionChange();
-            if (desc.error) { setNotice(desc.error, 'error'); return; }
-            body.description = desc.section;
+            if (desc.errors) errors = errors.concat(desc.errors); else body.description = desc.section;
+        }
+        if (errors.length > 0) {
+            reportErrors(errors, panel);
+            return;
         }
 
         setBusy(true);
@@ -1516,13 +1793,16 @@
             setNotice('Change request' + ((result.requests || []).length > 1 ? 's' : '') +
                 ' sent for review as ' + (ids || result.requestId) + '. ' +
                 'Nothing changes until an admin decides each one.', 'success');
-            el.changeSearch.value = '';
             resetChangeForm();
+            // Opened from a plant card: reload that plant's form so the locked
+            // picker is not left empty. Otherwise just clear the Find box.
+            if (lockedPlant) await selectChangePlant(lockedPlant);
+            else el.changeSearch.value = '';
             mineStale = true;
             showTab('mine');
         } catch (err) {
             // Surfaced verbatim: a 409 here usually means a change is already waiting.
-            setNotice(err.message, 'error');
+            showProblem(err.message);
         } finally {
             setBusy(false);
         }
@@ -1553,6 +1833,7 @@
     }
 
     function debouncedChangeSearch(immediate) {
+        if (lockedPlant) return;   // opened from a plant card: the picker is disabled
         if (changeTimer) clearTimeout(changeTimer);
         changeTimer = setTimeout(async function () {
             var typed = value('changeSearch');
@@ -1702,9 +1983,11 @@
                 html += '</div>';
             }
 
-            // Photos can still be added to an approved species later.
+            // Photos can still be added to an approved species later. When the page
+            // was opened from a plant card, only that plant gets the button.
             if (request.status === 'approved' && request.requestType === 'plant_addition' &&
-                request.targetPlantId) {
+                request.targetPlantId &&
+                (!lockedPlant || String(lockedPlant.id) === String(request.targetPlantId))) {
                 html += '<button type="button" class="btn record-btn-secondary record-add-photos" ' +
                     'data-plant-id="' + escapeHtml(request.targetPlantId) + '" ' +
                     'data-plant-name="' + escapeHtml(request.targetPlantName || '') + '">Add photos</button>';
@@ -1778,6 +2061,36 @@
     }
 
     // ------------------------------------------------------- deep links ------
+    /**
+     * Opened from a plant card: the Find box and type filter on BOTH picker tabs
+     * are disabled, so the botanist cannot drift onto another plant. A note says
+     * which plant is locked and links to the library for working on another.
+     */
+    function lockPlantPickers(plant) {
+        lockedPlant = plant;
+        [
+            { search: 'contributeSearch', filter: 'contributeTypeFilter', results: 'contributeResults' },
+            { search: 'changeSearch',     filter: 'changeTypeFilter',     results: 'changeResults' }
+        ].forEach(function (ids) {
+            var search = byId(ids.search);
+            var filter = byId(ids.filter);
+            var results = byId(ids.results);
+            if (search) search.disabled = true;
+            if (filter) { filter.value = ''; filter.disabled = true; }
+            if (results) { results.innerHTML = ''; results.hidden = true; }
+
+            var field = search && search.closest('.record-field');
+            if (!field || field.querySelector('.record-lock-note')) return;
+            field.classList.add('record-locked');
+            var note = document.createElement('p');
+            note.className = 'record-lock-note';
+            note.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">lock</span>' +
+                '<span>Locked to <strong>' + escapeHtml(plantLabel(plant)) + '</strong>, the plant you opened this from. ' +
+                '<a href="library.html">Browse the library</a> to work on another.</span>';
+            field.appendChild(note);
+        });
+    }
+
     /** ?plantId= preselects the contribute (or change) tab's plant. */
     async function applyDeepLink(tab) {
         var params = new URLSearchParams(window.location.search);
@@ -1788,8 +2101,12 @@
                 var plant = await api('/api/plants/lookup?plantId=' + encodeURIComponent(plantId));
                 if (plant.exists) {
                     var chosen = { id: plant.plant.id, name: plant.plant.name, scientificName: plant.plant.scientificName };
-                    if (tab === 'change') await selectChangePlant(chosen);
-                    else await selectPlant(chosen);
+                    var nameNode = byId('recordPlantContextName');
+                    if (nameNode) nameNode.textContent = plantLabel(chosen);
+                    // Both tabs, so switching between "Add to existing" and "Request change"
+                    // keeps the same plant instead of starting empty.
+                    await Promise.all([selectPlant(chosen), selectChangePlant(chosen)]);
+                    if (fromProfile) lockPlantPickers(chosen);
                 } else {
                     setNotice('That plant could not be found.', 'error');
                 }
@@ -1839,7 +2156,8 @@
             });
 
             // The Find-a-plant filters on the two picker tabs. Their value is the
-            // typeName, because that is what GET /api/plants?type= expects.
+            // typeName, because that is what GET /api/plants?type= expects. They are
+            // filters, so they get no "Others" entry.
             ['contributeTypeFilter', 'changeTypeFilter'].forEach(function (id) {
                 var select = byId(id);
                 if (!select) return;
@@ -1854,8 +2172,11 @@
                 select.value = previous;
             });
         } catch (err) {
-            // The suggestion list stays empty; typing a type still works.
+            // Keep whatever list was loaded before; the dropdown below says so if it is empty.
         }
+        // The NEW PLANT type dropdown, keeping the current choice (including "Others").
+        fillTypeSelect(el.newTypeName);
+        syncTypeOther(el.newTypeName, el.newTypeOther);
     }
 
     // --------------------------------banner --
@@ -1959,6 +2280,7 @@
             newPlantHint: byId('newPlantHint'),
             newDuplicateWarning: byId('newDuplicateWarning'),
             newTypeName: byId('newTypeName'),
+            newTypeOther: byId('newTypeOther'),
             newTypeMedicinal: byId('newTypeMedicinal'),
             newToxicityLevel: byId('newToxicityLevel'),
             newCautionNote: byId('newCautionNote'),
@@ -2021,8 +2343,14 @@
             return;
         }
         el.ui.hidden = false;
+        initPlantContext();
 
         initModal();
+
+        // An error under a box goes away as soon as the botanist edits that box.
+        ['input', 'change'].forEach(function (type) {
+            el.ui.addEventListener(type, function (event) { clearFieldError(event.target); });
+        });
 
         newList = createImageList({
             grid: byId('newThumbs'),
@@ -2058,20 +2386,26 @@
                 renderDuplicate();
             }
         });
-        attachTypeSuggest(el.newTypeName, byId('newTypeSuggest'));
 
         // Previews the badge this plant will wear: its name in the colour of its toxicity.
         function updateNewTypeHint() {
             var hint = byId('newTypeHint');
-            var name = normalizeTypeName(el.newTypeName.value);
+            var name = chosenTypeName(el.newTypeName, el.newTypeOther);
             if (!name) { hint.hidden = true; hint.innerHTML = ''; return; }
             var harmful = byId('newIsHarmful').checked;
             hint.hidden = false;
             hint.innerHTML = 'Badge preview: ' + PlantBadge.html(name, harmful ? el.newToxicityLevel.value : 'none');
         }
-        [el.newTypeName, el.newTypeMedicinal, el.newToxicityLevel, byId('newIsHarmful')].forEach(function (node) {
+        [el.newTypeName, el.newTypeOther, el.newTypeMedicinal, el.newToxicityLevel, byId('newIsHarmful')].forEach(function (node) {
             node.addEventListener('input', updateNewTypeHint);
             node.addEventListener('change', updateNewTypeHint);
+        });
+
+        // "Others" reveals a text box for a type that is not in the list yet.
+        el.newTypeName.addEventListener('change', function () {
+            syncTypeOther(el.newTypeName, el.newTypeOther);
+            if (el.newTypeName.value === OTHER_VALUE) el.newTypeOther.focus();
+            updateNewTypeHint();
         });
 
         el.newImages.addEventListener('change', function () {
@@ -2146,7 +2480,10 @@
         el.taxonomyToggle.addEventListener('click', function () {
             el.taxonomyRequest.hidden = !el.taxonomyRequest.hidden;
         });
-        byId('taxonomyCancel').addEventListener('click', function () { el.taxonomyRequest.hidden = true; });
+        byId('taxonomyCancel').addEventListener('click', function () {
+            clearFieldErrors(el.taxonomyRequest);
+            el.taxonomyRequest.hidden = true;
+        });
         el.taxonomySubmit.addEventListener('click', submitTaxonomy);
 
         if (el.minePrev) {
@@ -2171,7 +2508,7 @@
         });
 
         var tab = initialTab();
-        await loadTypes();
+        await Promise.all([loadTypes(), loadTaxonomySuggestions()]);
         await applyDeepLink(tab);
         showTab(tab, true);
     }

@@ -533,6 +533,27 @@ header:has(.nav-hamburger) .auth-links .auth-username::before {
     }
 }
 
+/* ---- ROLE badge: sits right after the username ---- */
+header:has(.nav-hamburger) .auth-links .auth-role {
+    align-self: center;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background-color: var(--tb-hover);
+    color: var(--tb-text);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* Phones already collapse the name to an avatar; no room for the role. */
+@media (max-width: 639px) {
+    header:has(.nav-hamburger) .auth-links .auth-role {
+        display: none;
+    }
+}
+
 @media (min-width: 768px) {
     header:has(.nav-hamburger) {
         padding: 8px 24px;

@@ -9,6 +9,9 @@
  *
  * Uses ml-client.js for the API calls and photo-cache.js to carry a chosen photo
  * across the navigation to record.html.
+ *
+ * All visual styling lives in css/public/capture-plant.css. This file only sets
+ * class names and toggles state.
  */
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -35,6 +38,29 @@ document.addEventListener('DOMContentLoaded', function () {
     let lastScanResult = null;
     // null until plantAuth.ready resolves; "Record this plant" re-renders if it is late.
     let canRecord = null;
+
+    // Shown in the camera screen and the console, so it is obvious whether the
+    // browser loaded this file or an old cached copy.
+    const SCAN_VERSION = '';
+    console.log('scan.js ' + SCAN_VERSION);
+
+    // Whether the FRONT camera is shown mirrored, like a bathroom mirror (your
+    // left stays on the left of the screen). Whether a device's raw front feed
+    // arrives mirrored or not cannot be detected from the page, so instead of
+    // guessing there is a "Flip view" button for the front camera. The choice is
+    // remembered on this device. The saved photo matches the preview. The back
+    // camera is never flipped.
+    //
+    // The flip itself is CSS: the .scan-camera-video--mirrored class. Everything
+    // else on the page is kept unmirrored by a rule in capture-plant.css.
+    let mirrorFront = true;
+    try {
+        const savedMirror = localStorage.getItem('plantellect_front_mirror');
+        if (savedMirror !== null) mirrorFront = savedMirror === '1';
+    } catch (err) { /* storage blocked: keep the default */ }
+    function saveMirrorFront() {
+        try { localStorage.setItem('plantellect_front_mirror', mirrorFront ? '1' : '0'); } catch (err) { /* ignore */ }
+    }
 
     // -------------------------------------------------------------- gate ----
     // The page is a public file, so the shell is readable by anyone. The APIs are
@@ -199,10 +225,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // -------------------------------------------------------------- camera ----
     // The camera overlay is the ONE piece that still injects its own markup: it
-    // only exists while a MediaStream is live. It keeps the .scan-modal chrome,
-    // scoped to itself so those overlay rules cannot leak onto the page.
+    // only exists while a MediaStream is live. Its styling is in capture-plant.css
+    // (.scan-camera-*); this code only creates the elements and sets classes.
+    //
+    // Opens on the back camera. ONE toggle button shows the camera you would
+    // switch TO: "Back camera" while the front is live, "Front camera" while the
+    // back is live. It is always visible. The overlay appears immediately and the
+    // stream attaches as soon as it is ready, so there is no blank wait.
     if (scanCameraBtn) {
-        scanCameraBtn.addEventListener('click', async function () {
+        scanCameraBtn.addEventListener('click', function () {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 setMessage(
                     'This browser cannot open the camera. Camera capture needs https or localhost — ' +
@@ -211,100 +242,261 @@ document.addEventListener('DOMContentLoaded', function () {
                 );
                 return;
             }
+            // A second click while the overlay is up must not open a second stream.
+            if (document.querySelector('.scan-camera-overlay')) return;
+
             let stream = null;
-            let currentFacingMode = 'environment';
-            async function startCamera(facingMode) {
-                try {
-                    const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } });
-                    stream.getTracks().forEach((track) => track.stop());
-                    stream = newStream;
-                    video.srcObject = stream;
-                    currentFacingMode = facingMode;
-                    updateSwitchButton();
-                } catch (err) {
-                    setMessage('Failed to switch camera.', 'error');
-                }
-            }
+            let closed = false;
+            let busy = false;
+            let currentFacingMode = 'environment';   // back camera first
+            let cameraCount = 0;                      // 0 = not counted yet
 
-            try {
-                // Prefer back camera (environment), fall back to front (user)
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode } });
-            } catch (err) {
-                try {
-                    currentFacingMode = 'user';
-                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode } });
-                } catch (err2) {
-                    // Reported in the page, not with alert(): over a plain-http LAN IP
-                    // getUserMedia cannot work at all, and a native dialog says
-                    // nothing about that.
-                    setMessage(
-                        'Camera unavailable. It needs https or localhost (and your permission). ' +
-                        'Upload the photo instead.',
-                        'error'
-                    );
-                    return;
-                }
-            }
-
-            const video = document.createElement('video');
-            video.autoplay = true;
-            video.playsInline = true;
-            video.muted = true;
-            video.srcObject = stream;
-            video.className = 'scan-camera-video';
-
+            // ---- markup, built up front so it shows at once ----
             const overlay = document.createElement('div');
             overlay.className = 'scan-camera-overlay';
             overlay.setAttribute('role', 'dialog');
             overlay.setAttribute('aria-label', 'Take a photo');
 
+            const video = document.createElement('video');
+            video.autoplay = true;
+            video.playsInline = true;
+            video.muted = true;
+            video.className = 'scan-camera-video';
+
+            const status = document.createElement('p');
+            status.className = 'scan-camera-status';
+            status.setAttribute('aria-live', 'polite');
+            function setStatus(text) { status.textContent = text || ''; }
+            setStatus('Opening camera…');
+
+            const bar = document.createElement('div');
+            bar.className = 'scan-camera-bar';
+
             const capture = document.createElement('button');
             capture.type = 'button';
-            capture.className = 'btn scan-btn-primary';
+            capture.className = 'btn scan-btn-primary scan-camera-btn';
             capture.textContent = 'Capture';
+            capture.disabled = true;               // until the first frame is live
 
             const switchBtn = document.createElement('button');
             switchBtn.type = 'button';
-            switchBtn.className = 'btn scan-btn-secondary scan-camera-switch';
-            switchBtn.setAttribute('aria-label', 'Switch camera');
-            function updateSwitchButton() {
-                switchBtn.textContent = currentFacingMode === 'environment' ? '📷 Front' : '📷 Back';
-            }
-            updateSwitchButton();
-            switchBtn.addEventListener('click', function () {
-                startCamera(currentFacingMode === 'environment' ? 'user' : 'environment');
-            });
+            switchBtn.className = 'btn scan-btn-secondary scan-camera-btn scan-camera-switch';
+            switchBtn.textContent = '📷 Front camera';
+            switchBtn.disabled = true;
+
+            // Front camera only: flips the preview (and the saved photo) left/right.
+            const flipBtn = document.createElement('button');
+            flipBtn.type = 'button';
+            flipBtn.className = 'btn scan-btn-secondary scan-camera-btn scan-camera-flip';
+            flipBtn.textContent = 'Flip view';
+            flipBtn.hidden = true;
 
             const close = document.createElement('button');
             close.type = 'button';
-            close.className = 'btn scan-btn-secondary';
+            close.className = 'btn scan-btn-secondary scan-camera-btn';
             close.textContent = 'Cancel';
 
+            // Front camera: mirrored or not, per the "Flip view" button. Back
+            // camera: never transformed.
+            function flipsFront() {
+                return mirrorFront && currentFacingMode === 'user';
+            }
+            function applyOrientation() {
+                video.classList.toggle('scan-camera-video--mirrored', flipsFront());
+            }
+
+            function updateSwitchLabel() {
+                applyOrientation();
+                flipBtn.hidden = currentFacingMode !== 'user';
+                const next = currentFacingMode === 'environment' ? 'Front' : 'Back';
+                switchBtn.textContent = '📷 ' + next + ' camera';
+                switchBtn.setAttribute('aria-label', 'Switch to the ' + next.toLowerCase() + ' camera');
+                setStatus('Using the ' + (currentFacingMode === 'environment' ? 'back' : 'front') +
+                    ' camera');
+            }
+
+            bar.appendChild(capture);
+            bar.appendChild(switchBtn);
+            
+            bar.appendChild(close);
             overlay.appendChild(video);
-            overlay.appendChild(capture);
-            overlay.appendChild(switchBtn);
-            overlay.appendChild(close);
+            overlay.appendChild(status);
+            overlay.appendChild(bar);
             document.body.appendChild(overlay);
 
+            // ---- stream handling ----
+            function stopStream() {
+                if (stream) {
+                    stream.getTracks().forEach((track) => track.stop());
+                    stream = null;
+                }
+                video.srcObject = null;
+            }
+
+            // The old stream is stopped BEFORE the next is requested: phones can
+            // only run one camera at a time. Returns false if the overlay was
+            // closed while the browser was still opening the camera.
+            async function openStream(videoConstraints) {
+                stopStream();
+                const next = await navigator.mediaDevices.getUserMedia({
+                    video: videoConstraints,
+                    audio: false
+                });
+                if (closed) {
+                    next.getTracks().forEach((track) => track.stop());
+                    return false;
+                }
+                stream = next;
+                video.srcObject = next;
+                video.play().catch(function () {});   // not awaited: no extra wait
+                return true;
+            }
+
+            function settingsOf(s) {
+                const track = s && s.getVideoTracks()[0];
+                return track ? track.getSettings() : {};
+            }
+
+            function facingOf(s, fallback) {
+                const f = settingsOf(s).facingMode;
+                return f === 'user' || f === 'environment' ? f : fallback;
+            }
+
+            async function openFacing(facing) {
+                try {
+                    // "exact" is what reliably forces the right camera on phones,
+                    // and it fails instantly (no delay) where it is unsupported.
+                    if (await openStream({ facingMode: { exact: facing } })) {
+                        currentFacingMode = facing;
+                    }
+                } catch (err) {
+                    if (closed) return;
+                    if (err && err.name === 'NotAllowedError') throw err;
+                    // Laptops and single-camera devices reject "exact".
+                    if (await openStream({ facingMode: { ideal: facing } })) {
+                        // A webcam that reports no facingMode is a front camera.
+                        currentFacingMode = facingOf(stream, 'user');
+                    }
+                }
+            }
+
+            function countCameras() {
+                // Not awaited by the caller: it must never hold up the preview.
+                navigator.mediaDevices.enumerateDevices().then(function (all) {
+                    cameraCount = all.filter((d) => d.kind === 'videoinput').length;
+                }).catch(function () {});
+            }
+
+            async function switchCamera() {
+                if (busy || closed) return;
+                if (cameraCount === 1) {
+                    setStatus('This device has only one camera.');
+                    return;
+                }
+                busy = true;
+                switchBtn.disabled = true;
+                capture.disabled = true;
+                setStatus('Switching camera…');
+                const target = currentFacingMode === 'environment' ? 'user' : 'environment';
+                const previous = currentFacingMode;
+                const previousId = settingsOf(stream).deviceId || '';
+                let failed = false;
+                try {
+                    await openFacing(target);
+                    // facingMode was accepted but the same camera came back:
+                    // take any other camera instead.
+                    if (!closed && stream && previousId && settingsOf(stream).deviceId === previousId) {
+                        const all = await navigator.mediaDevices.enumerateDevices();
+                        const other = all.find((d) => d.kind === 'videoinput' && d.deviceId !== previousId);
+                        if (other && await openStream({ deviceId: { exact: other.deviceId } })) {
+                            currentFacingMode = facingOf(stream, target);
+                        } else if (!other) {
+                            failed = true;
+                        }
+                    }
+                } catch (err) {
+                    failed = true;
+                    // Put the previous camera back so the preview is never blank.
+                    try { await openFacing(previous); } catch (err2) { /* nothing to restore */ }
+                }
+                if (closed) return;
+                updateSwitchLabel();
+                if (failed) setStatus('Could not switch camera. Using the ' +
+                    (currentFacingMode === 'environment' ? 'back' : 'front') + ' camera.');
+                busy = false;
+                switchBtn.disabled = false;
+                capture.disabled = false;
+            }
+
+            function onVisibility() {
+                if (document.hidden) teardown();
+            }
+
             function teardown() {
-                stream.getTracks().forEach((track) => track.stop());
+                closed = true;
+                stopStream();
+                document.removeEventListener('visibilitychange', onVisibility);
                 if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
             }
 
+            document.addEventListener('visibilitychange', onVisibility);
+            switchBtn.addEventListener('click', switchCamera);
+            flipBtn.addEventListener('click', function () {
+                mirrorFront = !mirrorFront;
+                saveMirrorFront();
+                applyOrientation();
+            });
             close.addEventListener('click', teardown);
             overlay.addEventListener('click', (e) => {
                 if (e.target === overlay) teardown();
             });
             capture.addEventListener('click', function () {
+                if (!video.videoWidth) return;
                 const canvas = document.createElement('canvas');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
-                canvas.getContext('2d').drawImage(video, 0, 0);
+                const ctx = canvas.getContext('2d');
+                // The saved photo matches the preview: the front camera is flipped
+                // back, the back camera is saved exactly as captured.
+                if (flipsFront()) {
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                }
+                ctx.drawImage(video, 0, 0);
                 canvas.toBlob(function (blob) {
                     if (blob) handleImageSelected(new File([blob], 'camera-photo.jpg', { type: 'image/jpeg' }));
                     teardown();
-                }, 'image/jpeg');
+                }, 'image/jpeg', 0.92);
             });
+
+            // ---- start: back camera first, then anything that works ----
+            (async function start() {
+                try {
+                    await openFacing('environment');
+                } catch (err) {
+                    if (closed) return;
+                    try {
+                        await openStream(true);
+                        currentFacingMode = facingOf(stream, 'user');
+                    } catch (err2) {
+                        // Reported in the page, not with alert(): over a plain-http LAN IP
+                        // getUserMedia cannot work at all, and a native dialog says
+                        // nothing about that.
+                        teardown();
+                        setMessage(
+                            'Camera unavailable. It needs https or localhost (and your permission). ' +
+                            'Upload the photo instead.',
+                            'error'
+                        );
+                        return;
+                    }
+                }
+                if (closed || !stream) return;
+                updateSwitchLabel();
+                capture.disabled = false;
+                switchBtn.disabled = false;
+                countCameras();
+            })();
         });
     }
 

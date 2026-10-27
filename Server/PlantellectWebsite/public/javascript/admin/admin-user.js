@@ -7,13 +7,13 @@
    logoutUser (logout.js).
 
    Search module:
-     - two independent fields (name, email), both "starts with"
+     - one field that searches name OR email; kept when switching role cards
      - debounced; Enter searches immediately; Escape clears
      - a clear (x) button appears when a field has text
      - requests only fire when the trimmed value really changed
      - stale responses are cancelled (AbortController), so a slow
        response can never overwrite a newer one
-     - the matched start of each result is highlighted
+     - the matched text of each result is highlighted
    ========================================================= */
 (function () {
     'use strict';
@@ -27,7 +27,7 @@
     const FILTER_LABELS = {
         admin: 'Administrators',
         botanist: 'Botanists',
-        user: 'Users',
+        user: 'General Users',
         active: 'Active Accounts'
     };
 
@@ -37,8 +37,7 @@
     const state = {
         page: 1,
         filter: 'admin',      // which role card is open
-        name: '',
-        email: '',
+        search: '',
         status: 'all',
         role: 'all',
         viewerPermissions: [],
@@ -61,8 +60,7 @@
         pageControls: document.getElementById('paginationControls'),
         status: document.getElementById('statusFilter'),
         role: document.getElementById('roleFilter'),
-        nameInput: document.getElementById('nameSearch'),
-        emailInput: document.getElementById('emailSearch')
+        searchInput: document.getElementById('userSearch')
     };
 
     // Small bits of styling that belong to this module (clear button, highlight, loading)
@@ -107,28 +105,23 @@
         return state.viewerPermissions.indexOf(name) !== -1;
     }
 
-    /**
-     * Escapes `text` and wraps the matching start in <mark>. The match counts
-     * at the very start of the value, or at the start of any word in it (so a
-     * name search for "d" lights up the D in "Maria D."), matching the
-     * "starts with" behaviour of the search.
-     */
-    function highlightStart(text, query) {
+    /** Escapes `text` and wraps the first case-insensitive match of `query` in <mark>. */
+    function highlightMatch(text, query) {
         text = String(text == null ? '' : text);
         const q = (query || '').trim().toLowerCase();
         if (!q) return escapeHtml(text);
 
-        const lower = text.toLowerCase();
-        let at = -1;
-        for (let i = 0; i <= lower.length - q.length; i++) {
-            const atWordStart = i === 0 || lower[i - 1] === ' ';
-            if (atWordStart && lower.startsWith(q, i)) { at = i; break; }
-        }
+        const at = text.toLowerCase().indexOf(q);
         if (at === -1) return escapeHtml(text);
 
         return escapeHtml(text.slice(0, at)) +
             '<mark class="match-hl">' + escapeHtml(text.slice(at, at + q.length)) + '</mark>' +
             escapeHtml(text.slice(at + q.length));
+    }
+
+    // The "user" role is shown as "General User" so it is not confused with "All Users".
+    function roleLabel(role) {
+        return role === 'user' ? 'General User' : capitalize(role);
     }
 
     // ---------------------------------------------------------
@@ -194,25 +187,16 @@
         return { clear };
     }
 
-    const nameSearch = createSearchField(el.nameInput, (value) => {
-        state.name = value;
-        state.page = 1;
-        loadUsers();
-    });
-
-    const emailSearch = createSearchField(el.emailInput, (value) => {
-        state.email = value;
+    const userSearch = createSearchField(el.searchInput, (value) => {
+        state.search = value;
         state.page = 1;
         loadUsers();
     });
 
     /** Message shown when the search finds nothing. */
     function emptyMessage() {
-        const parts = [];
-        if (state.name) parts.push('a name starting with \u201C' + state.name + '\u201D');
-        if (state.email) parts.push('an email starting with \u201C' + state.email + '\u201D');
-        return parts.length
-            ? 'No users with ' + parts.join(' and ') + '.'
+        return state.search
+            ? 'No users match \u201C' + state.search + '\u201D in ' + FILTER_LABELS[state.filter] + '.'
             : 'No users found.';
     }
 
@@ -221,9 +205,8 @@
     // ---------------------------------------------------------
     function buildQuery() {
         const params = new URLSearchParams();
-        // Separate "starts with" searches. The server matches the START of each value.
-        if (state.name) params.set('name', state.name);
-        if (state.email) params.set('email', state.email);
+        // One search; the server matches name, username and email and ANDs it with role/status.
+        if (state.search) params.set('search', state.search);
         params.set('page', String(state.page));
 
         if (state.filter === 'active') {
@@ -316,6 +299,41 @@
             '<span class="material-symbols-outlined">' + icon + '</span></button>';
     }
 
+    /**
+     * Role dropdown (replaces the Make admin button). Only a viewer with admin_promote is
+     * offered "Admin" and can change an admin/superadmin; change_role covers user <-> botanist.
+     * No dropdown on your own row or the machine "system" account. The server enforces the same.
+     */
+    function renderRoleSelect(u, notSelf) {
+        if (!notSelf || u.role === 'system') return '';
+
+        const canPromote = hasPermission('admin_promote');
+        if (!canPromote && !hasPermission('change_role')) return '';
+
+        const locked = (u.role === 'admin' || u.role === 'superadmin') && !canPromote;
+
+        const options = [
+            { value: 'user', label: 'General User' },
+            { value: 'botanist', label: 'Botanist' }
+        ];
+        if (canPromote) options.push({ value: 'admin', label: 'Admin' });
+        if (!options.some((o) => o.value === u.role)) {
+            options.push({ value: u.role, label: roleLabel(u.role) });
+        }
+
+        const title = locked ? 'Only a superadmin can change this role' : 'Change role';
+        return '<select class="filter-select role-select" data-id="' + escapeHtml(u.id) + '"' +
+            ' data-current="' + escapeHtml(u.role) + '" title="' + title + '"' +
+            ' aria-label="Change role"' + (locked ? ' disabled' : '') + '>' +
+            options.map((o) =>
+                '<option value="' + escapeHtml(o.value) + '"' +
+                (o.value === u.role ? ' selected' : '') +
+                (o.value === 'superadmin' && u.role !== 'superadmin' ? ' disabled' : '') + '>' +
+                escapeHtml(o.label) + '</option>'
+            ).join('') +
+            '</select>';
+    }
+
     function renderRow(u) {
         const notSelf = u.id !== state.accountId;
         const isSuperadmin = u.role === 'superadmin';
@@ -336,25 +354,15 @@
             );
         }
 
-        let roleBtn = '';
-        if (hasPermission('admin_promote') && notSelf) {
-            const label = isSuperadmin ? 'Revoke superadmin' : (privileged ? 'Revoke admin' : 'Make admin');
-            roleBtn = actionButton(
-                'btn-toggle-admin',
-                privileged ? 'danger' : 'promote',
-                privileged ? 'remove_moderator' : 'shield_person',
-                label,
-                'data-id="' + id + '" data-role="' + escapeHtml(u.role) + '"'
-            );
-        }
+        const roleSelect = renderRoleSelect(u, notSelf);
 
         return '<tr>' +
-            '<td>' + highlightStart(u.name, state.name) + '</td>' +
-            '<td>' + highlightStart(u.email, state.email) + '</td>' +
-            '<td><span class="badge badge-' + escapeHtml(u.role) + '">' + capitalize(u.role) + '</span></td>' +
+            '<td>' + highlightMatch(u.name, state.search) + '</td>' +
+            '<td>' + highlightMatch(u.email, state.search) + '</td>' +
+            '<td><span class="badge badge-' + escapeHtml(u.role) + '">' + escapeHtml(roleLabel(u.role)) + '</span></td>' +
             '<td><span class="badge badge-' + escapeHtml(u.status) + '">' + capitalize(u.status) + '</span></td>' +
             '<td class="user-actions"><div class="action-group">' +
-                viewBtn + suspendBtn + roleBtn +
+                viewBtn + suspendBtn + roleSelect +
             '</div></td>' +
         '</tr>';
     }
@@ -402,35 +410,18 @@
             return;
         }
 
-        const roleBtn = e.target.closest('.btn-toggle-admin');
-        if (roleBtn) {
-            const currentRole = roleBtn.dataset.role;
-            const privileged = currentRole === 'admin' || currentRole === 'superadmin';
-            // Revoking a superadmin demotes them to user; the server refuses
-            // if that would leave no active superadmin.
-            toggleAccount(
-                roleBtn.dataset.id,
-                { role: privileged ? 'user' : 'admin' },
-                privileged ? 'Revoke ' + currentRole + ' from' : 'Grant admin to'
-            );
-            return;
-        }
-
         // .btn-view: hook up a details view here when you build one.
     });
 
-    async function toggleAccount(accountId, body, roleLabel) {
-        const label = body.status
-            ? (body.status === 'inactive' ? 'Suspend' : 'Reactivate')
-            : (roleLabel || (body.role === 'admin' ? 'Grant admin to' : 'Revoke admin from'));
+    async function toggleAccount(accountId, body) {
+        const label = body.status === 'inactive' ? 'Suspend' : 'Reactivate';
         if (!confirm(label + ' account ' + accountId + '?')) return;
 
-        const isStatus = Boolean(body.status);
         try {
             const response = await fetch(
-                '/admin/api/users/' + encodeURIComponent(accountId) + '/' + (isStatus ? 'status' : 'role'),
+                '/admin/api/users/' + encodeURIComponent(accountId) + '/status',
                 {
-                    method: isStatus ? 'PATCH' : 'POST',
+                    method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
                     body: JSON.stringify(body)
@@ -447,6 +438,47 @@
             alert('Error: ' + err.message);
         }
     }
+
+    // Role dropdown in each row: confirm, apply, revert on cancel or error
+    el.tbody.addEventListener('change', async (e) => {
+        const sel = e.target.closest('.role-select');
+        if (!sel) return;
+        const previous = sel.dataset.current;
+        const next = sel.value;
+        if (next === previous) return;
+
+        if (!confirm('Change role of account ' + sel.dataset.id + ' from ' +
+                roleLabel(previous) + ' to ' + roleLabel(next) + '?')) {
+            sel.value = previous;
+            return;
+        }
+
+        sel.disabled = true;
+        try {
+            const response = await fetch(
+                '/admin/api/users/' + encodeURIComponent(sel.dataset.id) + '/role',
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ role: next })
+                }
+            );
+            const result = await response.json();
+            if (!response.ok) {
+                alert('Error: ' + (result.error || 'Request failed'));
+                sel.value = previous;
+                sel.disabled = false;
+                return;
+            }
+            await loadUsers();
+        } catch (err) {
+            console.error('Change role error:', err);
+            alert('Error: ' + err.message);
+            sel.value = previous;
+            sel.disabled = false;
+        }
+    });
 
     // Role cards: switch filter + expand the detail panel
     document.querySelectorAll('.role-box').forEach((box) => {
@@ -466,13 +498,10 @@
 
             state.filter = box.dataset.role;
             state.page = 1;
-            state.name = '';
-            state.email = '';
+            // The search text is deliberately kept when switching cards.
             state.status = 'all';
             state.role = 'all';
 
-            nameSearch.clear({ silent: true });
-            emailSearch.clear({ silent: true });
             el.status.value = 'all';
             el.role.value = 'all';
             el.role.hidden = state.filter !== 'active';
