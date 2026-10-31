@@ -10,6 +10,7 @@ const { claimPendingRequest, finishRequest } = require('./request-mysql');
 const { applyPlantChange } = require('./plant-manage-mysql');
 const imageFiles = require('./image-files');
 const relocation = require('./image-relocation');
+const publicImages = require('./public-images');
 
 // ---------------------------------------------------------------------------
 // Approval: promoting a request into real content
@@ -39,21 +40,35 @@ async function ensurePrimaryContent(conn, plantId) {
          )`,
         [plantId]
     );
+    // Photos: keep the primary an admin chose (stage 7a). Before, every approval reset
+    // the flag to the oldest photo, which would undo the admin's pick and could hand the
+    // flag to a hidden photo. Now a primary is only taken away when it can no longer be
+    // shown (not approved, hidden or archived), and a new one is picked only when the
+    // plant has no usable primary left.
     await conn.query(
-        'UPDATE plant_images SET isPrimary = FALSE WHERE plantId = ? AND status = ? AND isPrimary = TRUE',
-        [plantId, 'approved']
-    );
-    await conn.query(
-        `UPDATE plant_images SET isPrimary = TRUE
-         WHERE imageId = (
-             SELECT i2.imageId FROM (
-                 SELECT imageId FROM plant_images
-                 WHERE plantId = ? AND status = 'approved'
-                 ORDER BY uploadedAt ASC LIMIT 1
-             ) i2
-         )`,
+        `UPDATE plant_images SET isPrimary = FALSE
+         WHERE plantId = ? AND isPrimary = TRUE
+           AND (status <> 'approved' OR publicVisible = FALSE OR archivedAt IS NOT NULL)`,
         [plantId]
     );
+    const [keptPrimary] = await conn.query(
+        `SELECT imageId FROM plant_images
+         WHERE plantId = ? AND status = 'approved' AND isPrimary = TRUE LIMIT 1`,
+        [plantId]
+    );
+    if (keptPrimary.length === 0) {
+        await conn.query(
+            `UPDATE plant_images SET isPrimary = TRUE
+             WHERE imageId = (
+                 SELECT i2.imageId FROM (
+                     SELECT imageId FROM plant_images
+                     WHERE plantId = ? AND status = 'approved' AND publicVisible = TRUE AND archivedAt IS NULL
+                     ORDER BY uploadedAt ASC LIMIT 1
+                 ) i2
+             )`,
+            [plantId]
+        );
+    }
 }
 
 /**
@@ -517,6 +532,12 @@ async function approvePlantRequest(requestId, reviewerId, note, options = {}) {
         await plan.finalize();
         relocation.tidyAfter(plan);
 
+        // Approved photos get their public thumbnail and display copies, made from
+        // the master now that its path is final. A failure here never undoes the
+        // review: the photo simply has no public copy (and so is not listed) until
+        // the startup catch-up makes it.
+        await publicImages.ensurePublicCopies(verdicts.approve);
+
         // After the commit: a logging failure must never roll back a review.
         // One record per decision, not per image, so a text-only submission
         // still leaves an audit trail.
@@ -678,6 +699,10 @@ async function denyPlantRequest(requestId, reviewerId, note, kind = 'revise') {
         await conn.commit();
         await plan.finalize();
         relocation.tidyAfter(plan);
+
+        // A denied photo must not have public copies. A pending photo never had any, so
+        // this normally finds nothing; it is here so that is true by construction.
+        await publicImages.removeCopiesForImages(imageIds);
 
         // After the commit, for the same reason as on approval.
         await logImageReview({

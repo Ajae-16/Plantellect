@@ -432,17 +432,35 @@
     <!-- Edit a plant directly (admin). Two independent halves, each with its own Save:
          "Plant info" (names, type, taxonomy) and "Descriptions" (one botanist's description at
          a time, with the option to make it the primary one). Built by openPlantEdit() below. -->
-    <dialog id="plantEditDialog" class="plant-dialog plant-dialog-wide" aria-labelledby="plantEditTitle">
+    <dialog id="plantEditDialog" class="plant-dialog plant-dialog-wide plant-dialog-with-photos" aria-labelledby="plantEditTitle">
         <form id="plantEditForm" novalidate>
             <h2 id="plantEditTitle">Edit plant</h2>
-            <div class="plant-tabs" role="tablist">
-                <button type="button" role="tab" class="plant-tab active" data-tab="base" aria-selected="true">Plant info</button>
-                <button type="button" role="tab" class="plant-tab" data-tab="description" aria-selected="false">Descriptions</button>
+            <div class="plant-edit-layout">
+                <div class="plant-edit-main">
+                    <div class="plant-tabs" role="tablist">
+                        <button type="button" role="tab" class="plant-tab active" data-tab="base" aria-selected="true">Plant info</button>
+                        <button type="button" role="tab" class="plant-tab" data-tab="description" aria-selected="false">Descriptions</button>
+                    </div>
+                    <p class="plant-dialog-hint" id="plantEditHint"></p>
+                    <p class="plant-dialog-error" id="plantEditError" role="alert" hidden></p>
+                    <p class="plant-dialog-ok" id="plantEditOk" role="status" hidden></p>
+                    <div id="plantEditBody"></div>
+                </div>
+                <!-- Public photo controls. Each button acts at once and has nothing to do with the
+                     Save buttons below: hiding a photo deletes its public files immediately. -->
+                <aside class="plant-photo-panel" aria-label="Public photos">
+                    <h3>Photos</h3>
+                    <p class="plant-photo-hint">What the public can see. Hiding removes the public file at once; the photo stays in the dataset.</p>
+                    <p class="plant-dialog-error" id="plantPhotoError" role="alert" hidden></p>
+                    <p class="plant-dialog-ok" id="plantPhotoOk" role="status" hidden></p>
+                    <div id="plantPhotoList" class="plant-photo-list"></div>
+                    <div class="plant-photo-archive">
+                        <button type="button" class="btn-deny" id="plantArchiveBtn" disabled
+                                title="Archiving from this dialog is not available yet">Archive plant</button>
+                        <small>Archiving from here is not available yet.</small>
+                    </div>
+                </aside>
             </div>
-            <p class="plant-dialog-hint" id="plantEditHint"></p>
-            <p class="plant-dialog-error" id="plantEditError" role="alert" hidden></p>
-            <p class="plant-dialog-ok" id="plantEditOk" role="status" hidden></p>
-            <div id="plantEditBody"></div>
             <div class="plant-dialog-actions">
                 <button type="button" class="btn-deny" id="plantEditCancel">Close</button>
                 <button type="submit" class="btn-approve" id="plantEditSave">Save</button>
@@ -682,6 +700,72 @@
             }
         }
 
+        // -----------------------------------------------------------------
+        // "Looks like photo X" hints under each pending photo. A hint only: it never
+        // blocks an approval, and a request without photos or a failed lookup shows
+        // nothing. The server compares by hash (always) and by MobileNet similarity
+        // (when the ML service answers). Fetched once per request and kept.
+        // -----------------------------------------------------------------
+        const lookalikeCache = {};
+
+        function lookalikeText(h, targetPlantId) {
+            const pct = h.similarity != null ? ' (' + Math.round(h.similarity * 100) + '% alike)' : '';
+            if (h.sameSubmission) return 'Near copy of another photo in this submission';
+            const other = h.plantId && targetPlantId && h.plantId !== targetPlantId;
+            const where = other ? ' of a different plant' + (h.plantName ? ' (' + h.plantName + ')' : '')
+                                : (h.plantName ? ' of ' + h.plantName : '');
+            if (h.kind === 'near_copy') return 'Near copy of an approved photo' + where;
+            if (h.kind === 'same_shot') return 'Looks like the same shot as an approved photo' + where + pct;
+            return 'Looks similar to an approved photo' + where + pct;
+        }
+
+        function paintLookalikes(requestId) {
+            const data = lookalikeCache[requestId];
+            const card = document.querySelector(`.pending-request-card[data-id="${CSS.escape(String(requestId))}"]`);
+            if (!card || !data || !data.photos) return;
+            card.querySelectorAll('.photo-review').forEach(fig => {
+                fig.querySelectorAll('.lookalike-hint').forEach(n => n.remove());
+                const hints = data.photos[fig.dataset.image] || [];
+                hints.forEach(h => {
+                    const box = document.createElement('div');
+                    box.className = 'lookalike-hint ' + (h.kind === 'similar' ? 'is-soft' : 'is-strong');
+                    box.appendChild(document.createTextNode(lookalikeText(h, data.targetPlantId) + ' '));
+                    const link = document.createElement('a');
+                    link.href = h.url;
+                    link.target = '_blank';
+                    link.rel = 'noopener';
+                    link.textContent = 'View';
+                    box.appendChild(link);
+                    fig.appendChild(box);
+                });
+            });
+            const bulk = card.querySelector('.photo-bulk');
+            const reason = data.embedding && !data.embedding.available ? data.embedding.reason : null;
+            card.querySelectorAll('.lookalike-note').forEach(n => n.remove());
+            if (bulk && (reason === 'service_down' || reason === 'service_error' || reason === 'degraded')) {
+                const note = document.createElement('p');
+                note.className = 'lookalike-note';
+                note.textContent = 'The visual similarity check is not available right now. Exact-copy checks still ran.';
+                bulk.insertAdjacentElement('afterend', note);
+            }
+        }
+
+        function applyLookalikes() {
+            pendingRequests.forEach(r => {
+                if (!(r.images || []).length) return;
+                const entry = lookalikeCache[r.id];
+                if (!entry) {
+                    lookalikeCache[r.id] = { loading: true };
+                    fetch('/admin/api/plant-requests/' + encodeURIComponent(r.id) + '/lookalikes', { credentials: 'include' })
+                        .then(res => res.ok ? res.json() : Promise.reject(new Error('lookup failed')))
+                        .then(data => { lookalikeCache[r.id] = data; paintLookalikes(r.id); })
+                        .catch(() => { lookalikeCache[r.id] = { failed: true }; });
+                } else if (!entry.loading && !entry.failed) {
+                    paintLookalikes(r.id);
+                }
+            });
+        }
+
         const TAXONOMY_ORDER = ['kingdom', 'phylum', 'plantClass', 'order', 'family', 'genus', 'species'];
         const TAXONOMY_LABELS = {
             kingdom: 'Kingdom', phylum: 'Phylum', plantClass: 'Class', order: 'Order',
@@ -810,6 +894,7 @@
             list.querySelectorAll('.btn-deny').forEach(btn => {
                 btn.addEventListener('click', () => handleRequestDecision(btn.dataset.id, 'deny'));
             });
+            applyLookalikes();
         }
 
         // One delegated listener for the per-photo and bulk controls. Registered
@@ -1240,11 +1325,122 @@
             editData = data;
         }
 
+        // -----------------------------------------------------------------
+        // Public photo controls (right side of the edit dialog). Every button acts at
+        // once through its own request; none of it is part of Save. After each action the
+        // list is re-read from the server, so what is shown is what the public gets.
+        // -----------------------------------------------------------------
+        let photoData = null;       // GET /admin/api/plants/:id/photos
+        let photoBusy = false;
+
+        function photoMessage(kind, text) {
+            const err = document.getElementById('plantPhotoError');
+            const ok = document.getElementById('plantPhotoOk');
+            err.hidden = kind !== 'error';
+            ok.hidden = kind !== 'ok';
+            (kind === 'error' ? err : ok).textContent = text || '';
+        }
+
+        function renderPhotoPanel() {
+            const host = document.getElementById('plantPhotoList');
+            if (!photoData) {
+                host.innerHTML = '<p class="request-detail-muted">Loading…</p>';
+                return;
+            }
+            const photos = photoData.photos || [];
+            if (photos.length === 0) {
+                host.innerHTML = '<p class="request-detail-muted">This plant has no approved photos.</p>';
+                return;
+            }
+            const archivedNote = photoData.plantArchived
+                ? '<p class="request-detail-muted">This plant is archived, so no photo is public. Restore the plant to show photos.</p>'
+                : '';
+            host.innerHTML = archivedNote + photos.map(ph => {
+                const hidden = !ph.publicVisible;
+                const missing = ph.publicVisible && !ph.publicNow && !photoData.plantArchived;
+                const badges = [
+                    ph.isPrimary ? '<span class="plant-photo-badge primary">Primary</span>' : '',
+                    hidden ? '<span class="plant-photo-badge hidden-badge">Hidden</span>'
+                           : (ph.publicNow ? '<span class="plant-photo-badge public">Public</span>' : ''),
+                    missing ? '<span class="plant-photo-badge warn" title="Visible, but its public copy is not made yet">Copy pending</span>' : ''
+                ].join('');
+                const id = escapeHtml(ph.imageId);
+                const canPrimary = !ph.isPrimary && !hidden && !ph.archived;
+                return `
+                <figure class="plant-photo ${hidden ? 'is-hidden' : ''}" data-image="${id}">
+                    <a href="${escapeHtml(ph.previewUrl)}" target="_blank" rel="noopener" title="Open the photo in a new tab">
+                        <img src="${escapeHtml(ph.previewUrl)}" alt="Plant photo" loading="lazy">
+                    </a>
+                    <figcaption>
+                        <div class="plant-photo-badges">${badges}</div>
+                        <div class="plant-photo-by">${escapeHtml(ph.uploadedByName || '')} · ${formatDate(ph.uploadedAt)}</div>
+                        <div class="plant-photo-actions">
+                            <button type="button" class="plant-photo-btn" data-photo-act="${hidden ? 'show' : 'hide'}" data-image="${id}"
+                                    ${hidden && photoData.plantArchived ? 'disabled' : ''}>${hidden ? 'Show' : 'Hide'}</button>
+                            <button type="button" class="plant-photo-btn" data-photo-act="primary" data-image="${id}"
+                                    ${canPrimary ? '' : 'disabled'}>${ph.isPrimary ? 'Primary' : 'Set primary'}</button>
+                        </div>
+                    </figcaption>
+                </figure>`;
+            }).join('');
+        }
+
+        async function loadPhotoPanel() {
+            const plantId = editingPlantId;
+            try {
+                const res = await fetch('/admin/api/plants/' + encodeURIComponent(plantId) + '/photos', { credentials: 'include' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Could not load the photos');
+                if (plantId !== editingPlantId) return;       // the dialog moved on to another plant
+                photoData = data;
+                renderPhotoPanel();
+            } catch (err) {
+                photoMessage('error', err.message);
+            }
+        }
+
+        const PHOTO_DONE = {
+            hide: 'Photo hidden. Its public file is gone.',
+            show: 'Photo is public again.',
+            primary: 'Primary photo changed.'
+        };
+
+        document.getElementById('plantPhotoList').addEventListener('click', async (e) => {
+            const btn = e.target.closest('[data-photo-act]');
+            if (!btn || btn.disabled || photoBusy || !editingPlantId) return;
+            const act = btn.dataset.photoAct;
+            photoBusy = true;
+            document.querySelectorAll('#plantPhotoList .plant-photo-btn').forEach(b => { b.disabled = true; });
+            photoMessage('none');
+            try {
+                const res = await fetch('/admin/api/plants/' + encodeURIComponent(editingPlantId) +
+                    '/photos/' + encodeURIComponent(btn.dataset.image) + '/' + encodeURIComponent(act), {
+                    method: 'POST', credentials: 'include'
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    // A failed hide leaves the photo visible; the list below shows that truthfully.
+                    photoMessage('error', data.error || 'The change failed');
+                } else {
+                    photoMessage('ok', PHOTO_DONE[act] || 'Done.');
+                }
+            } catch (err) {
+                photoMessage('error', 'The change failed: ' + err.message);
+            } finally {
+                photoBusy = false;
+                await loadPhotoPanel();
+            }
+        });
+
         async function openPlantEdit(p) {
             editingPlantId = p.id;
             editTab = 'base';
             editDescriptionId = null;
             editData = null;
+            photoData = null;
+            photoMessage('none');
+            renderPhotoPanel();
+            loadPhotoPanel();
             document.getElementById('plantEditTitle').textContent = 'Edit ' + p.name;
             editMessage('none');
             document.getElementById('plantEditHint').textContent = '';

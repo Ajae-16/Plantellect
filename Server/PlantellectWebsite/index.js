@@ -10,6 +10,8 @@ const connectMongoDB = require('./config/mongo');
 const { runSeed } = require('./config/seed.cjs');
 const { mysqlPool } = require('./config/mysql.js');
 const settings = require('./config/settings');
+const publicImages = require('./config/public-images');
+const maintenance = require('./config/maintenance');
 
 const app = express();
 
@@ -35,6 +37,12 @@ app.use(session({
         secure: settings.session.cookieSecure
     }
 }));
+
+// Public photo copies (stage 6). Mounted BEFORE the general static handler and it
+// answers everything under its prefix, so nothing else in that folder (a temporary
+// file, a stray upload) can ever be served by the generic handler below. Only the
+// exact path of a generated WebP is served; see config/public-images.js.
+app.use(settings.plantImages.publicUrlBase, publicImages.publicImageHandler());
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -82,6 +90,14 @@ async function startServer() {
     }
     // plants/ and discoveries/, each with pending, approved and denied.
     require('./config/image-files').ensureImageTree();
+    // public/resource/plant-images/{thumbnail,display}, then reconcile it with the
+    // database (stage 7b): delete files with no visible record, regenerate missing
+    // copies and copies whose hash no longer matches. It never throws: a failure is
+    // logged and the photo is retried at the next run. The same job, followed by the
+    // denied-photo retention job, then runs every night.
+    publicImages.ensurePublicTree();
+    await maintenance.runReconcile();
+    maintenance.scheduleNightly();
 
     const PORT = settings.server.port;
     app.listen(PORT, '0.0.0.0', () => {

@@ -23,7 +23,10 @@ const AUTHLOG_ACTIONS = [
     'approval_mode_changed',
     // Dataset page: an audit started, photos moved to / back from quarantine, a cluster reviewed or grouped,
     // a part row added. metadata.action says which.
-    'dataset_changed'
+    'dataset_changed',
+    // Admin plant modal: a photo shown, hidden, or made the primary photo.
+    // metadata.action is 'hide' | 'show' | 'primary', with plantId and imageId.
+    'photo_visibility_changed'
 ];
 
 const authlogSchema = new mongoose.Schema(

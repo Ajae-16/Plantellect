@@ -84,6 +84,22 @@ module.exports = {
         // public/resource/plant-images. Read once at startup: a change needs a restart.
         // 0 turns the cache off.
         publicCacheSeconds: numberSetting('PUBLIC_IMAGE_CACHE_SECONDS', 300),
+        // Reconcile job (config/reconcile.js). A file in the public folder with no visible
+        // record is deleted only when it is older than this many seconds, so a copy that is
+        // being written (a restore builds the files BEFORE it sets the flag) is never
+        // mistaken for an orphan. At least 10.
+        orphanGraceSeconds: Math.max(10, numberSetting('PUBLIC_ORPHAN_GRACE_SECONDS', 120)),
+        // Most denied photos the retention job purges in one run; the rest wait for the next night.
+        retentionBatchSize: Math.max(1, numberSetting('RETENTION_BATCH_SIZE', 500)),
+        // Static public copies (stage 6). Written ONLY by the server, from a master, and
+        // served by their own handler in index.js (WebP only, nosniff, no listing).
+        // Under public/ so the URL is /resource/plant-images/<size>/<plantId>/<imageId>.webp.
+        publicDir: path.join(__dirname, '..', 'public', 'resource', 'plant-images'),
+        publicUrlBase: '/resource/plant-images',
+        // Longest side in pixels. A copy is never enlarged.
+        thumbnailLongEdge: Math.max(64, numberSetting('PUBLIC_THUMBNAIL_LONG_EDGE', 480)),
+        displayLongEdge: Math.max(256, numberSetting('PUBLIC_DISPLAY_LONG_EDGE', 1280)),
+        publicCopyQuality: Math.min(100, Math.max(40, numberSetting('PUBLIC_COPY_QUALITY', 82))),
         maxSizeBytes: maxPlantImageSize * 1024 * 1024, // per file
         // Per-submission photo cap. This is the FALLBACK: the live value is the
         // admin-editable system_settings key 'plantImages' (see
@@ -121,6 +137,32 @@ module.exports = {
         maxInputPixels: Math.max(1000000, numberSetting('INGEST_MAX_PIXELS', 80000000)),
         // How long the website waits for the ML service to convert one HEIC photo.
         heicTimeoutMs: Math.max(1000, numberSetting('INGEST_HEIC_TIMEOUT_MS', 20000))
+    },
+    // "Looks like photo X" hints shown to the reviewer at approval (config/lookalike.js).
+    // A hint never blocks an approval. The two thresholds are STARTING values from the
+    // plan (section 7.6) and must be calibrated on real photos before anyone relies on
+    // them; the hash distance comes from stage 5's note that a resized copy differed by
+    // 6 to 9 of 64 bits.
+    lookalike: {
+        // Largest Hamming distance (of 64 bits) between two dHashes that is still called a near copy.
+        hashMaxDistance: Math.max(0, Math.min(32, numberSetting('LOOKALIKE_HASH_MAX_DISTANCE', 8))),
+        // Embedding cosine similarity from which two photos are "the same shot" and "similar".
+        sameShotSimilarity: numberSetting('LOOKALIKE_SAME_SHOT', 0.97),
+        similarSimilarity: numberSetting('LOOKALIKE_SIMILAR', 0.93),
+        // How many of the plant's approved photos a pending photo is compared against
+        // (newest first), and how many hints one photo shows.
+        embeddingReferenceCap: Math.max(0, numberSetting('LOOKALIKE_REFERENCE_CAP', 30)),
+        maxHintsPerPhoto: Math.max(1, numberSetting('LOOKALIKE_MAX_HINTS', 3)),
+        // Most approved hashes read for the cross-species check.
+        hashPoolCap: Math.max(100, numberSetting('LOOKALIKE_HASH_POOL', 20000)),
+        // Photos are shrunk to this long edge before they go to the ML service.
+        sendLongEdge: Math.max(128, numberSetting('LOOKALIKE_SEND_LONG_EDGE', 256)),
+        timeoutMs: Math.max(1000, numberSetting('LOOKALIKE_TIMEOUT_MS', 20000))
+    },
+    // Nightly housekeeping (config/maintenance.js): the public-copy reconcile job and the
+    // denied-photo retention job. Local time of the server process.
+    maintenance: {
+        nightlyHour: Math.min(23, numberSetting('NIGHTLY_JOB_HOUR', 3))
     },
     pagination: {
         // Every list route clamps to these instead of hardcoding a page size.

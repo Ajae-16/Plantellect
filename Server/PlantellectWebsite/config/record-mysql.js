@@ -2,7 +2,6 @@
 // Split out of mysql.js; see mysql.js for the combined export list.
 
 const path = require('path');
-const crypto = require('crypto');
 const fs = require('fs');
 const settings = require('./settings');
 const { insertRow, nextKey } = require('./ids.js');
@@ -123,10 +122,13 @@ async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
     if (!discoveryRequestId) {
         throw userError('Report photos can only be attached to a record made from a discovery report', 400);
     }
+    // FOR UPDATE: two submissions that pick the same report photo queue up here, so the
+    // second one runs its "already attached" check after the first has committed.
     const [rows] = await conn.query(
-        `SELECT imageId, originalFilename, storedPath, mimeType, size, contentHash, perceptualHash
+        `SELECT imageId, accountId, originalFilename, storedPath, mimeType, size, contentHash, perceptualHash
          FROM discovery_images
-         WHERE requestId = ? AND imageId IN (${unique.map(() => '?').join(',')})`,
+         WHERE requestId = ? AND imageId IN (${unique.map(() => '?').join(',')})
+         FOR UPDATE`,
         [discoveryRequestId, ...unique]
     );
     if (rows.length !== unique.length) {
@@ -147,9 +149,16 @@ async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
  * not go through the pipeline is refused, so a photo with its metadata can never be
  * stored by a route that forgot the middleware.
  *
- * A chosen REPORT photo is still copied into plants/pending/<requestId>/ and moves
- * with the status like any older photo (the discovery claim becomes a master copy in
- * stage 7).
+ * A chosen REPORT photo is a CLAIM (stage 7b): the reporter's master is copied into the
+ * plant's masters, plants/masters/<plantId or requestId>/<new imageId>.webp, under a new
+ * image id, and never moves again either. The new row stores
+ *   accountId               the botanist recording the plant (the record's author)
+ *   creditAccountId         the reporter who took the photo
+ *   sourceDiscoveryImageId  the report photo it was copied from
+ * The report keeps its own photo, so retention and denial stay independent. The same
+ * report photo cannot be attached twice while an earlier attachment is pending or
+ * approved. A report photo that is not a master (stored before the ingest pipeline) is
+ * refused: it may still carry the metadata the plan says is never kept.
  *
  * COPY, verify, then delete the source (see image-files.js). The temp file is
  * deleted by plan.finalize() after the commit; a report photo is copied and its
@@ -159,11 +168,6 @@ async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
  */
 async function stageImages(conn, { accountId, plantId, requestId, files, photos, plan }) {
     const storageDir = settings.plantImages.storageDir;
-    const relativeDir = imageFiles.plantRelativeDir('pending', requestId);
-    if (photos.length > 0) {
-        const dir = path.join(storageDir, relativeDir);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    }
 
     const columns = ['plantId', 'accountId', 'originalFilename', 'storedFilename', 'storedPath', 'mimeType', 'size', 'status', 'isPrimary', 'contentHash', 'perceptualHash'];
     const imageIds = [];
@@ -174,7 +178,7 @@ async function stageImages(conn, { accountId, plantId, requestId, files, photos,
         500
     );
 
-    const masterDir = files.length > 0 ? imageFiles.plantMasterRelativeDir(plantId || requestId) : null;
+    const masterDir = files.length + photos.length > 0 ? imageFiles.plantMasterRelativeDir(plantId || requestId) : null;
     for (const file of files) {
         if (!file.ingest) {
             throw new Error('An uploaded photo reached stageImages without going through the ingest pipeline');
@@ -199,23 +203,53 @@ async function stageImages(conn, { accountId, plantId, requestId, files, photos,
     }
 
     const discoveryRoot = path.resolve(DISCOVERY_STORAGE_ROOT);
+    const claimColumns = [...columns, 'creditAccountId', 'sourceDiscoveryImageId'];
     for (const photo of photos) {
+        const name = String(photo.originalFilename || 'A report photo').slice(0, 80);
+        if (!imageFiles.isDiscoveryMasterPath(photo.storedPath)) {
+            throw userError(
+                `"${name}" was stored before the current photo pipeline, so it cannot be attached. ` +
+                    'Ask the reporter to send it again.',
+                409
+            );
+        }
         const source = path.resolve(path.join(DISCOVERY_STORAGE_ROOT, photo.storedPath));
         if (!source.startsWith(discoveryRoot + path.sep) || !fs.existsSync(source)) {
             throw userError('A report photo is no longer on the server, so it could not be attached', 409);
         }
-        const ext = path.extname(photo.storedPath).toLowerCase();
-        const storedFilename = `${crypto.randomUUID()}${ext}`;
-        const relativePath = path.join(relativeDir, storedFilename);
+        // Not twice. A locking read, so a record committed a moment ago by another
+        // submission is seen even inside this transaction's older snapshot. A photo whose
+        // earlier attachment was denied can be attached again.
+        const [already] = await conn.query(
+            `SELECT imageId FROM plant_images
+             WHERE sourceDiscoveryImageId = ? AND status IN ('pending','approved') LIMIT 1 FOR UPDATE`,
+            [photo.imageId]
+        );
+        if (already.length > 0) {
+            throw userError(`"${name}" is already attached to a plant record. Choose a different photo.`, 409);
+        }
+        if (photo.contentHash && await hashIsTaken(conn, photo.contentHash)) {
+            throw userError(`"${name}" has already been submitted. Choose a different photo.`, 409);
+        }
+
+        const imageId = await nextKey(conn, 'plant_images');
+        const storedFilename = `${imageId}.webp`;
+        const relativePath = path.join(masterDir, storedFilename);
         const destination = path.join(storageDir, relativePath);
         // deleteSource: false. The report keeps its own photo.
-        const copied = await plan.stage(source, destination, { mimeType: photo.mimeType, deleteSource: false });
+        const copied = await plan.stage(source, destination, { mimeType: 'image/webp', deleteSource: false });
         if (!copied.ok) throw failed(photo.originalFilename, copied);
         // The report photo's hashes come along, so an upload of the same file is recognised later.
-        imageIds.push(await insertRow(
-            conn, 'plant_images', columns,
-            [plantId || null, accountId, photo.originalFilename, storedFilename, relativePath, photo.mimeType, photo.size, 'pending', false, photo.contentHash || null, photo.perceptualHash || null]
-        ));
+        const values = [
+            imageId, plantId || null, accountId, photo.originalFilename, storedFilename, relativePath, 'image/webp',
+            photo.size, 'pending', false, photo.contentHash || null, photo.perceptualHash || null,
+            photo.accountId || null, photo.imageId
+        ];
+        await conn.query(
+            `INSERT INTO plant_images (imageId, ${claimColumns.map((c) => `\`${c}\``).join(', ')}) VALUES (${values.map(() => '?').join(', ')})`,
+            values
+        );
+        imageIds.push(imageId);
     }
 
     return imageIds;

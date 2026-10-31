@@ -104,8 +104,10 @@ function renderPlantCards(plants) {
     grid.innerHTML = plants.map(function (p) {
         const name = p.name.toUpperCase();
         const tox = toxicityInfo(p.toxicityLevel);
-        const image = p.imageUrl
-            ? `<img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.name)} Plant">`
+        // Cards show the small copy; imageUrl (the larger one) is the fallback.
+        const cardImage = p.thumbnailUrl || p.imageUrl;
+        const image = cardImage
+            ? `<img src="${escapeHtml(cardImage)}" alt="${escapeHtml(p.name)} Plant" loading="lazy" decoding="async">`
             : '<div class="image-box image-placeholder" aria-hidden="true">🌿</div>';
 
         // Harmful: the recorded "things to watch out for" text, or the type's

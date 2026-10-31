@@ -9,6 +9,7 @@ const { handleUploadError } = require('../config/upload');
 const { logMlScan } = require('../mongoose-schemas/Mlscan.js');
 const { evaluate, isSpecies } = require('../config/ml-confidence');
 const settings = require('../config/settings');
+const { publicUrls } = require('../config/public-images');
 const router = express.Router();
 
 const ML_SERVICE_URL = settings.ml.serviceUrl;
@@ -149,7 +150,8 @@ async function attachPlantLinks(data) {
                 prediction.plantId = match.plantId;
                 prediction.commonName = match.commonName;
                 if (match.heroImageId) {
-                    prediction.imageUrl = `/api/plants/${match.plantId}/images/${match.heroImageId}`;
+                    // The static public copies (config/public-images.js), not an API route.
+                    Object.assign(prediction, publicUrls(match.plantId, match.heroImageId));
                 }
             }
         }

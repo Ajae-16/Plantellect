@@ -27,6 +27,8 @@ const approvalMode = require('../config/approval-mode.js');
 const { listImageIssues, retryImageIssue } = require('../config/image-relocation');
 const { logAuthEvent, Authlog } = require('../mongoose-schemas/Authlog');
 const plantEdit = require('../config/admin-plant-edit-mysql');
+const photoVisibility = require('../config/photo-visibility');
+const lookalike = require('../config/lookalike');
 
 const router = express.Router();
 
@@ -414,6 +416,71 @@ router.post('/api/plants/:plantId/descriptions/:descriptionId/primary', requireP
     } catch (err) {
         console.error('Set primary description error:', err.message);
         res.status(500).json({ error: 'Failed to change the primary description' });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Public photo controls (stage 7a): show or hide each approved photo, set the primary
+// photo. Hiding deletes the public files first; a failed delete is a 500 with a message
+// and the photo stays visible. Every change is written to the audit log.
+// ---------------------------------------------------------------------------
+
+function sendPhotoResult(res, result) {
+    if (result.error) {
+        return res.status(result.code || 400).json({ error: result.error, reason: result.reason });
+    }
+    res.json({ ok: true, ...result });
+}
+
+const logPhotoChange = (req, action, result) => logAuthEvent({
+    accountId: req.session.accountId,
+    action: 'photo_visibility_changed',
+    ip: req.ip,
+    userAgent: req.get('User-Agent') || '',
+    metadata: { action, plantId: result.plantId, imageId: result.imageId }
+});
+
+/** The approved photos of one plant with their public state, for the edit dialog's side panel. */
+router.get('/api/plants/:plantId/photos', requirePermission('access_admin'), async (req, res) => {
+    try {
+        sendPhotoResult(res, await photoVisibility.listPlantPhotos(req.params.plantId));
+    } catch (err) {
+        console.error('List plant photos error:', err.message);
+        res.status(500).json({ error: 'Failed to load the photos' });
+    }
+});
+
+[
+    ['hide', (p, i) => photoVisibility.hidePhoto(p, i), 'Failed to hide the photo'],
+    ['show', (p, i) => photoVisibility.restorePhoto(p, i), 'Failed to show the photo'],
+    ['primary', (p, i) => photoVisibility.setPrimaryPhoto(p, i), 'Failed to set the primary photo']
+].forEach(([action, run, failure]) => {
+    router.post(`/api/plants/:plantId/photos/:imageId/${action}`, requirePermission('access_admin'), async (req, res) => {
+        try {
+            const result = await run(req.params.plantId, req.params.imageId);
+            if (!result.error) await logPhotoChange(req, action, result);
+            sendPhotoResult(res, result);
+        } catch (err) {
+            console.error(`Photo ${action} error:`, err.message);
+            res.status(500).json({ error: failure });
+        }
+    });
+});
+
+/**
+ * "Looks like photo X" hints for the pending photos of one request, so the reviewer
+ * sees a near copy or a cross-species duplicate before approving. A hint only: it never
+ * blocks anything, and when the ML service is down the hash-based hints still work.
+ */
+router.get('/api/plant-requests/:requestId/lookalikes', requirePermission('access_admin'), async (req, res) => {
+    try {
+        const result = await lookalike.findLookalikes(req.params.requestId);
+        if (result.error) return res.status(result.code || 400).json({ error: result.error });
+        res.setHeader('Cache-Control', 'no-store');
+        res.json(result);
+    } catch (err) {
+        console.error('Look-alike hint error:', err.message);
+        res.status(500).json({ error: 'Failed to look for similar photos' });
     }
 });
 

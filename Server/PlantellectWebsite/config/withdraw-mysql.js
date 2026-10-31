@@ -14,6 +14,7 @@ const { mysqlPool } = require('./pool-mysql');
 const { parsePayload } = require('./shared-mysql');
 const imageFiles = require('./image-files');
 const relocation = require('./image-relocation');
+const publicImages = require('./public-images');
 
 const WITHDRAWABLE = ['plant_addition', 'plant_contribution', 'plant_taxonomy', 'plant_change'];
 
@@ -76,6 +77,8 @@ async function withdrawMyRequest(accountId, requestId) {
         await conn.commit();
         await plan.finalize();
         relocation.tidyAfter(plan);
+        // A withdrawn photo must not have public copies (a pending one never had any).
+        await publicImages.removeCopiesForImages(imageIds);
         return { requestId, status: 'cancelled', photoFileProblems };
     } catch (err) {
         await conn.rollback().catch(() => {});

@@ -4,6 +4,7 @@
 const { mysqlPool } = require('./pool-mysql');
 const { parsePaging, escapeLike, PARTS_SELECT, partsFromRow, DISCOVERY_TYPE } = require('./shared-mysql');
 const { getContributorPeople } = require('./plant-mysql');
+const { publicUrls, visibleImageSql } = require('./public-images');
 
 /**
  * A plant is publicly visible when it is not archived and has an approved
@@ -35,7 +36,7 @@ async function listPublicPlants({ search, type, page, pageSize }) {
                 t.typeName, t.typeName AS typeLabel, NULL AS typeIcon, NULL AS typeBadgeClass,
                 t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote,
                 (SELECT i.imageId FROM plant_images i
-                 WHERE i.plantId = p.plantId AND i.status = 'approved'
+                 WHERE i.plantId = p.plantId AND ${visibleImageSql('i')}
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId,
                 (SELECT d.benefits FROM plant_description d
                  WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE
@@ -70,7 +71,7 @@ async function listPublicPlants({ search, type, page, pageSize }) {
             isHarmful: Boolean(r.isHarmful),
             toxicityLevel: r.toxicityLevel,
             cautionNote: r.cautionNote,
-            imageUrl: r.heroImageId ? `/api/plants/${r.plantId}/images/${r.heroImageId}` : null,
+            ...publicUrls(r.plantId, r.heroImageId),
             description: {
                 benefits: r.primaryBenefits || '',
                 harmful: r.primaryHarmful || ''
@@ -96,9 +97,9 @@ async function getPublicPlantDetail(plantId) {
     const p = rows[0];
 
     const [images] = await mysqlPool.query(
-        `SELECT imageId, originalFilename FROM plant_images
-         WHERE plantId = ? AND status = 'approved'
-         ORDER BY isPrimary DESC, uploadedAt ASC`,
+        `SELECT i.imageId, i.originalFilename FROM plant_images i
+         WHERE i.plantId = ? AND ${visibleImageSql('i')}
+         ORDER BY i.isPrimary DESC, i.uploadedAt ASC`,
         [plantId]
     );
 
@@ -134,7 +135,7 @@ async function getPublicPlantDetail(plantId) {
         createdAt: p.createdAt,
         images: images.map((i) => ({
             imageId: i.imageId,
-            imageUrl: `/api/plants/${plantId}/images/${i.imageId}`,
+            ...publicUrls(plantId, i.imageId),
             originalFilename: i.originalFilename
         })),
         descriptions: descriptions.map((d) => ({
@@ -183,7 +184,7 @@ async function getBotanistProfile(accountId) {
         SELECT p.plantId, p.commonName, p.scientificName, pc.role, pc.createdAt,
                 t.typeName, t.typeName AS typeLabel,
                 (SELECT i.imageId FROM plant_images i
-                 WHERE i.plantId = p.plantId AND i.status = 'approved'
+                 WHERE i.plantId = p.plantId AND ${visibleImageSql('i')}
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId
         FROM plant_contributors pc
         JOIN plants p ON pc.plantId = p.plantId
@@ -225,7 +226,7 @@ async function getBotanistProfile(accountId) {
             role: c.role,
             type: c.typeName,
             typeLabel: c.typeLabel,
-            imageUrl: c.heroImageId ? `/api/plants/${c.plantId}/images/${c.heroImageId}` : null
+            ...publicUrls(c.plantId, c.heroImageId)
         })),
         reported: reported.map((c) => ({
             id: c.plantId,
@@ -234,7 +235,7 @@ async function getBotanistProfile(accountId) {
             role: c.role,
             type: c.typeName,
             typeLabel: c.typeLabel,
-            imageUrl: c.heroImageId ? `/api/plants/${c.plantId}/images/${c.heroImageId}` : null
+            ...publicUrls(c.plantId, c.heroImageId)
         }))
     };
 }
@@ -264,7 +265,7 @@ async function resolveScientificNames(names) {
     const [rows] = await mysqlPool.query(
         `SELECT p.plantId, p.scientificName, p.commonName,
                 (SELECT i.imageId FROM plant_images i
-                 WHERE i.plantId = p.plantId AND i.status = 'approved'
+                 WHERE i.plantId = p.plantId AND ${visibleImageSql('i')}
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId
          FROM plants p WHERE p.archivedAt IS NULL AND p.scientificName IN (${placeholders})`,
         names

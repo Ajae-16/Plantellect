@@ -57,8 +57,9 @@ function showUnavailable(message) {
  */
 function renderPlantCard(c, role) {
     const name = c && c.name ? c.name : 'Unnamed plant';
-    const media = c && c.imageUrl
-        ? `<img class="profile-plant-card__media" src="${escapeHtml(c.imageUrl)}" alt="${escapeHtml(name)}" loading="lazy">`
+    const cardImage = c && (c.thumbnailUrl || c.imageUrl);
+    const media = cardImage
+        ? `<img class="profile-plant-card__media" src="${escapeHtml(cardImage)}" alt="${escapeHtml(name)}" loading="lazy">`
         : '<div class="profile-plant-card__media profile-plant-card__placeholder" aria-hidden="true">🌿</div>';
     const sci = c && c.scientificName
         ? `<p class="profile-plant-card__sci">${escapeHtml(c.scientificName)}</p>`

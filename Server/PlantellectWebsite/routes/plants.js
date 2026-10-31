@@ -5,12 +5,12 @@ const { requirePermission } = require('../middleware/authMiddleware');
 const settings = require('../config/settings');
 const { plantImageUpload, handleUploadError } = require('../config/upload');
 const { ingestUploads } = require('../config/image-ingest');
+const { publicUrl, visibleImageSql } = require('../config/public-images');
 const { mysqlPool } = require('../config/pool-mysql');
 const { withdrawMyRequest } = require('../config/withdraw-mysql');
 const {
     listPublicPlants,
     getPublicPlantDetail,
-    getImageForServing,
     getImageForOwner,
     listPlantTypes,
     listMyRequests,
@@ -302,32 +302,28 @@ router.get('/mine/images/:imageId', requirePermission('record_plant'), async (re
 });
 
 /**
- * Serves an approved image. The path comes from the database row keyed by
- * imageId, so a crafted id cannot traverse outside the storage directory.
+ * The OLD public photo address, kept so a link or an app build that still uses it
+ * keeps working. It no longer sends any file: the master is private. A visible photo
+ * answers with a redirect to its static display copy
+ * (/resource/plant-images/display/<plantId>/<imageId>.webp); a hidden, archived,
+ * denied or unknown photo answers 404, same as the static folder does.
  *
- * Approved-only, deliberately immutable: this route is NOT made session-aware,
- * or a pending photo would become publicly cacheable.
+ * The redirect is not cached: a photo hidden a moment later must not keep sending
+ * people to a URL that is gone.
  */
 router.get('/:plantId/images/:imageId', async (req, res) => {
     try {
-        const image = await getImageForServing(req.params.imageId);
-        if (!image || image.plantId !== req.params.plantId) {
-            return res.status(404).json({ error: 'Image not found' });
-        }
-        const fullPath = path.join(settings.plantImages.storageDir, image.storedPath);
-        const resolved = path.resolve(fullPath);
-        const root = path.resolve(settings.plantImages.storageDir);
-        if (!resolved.startsWith(root + path.sep)) {
-            return res.status(404).json({ error: 'Image not found' });
-        }
-        if (!fs.existsSync(resolved)) {
-            return res.status(404).json({ error: 'Image file not found on disk' });
-        }
-        res.setHeader('Content-Type', image.mimeType);
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        res.sendFile(resolved);
+        const [rows] = await mysqlPool.query(
+            `SELECT i.imageId, i.plantId FROM plant_images i
+             JOIN plants p ON p.plantId = i.plantId
+             WHERE i.imageId = ? AND i.plantId = ? AND p.archivedAt IS NULL AND ${visibleImageSql('i')}`,
+            [req.params.imageId, req.params.plantId]
+        );
+        if (rows.length === 0) return res.status(404).json({ error: 'Image not found' });
+        res.setHeader('Cache-Control', 'no-store');
+        res.redirect(302, publicUrl('display', rows[0].plantId, rows[0].imageId));
     } catch (err) {
-        console.error('Serve image error:', err.message);
+        console.error('Redirect image error:', err.message);
         res.status(500).json({ error: 'Failed to load image' });
     }
 });

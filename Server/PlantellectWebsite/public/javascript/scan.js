@@ -535,9 +535,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ------------------------------------------------- picture and profile link ----
-    // The server attaches plantId (and imageUrl, when the plant has a hero photo)
-    // only for species that exist in the library. Same URL shape the library grid
-    // and the plant profile already use, so the image route needs no change.
+    // The server attaches plantId (and imageUrl / thumbnailUrl, when the plant has a
+    // hero photo) only for species that exist in the library. Both are static public
+    // copies under /resource/plant-images/; the old /api/plants/... address still
+    // redirects there, so it is accepted too.
     function profileHref(pred) {
         return pred && pred.plantId
             ? `/plant-profile.html?plantId=${encodeURIComponent(pred.plantId)}`
@@ -545,8 +546,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function thumbHtml(pred, label) {
-        const url = pred && typeof pred.imageUrl === 'string' && pred.imageUrl.startsWith('/api/plants/')
-            ? pred.imageUrl
+        const candidate = pred && (pred.thumbnailUrl || pred.imageUrl);
+        const url = typeof candidate === 'string' &&
+            (candidate.startsWith('/resource/plant-images/') || candidate.startsWith('/api/plants/'))
+            ? candidate
             : '';
         return url
             ? `<img class="scan-prediction-img" src="${escapeHtml(url)}" alt="${escapeHtml(label)}" loading="lazy" decoding="async">`
