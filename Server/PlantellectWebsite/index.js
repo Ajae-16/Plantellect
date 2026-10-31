@@ -57,6 +57,7 @@ app.use('/api/botanists', require('./routes/botanists'));
 app.use('/api/ml', require('./routes/ml'));
 app.use('/admin/api/ml/usage', require('./routes/ml-usage'));
 app.use('/admin', require('./routes/admin'));
+app.use('/admin', require('./routes/admin-dataset'));
 app.use('/admin', require('./routes/role-requests'));
 
 app.use((req, res) => {

@@ -4,6 +4,8 @@ const fs = require('fs');
 const { requirePermission } = require('../middleware/authMiddleware');
 const settings = require('../config/settings');
 const { plantImageUpload, handleUploadError } = require('../config/upload');
+const { ingestUploads } = require('../config/image-ingest');
+const { mysqlPool } = require('../config/pool-mysql');
 const { withdrawMyRequest } = require('../config/withdraw-mysql');
 const {
     listPublicPlants,
@@ -177,7 +179,7 @@ router.get('/types', async (req, res) => {
     try {
         res.json({ types: await listPlantTypes() });
     } catch (err) {
-        console.error('List plant types error:', err.message);
+        console.error('List plant types error:', err);
         res.status(500).json({ error: 'Failed to load plant types' });
     }
 });
@@ -354,7 +356,7 @@ router.get('/:plantId', async (req, res) => {
  * checked against existing species: a duplicate is accepted here and converted
  * into a contribution at approval time.
  */
-router.post('/requests', requirePermission('record_plant'), plantImageUpload(getPlantImageLimits), async (req, res) => {
+router.post('/requests', requirePermission('record_plant'), plantImageUpload(getPlantImageLimits), ingestUploads({ executor: mysqlPool }), async (req, res) => {
     const files = req.files || [];
     const submitted = {
         commonName: req.body.commonName,
@@ -438,6 +440,7 @@ router.post('/requests', requirePermission('record_plant'), plantImageUpload(get
  */
 router.post('/:plantId/contributions', requirePermission('record_plant'),
     plantImageUpload(getPlantImageLimits),
+    ingestUploads({ executor: mysqlPool }),
     async (req, res) => {
         const files = req.files || [];
         const discoveryImageIds = readIdList(req.body.discoveryImageIds);

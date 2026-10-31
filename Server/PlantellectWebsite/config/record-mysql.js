@@ -5,8 +5,9 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
 const settings = require('./settings');
-const { insertRow } = require('./ids.js');
+const { insertRow, nextKey } = require('./ids.js');
 const { mysqlPool } = require('./pool-mysql');
+const { hashIsTaken } = require('./image-ingest');
 const { normalizeName, normalizeRichText, normalizeScientificName, PARTS_FIELDS, hasAnyPartValue, loadModelClasses, parsePaging, parsePayload, TAXONOMY_LEVELS, UNSPECIFIED_TAXONOMY, normalizeTypeSpec } = require('./shared-mysql');
 const { assertDiscoveryClaim, linkDiscoveryRecord, DISCOVERY_STORAGE_ROOT } = require('./discovery-mysql');
 const imageFiles = require('./image-files');
@@ -123,7 +124,7 @@ async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
         throw userError('Report photos can only be attached to a record made from a discovery report', 400);
     }
     const [rows] = await conn.query(
-        `SELECT imageId, originalFilename, storedPath, mimeType, size
+        `SELECT imageId, originalFilename, storedPath, mimeType, size, contentHash, perceptualHash
          FROM discovery_images
          WHERE requestId = ? AND imageId IN (${unique.map(() => '?').join(',')})`,
         [discoveryRequestId, ...unique]
@@ -136,23 +137,35 @@ async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
 
 /**
  * Files uploaded photos and chosen report photos into the plant-image store,
- * inserting one PENDING plant_images row for each. Everything lands in
- * plants/pending/<requestId>/ (the folder is the request's, because a brand-new
- * species has no plantId yet).
+ * inserting one PENDING plant_images row for each.
  *
- * COPY, verify, then delete the source (see image-files.js). The upload's temp
- * file is deleted by plan.finalize() after the commit; a report photo is copied
- * and its original stays with the report. If a photo cannot be copied cleanly
- * after the retry limit the whole submission fails with a message the botanist
- * can act on: nothing has been approved yet, so there is no admin to tell.
+ * An UPLOADED photo has already been through the ingest pipeline
+ * (config/image-ingest.js), so `file` describes a metadata-free WebP master and
+ * carries its hashes in file.ingest. It is filed once, as
+ * plants/masters/<plantId, or requestId for a brand-new species>/<imageId>.webp,
+ * and never moves again: the review status lives in the database. A file that did
+ * not go through the pipeline is refused, so a photo with its metadata can never be
+ * stored by a route that forgot the middleware.
+ *
+ * A chosen REPORT photo is still copied into plants/pending/<requestId>/ and moves
+ * with the status like any older photo (the discovery claim becomes a master copy in
+ * stage 7).
+ *
+ * COPY, verify, then delete the source (see image-files.js). The temp file is
+ * deleted by plan.finalize() after the commit; a report photo is copied and its
+ * original stays with the report. If a photo cannot be copied cleanly after the
+ * retry limit the whole submission fails with a message the botanist can act on:
+ * nothing has been approved yet, so there is no admin to tell.
  */
 async function stageImages(conn, { accountId, plantId, requestId, files, photos, plan }) {
     const storageDir = settings.plantImages.storageDir;
     const relativeDir = imageFiles.plantRelativeDir('pending', requestId);
-    const dir = path.join(storageDir, relativeDir);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (photos.length > 0) {
+        const dir = path.join(storageDir, relativeDir);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    }
 
-    const columns = ['plantId', 'accountId', 'originalFilename', 'storedFilename', 'storedPath', 'mimeType', 'size', 'status', 'isPrimary'];
+    const columns = ['plantId', 'accountId', 'originalFilename', 'storedFilename', 'storedPath', 'mimeType', 'size', 'status', 'isPrimary', 'contentHash', 'perceptualHash'];
     const imageIds = [];
 
     const failed = (name, result) => userError(
@@ -161,17 +174,28 @@ async function stageImages(conn, { accountId, plantId, requestId, files, photos,
         500
     );
 
+    const masterDir = files.length > 0 ? imageFiles.plantMasterRelativeDir(plantId || requestId) : null;
     for (const file of files) {
-        const ext = path.extname(file.originalname).toLowerCase();
-        const storedFilename = `${crypto.randomUUID()}${ext}`;
-        const relativePath = path.join(relativeDir, storedFilename);
+        if (!file.ingest) {
+            throw new Error('An uploaded photo reached stageImages without going through the ingest pipeline');
+        }
+        // The middleware already refused a duplicate; this repeats the check inside the
+        // transaction so two requests racing with the same photo are caught too.
+        if (await hashIsTaken(conn, file.ingest.contentHash)) {
+            throw userError(`"${String(file.originalname).slice(0, 80)}" has already been submitted. Choose a different photo.`, 409);
+        }
+        const imageId = await nextKey(conn, 'plant_images');
+        const storedFilename = `${imageId}.webp`;
+        const relativePath = path.join(masterDir, storedFilename);
         const destination = path.join(storageDir, relativePath);
-        const copied = await plan.stage(file.path, destination, { mimeType: file.mimetype });
+        const copied = await plan.stage(file.path, destination, { mimeType: 'image/webp' });
         if (!copied.ok) throw failed(file.originalname, copied);
-        imageIds.push(await insertRow(
-            conn, 'plant_images', columns,
-            [plantId || null, accountId, file.originalname, storedFilename, relativePath, file.mimetype, file.size, 'pending', false]
-        ));
+        const values = [imageId, plantId || null, accountId, file.originalname, storedFilename, relativePath, 'image/webp', file.size, 'pending', false, file.ingest.contentHash, file.ingest.perceptualHash];
+        await conn.query(
+            `INSERT INTO plant_images (imageId, ${columns.map((c) => `\`${c}\``).join(', ')}) VALUES (${values.map(() => '?').join(', ')})`,
+            values
+        );
+        imageIds.push(imageId);
     }
 
     const discoveryRoot = path.resolve(DISCOVERY_STORAGE_ROOT);
@@ -187,9 +211,10 @@ async function stageImages(conn, { accountId, plantId, requestId, files, photos,
         // deleteSource: false. The report keeps its own photo.
         const copied = await plan.stage(source, destination, { mimeType: photo.mimeType, deleteSource: false });
         if (!copied.ok) throw failed(photo.originalFilename, copied);
+        // The report photo's hashes come along, so an upload of the same file is recognised later.
         imageIds.push(await insertRow(
             conn, 'plant_images', columns,
-            [plantId || null, accountId, photo.originalFilename, storedFilename, relativePath, photo.mimeType, photo.size, 'pending', false]
+            [plantId || null, accountId, photo.originalFilename, storedFilename, relativePath, photo.mimeType, photo.size, 'pending', false, photo.contentHash || null, photo.perceptualHash || null]
         ));
     }
 

@@ -11,12 +11,16 @@ from predict import (
     check_model_output, check_class_kinds, input_shape_of,
 )
 from preprocess import preprocess_image, load_config, check_model_input
+from dataset_routes import router as dataset_router
+from convert_routes import router as convert_router
 
 app = FastAPI(
     title="Plantellect ML Inference Service",
     description="TensorFlow/Keras plant identification model inference API",
     version="1.0.0"
 )
+app.include_router(dataset_router)   # /dataset/audit, /dataset/status, /dataset/report
+app.include_router(convert_router)   # /convert/heic (the website's upload pipeline)
 
 # Layout: one folder per model, each holding the same three files.
 #   /app/model/efficientnetv2b1/{plantellect_model.keras, classes.json, preprocessing.json}

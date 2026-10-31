@@ -6,11 +6,10 @@ const { parsePaging, escapeLike, PARTS_SELECT, partsFromRow, DISCOVERY_TYPE } = 
 const { getContributorPeople } = require('./plant-mysql');
 
 /**
- * A plant is publicly visible when it has an approved primary description.
- * ARCHIVE-OFF: the archivedAt check is disabled until the column exists.
+ * A plant is publicly visible when it is not archived and has an approved
+ * primary description.
  */
-// ARCHIVE-OFF: const PUBLIC_VISIBILITY = `(p.archivedAt IS NULL AND EXISTS (
-const PUBLIC_VISIBILITY = `(EXISTS (
+const PUBLIC_VISIBILITY = `(p.archivedAt IS NULL AND EXISTS (
     SELECT 1 FROM plant_description pd
     WHERE pd.plantId = p.plantId AND pd.status = 'approved' AND pd.isPrimary = TRUE
 ))`;
@@ -33,7 +32,7 @@ async function listPublicPlants({ search, type, page, pageSize }) {
 
     const [rows] = await mysqlPool.query(
         `SELECT p.plantId, p.commonName, p.scientificName, p.quantity,
-                t.typeName, t.label AS typeLabel, t.icon AS typeIcon, t.badgeClass AS typeBadgeClass,
+                t.typeName, t.typeName AS typeLabel, NULL AS typeIcon, NULL AS typeBadgeClass,
                 t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote,
                 (SELECT i.imageId FROM plant_images i
                  WHERE i.plantId = p.plantId AND i.status = 'approved'
@@ -86,7 +85,7 @@ async function listPublicPlants({ search, type, page, pageSize }) {
 async function getPublicPlantDetail(plantId) {
     const [rows] = await mysqlPool.query(
         `SELECT p.plantId, p.commonName, p.scientificName, p.quantity, p.createdAt,
-                t.typeName, t.label AS typeLabel, t.icon AS typeIcon, t.badgeClass AS typeBadgeClass,
+                t.typeName, t.typeName AS typeLabel, NULL AS typeIcon, NULL AS typeBadgeClass,
                 t.isMedicinal, t.isHarmful, t.toxicityLevel, t.cautionNote
          FROM plants p
          JOIN plant_types t ON p.typeId = t.typeId
@@ -182,7 +181,7 @@ async function getBotanistProfile(accountId) {
 
     const contributionSelect = `
         SELECT p.plantId, p.commonName, p.scientificName, pc.role, pc.createdAt,
-                t.typeName, t.label AS typeLabel,
+                t.typeName, t.typeName AS typeLabel,
                 (SELECT i.imageId FROM plant_images i
                  WHERE i.plantId = p.plantId AND i.status = 'approved'
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId
@@ -242,15 +241,15 @@ async function getBotanistProfile(accountId) {
 
 async function listPlantTypes() {
     const [rows] = await mysqlPool.query(
-        `SELECT typeId, typeName, label, icon, badgeClass, isMedicinal, isHarmful, toxicityLevel, cautionNote
-         FROM plant_types ORDER BY label ASC`
+        `SELECT typeId, typeName, isMedicinal, isHarmful, toxicityLevel, cautionNote
+         FROM plant_types ORDER BY typeName ASC`
     );
     return rows.map((r) => ({
         typeId: r.typeId,
         typeName: r.typeName,
-        label: r.label,
-        icon: r.icon,
-        badgeClass: r.badgeClass,
+        label: r.typeName,
+        icon: null,
+        badgeClass: null,
         isMedicinal: Boolean(r.isMedicinal),
         isHarmful: Boolean(r.isHarmful),
         toxicityLevel: r.toxicityLevel,
@@ -262,13 +261,12 @@ async function listPlantTypes() {
 async function resolveScientificNames(names) {
     if (!names.length) return new Map();
     const placeholders = names.map(() => '?').join(',');
-    // ARCHIVE-OFF: add "p.archivedAt IS NULL AND" back to the WHERE clause below
     const [rows] = await mysqlPool.query(
         `SELECT p.plantId, p.scientificName, p.commonName,
                 (SELECT i.imageId FROM plant_images i
                  WHERE i.plantId = p.plantId AND i.status = 'approved'
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId
-         FROM plants p WHERE p.scientificName IN (${placeholders})`,
+         FROM plants p WHERE p.archivedAt IS NULL AND p.scientificName IN (${placeholders})`,
         names
     );
     return new Map(rows.map((r) => [r.scientificName, r]));
@@ -276,10 +274,10 @@ async function resolveScientificNames(names) {
 
 /** Species present in the database, in classes.json, or both. */
 async function getMlCoverage(classes) {
-    // ARCHIVE-OFF: add "WHERE p.archivedAt IS NULL" back to the query below
     const [rows] = await mysqlPool.query(
         `SELECT DISTINCT p.scientificName FROM plants p
-         JOIN plant_images i ON i.plantId = p.plantId AND i.status = 'approved'`
+         JOIN plant_images i ON i.plantId = p.plantId AND i.status = 'approved'
+         WHERE p.archivedAt IS NULL`
     );
     const plantNames = new Set(rows.map((r) => r.scientificName));
     const classNames = new Set(classes.map((c) => c.scientific));

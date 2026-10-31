@@ -57,7 +57,9 @@ async function relocatePlantImages(conn, plan, { imageIds, status, requestId, pl
 
     for (const row of rows) {
         const newRelative = path.join(targetDir, path.basename(row.storedPath));
-        if (path.normalize(row.storedPath) === path.normalize(newRelative)) {
+        // A master never moves: the review status lives in the database, not in the folder.
+        if (files.isPlantMasterPath(row.storedPath)
+            || path.normalize(row.storedPath) === path.normalize(newRelative)) {
             await conn.query('UPDATE plant_images SET fileIssue = NULL, fileIssueAt = NULL WHERE imageId = ?', [row.imageId]);
             continue;
         }
@@ -95,7 +97,9 @@ async function relocateDiscoveryImages(conn, plan, requestId, status) {
     );
     for (const row of rows) {
         const newRelative = path.join(targetDir, path.basename(row.storedPath));
-        if (path.normalize(row.storedPath) === path.normalize(newRelative)) {
+        // A master never moves, whatever the report's status.
+        if (files.isDiscoveryMasterPath(row.storedPath)
+            || path.normalize(row.storedPath) === path.normalize(newRelative)) {
             await conn.query('UPDATE discovery_images SET fileIssue = NULL, fileIssueAt = NULL WHERE imageId = ?', [row.imageId]);
             continue;
         }

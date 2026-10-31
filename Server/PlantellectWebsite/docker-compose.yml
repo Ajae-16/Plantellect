@@ -1,7 +1,5 @@
 name: plantellect_database
 
-version: '3.8'
-
 services:
   # Structured Data (Users, Taxonomy, Roles)
   mysql_db:
@@ -45,10 +43,14 @@ services:
       - "8001:8000"
     volumes:
       - ./ml/model:/app/model
+      - ./datasets:/data/datasets 
     environment:
       - MODEL_PATH=/app/model/main/plantellect_model.keras
       - CLASSES_PATH=/app/model/main/classes.json
       - TF_CPP_MIN_LOG_LEVEL=2
+      - DATASET_ROOTS=/data/datasets/plantellect training 
+      - DATASET_INDEX_DIR=/data/datasets/index
+      - DATASET_EMBEDDER=mobilenet 
     deploy:
       resources:
         limits:

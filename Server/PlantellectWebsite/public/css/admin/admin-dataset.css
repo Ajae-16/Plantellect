@@ -1,0 +1,107 @@
+/* Dataset page (admin-dataset.html). The admin theme is switched with <html data-theme="light|dark">
+   (admin-sidebar.js), NOT with the operating system's setting, so dark rules hang off that attribute. */
+
+.ds-muted { opacity: 0.7; font-size: 0.9rem; }
+
+/* ---- buttons: this page's own look (the shared admin styles only define approve / deny) ---- */
+.btn { padding: 7px 14px; border-radius: 6px; border: 1px solid rgba(45, 106, 26, 0.65); background: transparent; color: inherit; font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.btn:hover:not(:disabled) { background: rgba(76, 175, 80, 0.14); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn:focus-visible, .ds-chip:focus-visible, .ds-tile:focus-visible, .ds-crumb:focus-visible { outline: 2px solid #4caf50; outline-offset: 2px; }
+.btn.btn-primary { background: #2d6a1a; border-color: #2d6a1a; color: #fff; }
+.btn.btn-primary:hover:not(:disabled) { background: #3a7f24; }
+.btn.btn-deny { padding: 7px 14px; border: none; font-size: 0.85rem; }
+
+/* ---- overview ---- */
+.ds-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.ds-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 10px; }
+.ds-stat strong { font-size: 1.3rem; }
+.ds-stat span { font-size: 0.8rem; opacity: 0.75; }
+.ds-stat.bad { border-color: #c0392b; }
+.ds-stat.warn { border-color: #d68910; }
+.ds-stat.good { border-color: #4caf50; }
+.ds-actions { display: flex; align-items: center; gap: 12px; margin: 8px 0; flex-wrap: wrap; }
+.ds-details { margin-top: 8px; font-size: 0.9rem; }
+.ds-list { margin: 6px 0 0; padding-left: 18px; }
+
+/* ---- review queue ---- */
+.ds-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.ds-chip { padding: 4px 12px; border-radius: 999px; border: 1px solid rgba(0, 0, 0, 0.2); background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 0.85rem; }
+.ds-chip.active { background: #4caf50; border-color: #4caf50; color: #fff; }
+.ds-card { border: 1px solid rgba(0, 0, 0, 0.15); border-left: 5px solid #999; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.ds-card.leak, .ds-card.cross_class { border-left-color: #c0392b; }
+.ds-card.similar_leak { border-left-color: #d68910; }
+.ds-card.redundant { border-left-color: #4a90d9; }
+.ds-card-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ds-help { margin: 6px 0 10px; font-size: 0.9rem; }
+.ds-card-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+/* tags always set their own text colour, so they stay readable on both themes */
+.ds-tag { padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; background: #e4e4e4; color: #1f2a1a; }
+.ds-tag.leak, .ds-tag.cross_class { background: #f5c6c0; color: #5a1710; }
+.ds-tag.similar_leak { background: #f7dfae; color: #523500; }
+.ds-tag.redundant { background: #c9defa; color: #12315a; }
+.ds-tag.done { background: #d6ecd2; color: #1d4a14; }
+
+/* ---- photos ---- */
+.ds-members { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.ds-member { display: flex; flex-direction: column; gap: 6px; position: relative; border-radius: 10px; padding: 4px; }
+.ds-member.selected { outline: 3px solid #4caf50; background: rgba(76, 175, 80, 0.1); }
+.ds-member > input[type="checkbox"] { position: absolute; top: 10px; left: 10px; width: 20px; height: 20px; }
+.ds-thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; background: #d9d9d4; display: block; }
+.ds-thumb.missing { opacity: 0.4; }
+.ds-meta { display: flex; flex-direction: column; font-size: 0.85rem; word-break: break-word; }
+.ds-name { font-weight: 600; }
+.ds-member .btn { margin-top: 4px; }
+.ds-pager { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+
+/* ---- folder explorer ---- */
+.ds-explorer-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.ds-crumbs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; flex: 1 1 260px; }
+.ds-crumb { background: transparent; border: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+.ds-crumb:hover { background: rgba(76, 175, 80, 0.14); }
+.ds-crumb.current { cursor: default; text-decoration: underline; text-underline-offset: 4px; }
+.ds-crumb-sep { opacity: 0.5; }
+.ds-explorer-bar input[type="search"] { padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(0, 0, 0, 0.25); background: transparent; color: inherit; font: inherit; min-width: 200px; }
+.ds-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.ds-tile { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 8px; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 12px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.ds-tile:hover { background: rgba(76, 175, 80, 0.1); border-color: #4caf50; }
+.ds-tile[hidden] { display: none; }
+.ds-tile-cover { border-radius: 8px; overflow: hidden; margin-bottom: 4px; }
+.ds-selectbar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; margin: 8px 0; border-radius: 10px; border: 1px solid #4caf50; background: #f1f6ee; }
+
+.ds-movepanel { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; padding: 12px; margin: 8px 0; border: 1px solid #4caf50; border-radius: 10px; }
+.ds-movepanel label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; font-weight: 600; }
+.ds-movepanel label[hidden], .ds-movepanel[hidden] { display: none; }
+.ds-movepanel select { padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(0, 0, 0, 0.25); background: transparent; color: inherit; font: inherit; min-width: 150px; }
+html[data-theme="dark"] .ds-movepanel, html[data-theme="dark"] .ds-movepanel select { border-color: var(--dk-border); }
+
+/* ---- species table, removed list ---- */
+.ds-table-wrap { overflow-x: auto; }
+.ds-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.ds-table th, .ds-table td { text-align: left; padding: 6px 10px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); vertical-align: top; }
+.ds-table select, .ds-actions input[type="text"] { padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(0, 0, 0, 0.25); background: transparent; color: inherit; font: inherit; }
+.ds-note { font-size: 0.8rem; }
+.ds-ok { color: #2e7d32; font-weight: 600; }
+.ds-low { color: #b9770e; }
+.ds-removed { display: flex; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(0, 0, 0, 0.08); flex-wrap: wrap; }
+
+/* ---- dark theme (the admin's own toggle) ---- */
+html[data-theme="dark"] .ds-stat, html[data-theme="dark"] .ds-card, html[data-theme="dark"] .ds-chip,
+html[data-theme="dark"] .ds-tile, html[data-theme="dark"] .ds-table th, html[data-theme="dark"] .ds-table td,
+html[data-theme="dark"] .ds-removed { border-color: var(--dk-border); }
+html[data-theme="dark"] .ds-card.leak, html[data-theme="dark"] .ds-card.cross_class { border-left-color: #e57368; }
+html[data-theme="dark"] .ds-stat.bad { border-color: #e57368; }
+html[data-theme="dark"] .ds-stat.warn { border-color: #e0a63a; }
+html[data-theme="dark"] .ds-thumb { background: #20291c; }
+html[data-theme="dark"] .ds-tag { background: #3a4733; color: #eae6d5; }
+html[data-theme="dark"] .ds-tag.leak, html[data-theme="dark"] .ds-tag.cross_class { background: #6b2a24; color: #ffe1dc; }
+html[data-theme="dark"] .ds-tag.similar_leak { background: #6b4d12; color: #ffecc4; }
+html[data-theme="dark"] .ds-tag.redundant { background: #1f4170; color: #d6e6ff; }
+html[data-theme="dark"] .ds-tag.done { background: #2c5a24; color: #dff3d9; }
+html[data-theme="dark"] .btn { border-color: rgba(198, 231, 143, 0.55); }
+html[data-theme="dark"] .btn.btn-primary { background: #3f8f2a; border-color: #3f8f2a; }
+html[data-theme="dark"] .ds-table select, html[data-theme="dark"] .ds-actions input[type="text"],
+html[data-theme="dark"] .ds-explorer-bar input[type="search"] { border-color: var(--dk-border); }
+html[data-theme="dark"] .ds-selectbar { background: var(--dk-hover); }
+html[data-theme="dark"] .ds-tile:hover, html[data-theme="dark"] .ds-crumb:hover { background: var(--dk-hover); }

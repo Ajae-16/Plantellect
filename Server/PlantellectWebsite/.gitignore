@@ -10,3 +10,6 @@ config/ids.js
 config/migrate.cjs
 scripts
 key-guidelines.md
+tests/
+backups/
+datasets/

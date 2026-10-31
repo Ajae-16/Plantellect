@@ -75,6 +75,15 @@ module.exports = {
         // retried up to this many times before the admin is told on the plants page.
         copyMaxAttempts: Math.max(1, numberSetting('IMAGE_COPY_MAX_ATTEMPTS', 5)),
         copyRetryDelayMs: numberSetting('IMAGE_COPY_RETRY_DELAY_MS', 200),
+        // A photo that has been denied for longer than this many days has its master
+        // deleted by the nightly retention job (a tombstone of hash and reason is kept).
+        // Only denied photos are deleted automatically; pending ones stay. At least 1,
+        // so a typo of 0 cannot delete a photo the moment it is denied.
+        deniedRetentionDays: Math.max(1, numberSetting('DENIED_RETENTION_DAYS', 30)),
+        // Cache lifetime, in seconds, of the static public copies in
+        // public/resource/plant-images. Read once at startup: a change needs a restart.
+        // 0 turns the cache off.
+        publicCacheSeconds: numberSetting('PUBLIC_IMAGE_CACHE_SECONDS', 300),
         maxSizeBytes: maxPlantImageSize * 1024 * 1024, // per file
         // Per-submission photo cap. This is the FALLBACK: the live value is the
         // admin-editable system_settings key 'plantImages' (see
@@ -86,9 +95,32 @@ module.exports = {
         // A report is evidence, not a photo album: three is enough to identify a
         // plant and few enough that the per-account open-report cap bounds disk.
         maxDiscoveryFiles: 3,
-        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
-        allowedExtensions: ['.jpg', '.jpeg', '.png', '.webp'],
+        // HEIC/HEIF (iPhone) is accepted and CONVERTED, never stored as is: see
+        // config/image-ingest.js. The real type is decided from the bytes there.
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
+        allowedExtensions: ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'],
+        // Windows browsers often send no type, or application/octet-stream, for a
+        // .heic file. For these extensions only, that generic type is let through
+        // the first gate; the bytes are still checked afterwards.
+        genericMimeExtensions: ['.heic', '.heif'],
+        // Folder, inside each image root, that holds the masters. A master is the
+        // re-encoded, metadata-free WebP. It is written once and never moves, whatever
+        // the review status. Under the plant root: plants/masters/<plantId or requestId>/.
+        // Under the discovery root: masters/<requestId>/.
+        masterSubdir: 'masters',
         filenameStrategy: 'uuid'
+    },
+    // The upload pipeline (config/image-ingest.js): type check, HEIC conversion,
+    // re-encode to the master WebP, hashing.
+    ingest: {
+        // Longest side of a master, in pixels. Smaller photos are never enlarged.
+        masterLongEdge: Math.max(256, numberSetting('INGEST_MASTER_LONG_EDGE', 2048)),
+        masterQuality: Math.min(100, Math.max(40, numberSetting('INGEST_MASTER_QUALITY', 90))),
+        // Decompression-bomb guard: a photo with more pixels than this is refused
+        // before it is decoded. 80 million covers every phone camera.
+        maxInputPixels: Math.max(1000000, numberSetting('INGEST_MAX_PIXELS', 80000000)),
+        // How long the website waits for the ML service to convert one HEIC photo.
+        heicTimeoutMs: Math.max(1000, numberSetting('INGEST_HEIC_TIMEOUT_MS', 20000))
     },
     pagination: {
         // Every list route clamps to these instead of hardcoding a page size.

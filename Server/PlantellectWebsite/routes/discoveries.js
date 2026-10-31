@@ -4,6 +4,8 @@ const fs = require('fs');
 const { requireAuth, requirePermission } = require('../middleware/authMiddleware');
 const settings = require('../config/settings');
 const { uploadDiscoveryImages, discoveryUploadConfig, handleUploadError } = require('../config/upload');
+const { ingestUploads } = require('../config/image-ingest');
+const { mysqlPool } = require('../config/pool-mysql');
 const {
     createDiscoveryReport,
     getDiscoveryImageForOwner,
@@ -77,6 +79,7 @@ function resolveInsideDiscoveryRoot(storedPath) {
 router.post('/',
     requireAuth,
     uploadDiscoveryImages.array('images', settings.plantImages.maxDiscoveryFiles),
+    ingestUploads({ executor: mysqlPool, includeDiscoveries: true }),
     async (req, res) => {
         const files = req.files || [];
         try {

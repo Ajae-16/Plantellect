@@ -61,6 +61,38 @@ function discoveryRelativeDir(status, requestId) {
     return path.join(settings.plantImages.statusFolders[state], String(requestId));
 }
 
+/**
+ * Masters (the re-encoded, metadata-free WebP written by the upload pipeline) have
+ * their own folder inside each image root, and unlike every other photo they never
+ * change folder when the review status changes:
+ *   under the plant root:     plants/masters/<plantId, or requestId for a new species>/<imageId>.webp
+ *   under the discovery root: masters/<requestId>/<imageId>.webp
+ * Both stay relative to their root, like every other storedPath.
+ */
+function plantMasterRelativeDir(key) {
+    if (!key) throw new Error('A plant master folder needs a plantId or requestId');
+    return path.join(settings.plantImages.plantSubdir, settings.plantImages.masterSubdir, String(key));
+}
+
+function discoveryMasterRelativeDir(requestId) {
+    if (!requestId) throw new Error('A discovery master folder needs a requestId');
+    return path.join(settings.plantImages.masterSubdir, String(requestId));
+}
+
+const pathParts = (relative) => path.normalize(String(relative || '')).split(path.sep);
+
+/** True when a plant_images.storedPath is a master (so it must never be moved). */
+function isPlantMasterPath(relative) {
+    const parts = pathParts(relative);
+    return parts.length >= 4 && parts[0] === settings.plantImages.plantSubdir && parts[1] === settings.plantImages.masterSubdir;
+}
+
+/** True when a discovery_images.storedPath is a master. */
+function isDiscoveryMasterPath(relative) {
+    const parts = pathParts(relative);
+    return parts.length >= 3 && parts[0] === settings.plantImages.masterSubdir;
+}
+
 const plantRoot = () => settings.plantImages.storageDir;
 const discoveryRoot = () => path.join(settings.plantImages.storageDir, settings.plantImages.discoverySubdir);
 
@@ -321,6 +353,10 @@ module.exports = {
     folderState,
     plantRelativeDir,
     discoveryRelativeDir,
+    plantMasterRelativeDir,
+    discoveryMasterRelativeDir,
+    isPlantMasterPath,
+    isDiscoveryMasterPath,
     plantRoot,
     discoveryRoot,
     ensureImageTree,

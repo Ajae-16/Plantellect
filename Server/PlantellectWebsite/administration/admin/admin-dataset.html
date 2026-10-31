@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Dataset</title>
+
+    <script src="/javascript/admin/admin-sidebar.js"></script>
+
+    <link rel="stylesheet" href="/css/admin/admin-sidebar.css">
+    <link rel="stylesheet" href="/css/admin/admin-style.css">
+    <link rel="stylesheet" href="/css/admin/admin-topbar.css">
+    <link rel="stylesheet" href="/css/admin/admin-plants.css">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="/css/admin/admin-theme.css">
+    <link rel="stylesheet" href="/css/admin/admin-dataset.css">
+
+        <style>
+        .collapse-summary {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 4px 0;
+            cursor: pointer;
+            list-style: none;
+            user-select: none;
+        }
+        .collapse-summary::-webkit-details-marker { display: none; }
+        .collapse-summary h2 {
+            margin: 0;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.05rem;
+        }
+        .collapse-summary:focus-visible { outline: 2px solid #4CAF50; outline-offset: 4px; border-radius: 6px; }
+        .collapse-chevron {
+            width: 9px;
+            height: 9px;
+            margin-right: 6px;
+            opacity: 0.6;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: rotate(45deg);
+            transition: transform 0.2s;
+        }
+        .collapse[open] > .collapse-summary .collapse-chevron { transform: rotate(-135deg); }
+        .collapse[open] > .collapse-summary {
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+        }
+        .collapse-body { padding-top: 12px; }
+        .collapse-summary:hover .collapse-chevron { opacity: 1; }
+        .collapse-summary:hover h2 { opacity: 0.85; }
+        .role-limits-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="admin-header">
+        <div class="admin-header-top">
+            <div class="admin-logo">
+                <img src="/resource/logo.png" alt="Plantellect Logo">
+                <span>Dataset</span>
+            </div>
+            <button class="admin-hamburger" aria-label="Open sidebar">☰</button>
+        </div>
+        <div class="admin-user" id="adminUser">Loading...</div>
+    </header>
+
+    <div class="admin-sidebar-scrim"></div>
+
+    <div class="admin-layout">
+        <aside class="admin-sidebar" id="adminSidebar">
+            <div class="admin-sidebar-header">
+                <h3>Menu</h3>
+                <button class="admin-sidebar-close" aria-label="Close sidebar">&times;</button>
+            </div>
+
+            <button class="admin-sidebar-toggle" id="adminSidebarToggle"
+                    aria-label="Toggle sidebar" title="Expand / collapse sidebar">
+                <span class="toggle-glyph">«</span>
+            </button>
+
+            <nav>
+                <a href="/admin/dashboard" title="Dashboard">
+                    <span class="material-symbols-outlined">home</span>
+                    <span class="nav-link-text">Dashboard</span>
+                    <span class="nav-badge" id="navBadgeDashboard" hidden>0</span>
+                </a>
+
+                <a href="/admin/users" data-perm="create_user" title="Users">
+                    <span class="material-symbols-outlined">person</span>
+                    <span class="nav-link-text">Users</span>
+                </a>
+                <a href="/admin/plants" data-perm="manage_plant" title="Plants">
+                    <span class="material-symbols-outlined">potted_plant</span>
+                    <span class="nav-link-text">Plants</span>
+                    <span class="nav-badge" id="navBadgePlants" hidden>0</span>
+                </a>
+                <a href="/admin/dataset" class="active" data-perm="access_admin" title="Dataset">
+                    <span class="material-symbols-outlined">dataset</span>
+                    <span class="nav-link-text">Dataset</span>
+                </a>
+                <a href="/admin/settings" data-perm="access_admin" title="Settings">
+                    <span class="material-symbols-outlined">settings</span>
+                    <span class="nav-link-text">Settings</span>
+                </a>
+                <a href="#" data-perm="view_logs" title="Logs">
+                    <span class="material-symbols-outlined">history_toggle_off</span>
+                    <span class="nav-link-text">Logs</span>
+                </a>
+                <a href="/home.html" title="Public">
+                    <span class="material-symbols-outlined">public</span>
+                    <span class="nav-link-text">Public</span>
+                </a>
+                <a href="#" id="adminLogoutLink" title="Sign out">
+                    <span class="material-symbols-outlined">logout</span>
+                    <span class="nav-link-text">Sign out</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <h1>Dataset</h1>
+            <p class="admin-subtitle">Review duplicates and leaks, see species and parts, and keep the training folder clean. Nothing here deletes a photo.</p>
+            <nav class="admin-topbar" id="datasetTopbar" aria-label="Dataset sections">
+                <a href="#overviewSection" class="admin-tab active" data-target="overviewSection">Overview</a>
+                <a href="#clustersSection" class="admin-tab" data-target="clustersSection">Leaks &amp; duplicates</a>
+                <a href="#mislabelSection" class="admin-tab" data-target="mislabelSection">Label suspects</a>
+                <a href="#gridSection" class="admin-tab" data-target="gridSection">Species</a>
+                <a href="#browserSection" class="admin-tab" data-target="browserSection">Folders</a>
+                <a href="#removedSection" class="admin-tab" data-target="removedSection">Removed</a>
+            </nav>
+
+            <div class="plants-container">
+                <p id="dsNotice" class="admin-notice" hidden></p>
+                <section class="admin-section" id="overviewSection">
+                    <details class="collapse" open>
+                        <summary class="collapse-summary"><h2>Overview</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
+                        <div class="collapse-body">
+                            <div id="dsOverview" class="ds-stats"><p>Loading...</p></div>
+                            <p id="dsDegraded" class="admin-notice error" hidden>The audit used the weak thumbnail method (TensorFlow was not available), so visual copies are not reliably found.</p>
+                            <div class="ds-actions"><button type="button" class="btn btn-primary" id="dsRunAudit">Run audit now</button><span id="dsRunState" class="ds-muted"></span></div>
+                            <p class="ds-muted" id="dsAuditInfo"></p>
+                            <details class="ds-details"><summary>Scan warnings</summary><ul id="dsWarnings" class="ds-list"></ul></details>
+                        </div>
+                    </details>
+                </section>
+                <section class="admin-section" id="clustersSection">
+                    <details class="collapse" open>
+                        <summary class="collapse-summary"><h2>Leaks &amp; duplicates <span class="section-count-badge" id="dsClusterCount" hidden>0</span></h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
+                        <div class="collapse-body">
+                            <div class="ds-filters" id="dsFilters">
+                                <button type="button" class="ds-chip active" data-cat="">All open</button>
+                                <button type="button" class="ds-chip" data-cat="CROSS_CLASS">Other plant</button>
+                                <button type="button" class="ds-chip" data-cat="LEAK">Split leak</button>
+                                <button type="button" class="ds-chip" data-cat="SIMILAR_LEAK">Similar across splits</button>
+                                <button type="button" class="ds-chip" data-cat="REDUNDANT">Duplicate in a split</button>
+                                <button type="button" class="ds-chip" data-reviewed="1">Reviewed</button>
+                            </div>
+                            <div id="dsClusters"></div><div class="ds-pager" id="dsPager"></div>
+                        </div>
+                    </details>
+                </section>
+                <section class="admin-section" id="mislabelSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary"><h2>Label suspects <span class="section-count-badge" id="dsMislabelCount" hidden>0</span></h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
+                        <div class="collapse-body">
+                            <p class="ds-muted">A training photo that looks much more like another species than its own. Not proof, only the places to look first.</p>
+                            <div id="dsMislabels" class="ds-members"></div><div class="ds-pager" id="dsMislabelPager"></div>
+                        </div>
+                    </details>
+                </section>
+                <section class="admin-section" id="gridSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary"><h2>Species and parts</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
+                        <div class="collapse-body">
+                            <p class="ds-muted" id="dsGridIntro"></p>
+                            <div class="ds-actions"><input type="text" id="dsNewPart" maxlength="40" placeholder="New part name, for example Flowers" aria-label="New part name"><button type="button" class="btn" id="dsAddPart">Add part to the list</button></div>
+                            <div class="ds-table-wrap"><table class="ds-table" id="dsGrid"><thead></thead><tbody></tbody></table></div>
+                        </div>
+                    </details>
+                </section>
+                <section class="admin-section" id="browserSection">
+                    <details class="collapse" open>
+                        <summary class="collapse-summary"><h2>Folders</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
+                        <div class="collapse-body">
+                            <div class="ds-explorer-bar">
+                                <button type="button" class="btn" id="exUp">Up</button>
+                                <nav id="exCrumbs" class="ds-crumbs" aria-label="Folder path"></nav>
+                                <input type="search" id="exFind" placeholder="Find a folder" aria-label="Find a folder">
+                            </div>
+                            <div id="exFolders" class="ds-tiles"></div>
+                            <div id="exSelectBar" class="ds-selectbar" hidden>
+                                <span id="exSelCount"></span>
+                                <button type="button" class="btn" id="exMove">Move to...</button>
+                                <button type="button" class="btn btn-deny" id="exRemove">Remove from the dataset</button>
+                                <button type="button" class="btn" id="exGroup">Keep together</button>
+                                <button type="button" class="btn" id="exClear">Clear</button>
+                            </div>
+                            <div id="exMovePanel" class="ds-movepanel" hidden>
+                                <label id="mvSplitWrap">Split <select id="mvSplit"></select></label>
+                                <label>Kind <select id="mvKind"></select></label>
+                                <label>Folder <select id="mvLabel"></select></label>
+                                <label id="mvPartWrap">Part <select id="mvPart"></select></label>
+                                <button type="button" class="btn btn-primary" id="mvGo">Check and move</button>
+                                <button type="button" class="btn" id="mvCancel">Cancel</button>
+                            </div>
+                            <div id="exPhotos" class="ds-members ds-photos"></div>
+                            <div class="ds-pager" id="exPager"></div>
+                        </div>
+                    </details>
+                </section>
+
+                <section class="admin-section" id="removedSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary"><h2>Removed (quarantine) <span class="section-count-badge" id="dsRemovedCount" hidden>0</span></h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
+                        <div class="collapse-body">
+                            <p class="ds-muted">Removed photos are moved to a <code>_quarantine</code> folder inside the dataset, never deleted. Restoring puts one back where it was.</p>
+                            <div id="dsRemoved"></div>
+                        </div>
+                    </details>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="/javascript/logout.js"></script>
+    <script src="/javascript/auth.js"></script>
+    <script src="/javascript/admin/admin-topbar.js"></script>
+    <script src="/javascript/admin/admin-dataset.js"></script>
+</body>
+</html>

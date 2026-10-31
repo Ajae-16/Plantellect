@@ -5,7 +5,8 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
 const settings = require('./settings');
-const { insertRow } = require('./ids.js');
+const { insertRow, nextKey } = require('./ids.js');
+const { hashIsTaken } = require('./image-ingest');
 const { logImageReview } = require('../mongoose-schemas/Imgreview.js');
 const { resolveSetting, resolveLimit } = require('./limits.js');
 const { mysqlPool } = require('./pool-mysql');
@@ -433,19 +434,31 @@ async function createDiscoveryReport({ accountId, note, location, predictions, f
 
         let imageIds = [];
         if (accepted.length > 0) {
-            // A new report is PENDING, so its photos start in discoveries/pending/<requestId>/.
-            const relativeDir = imageFiles.discoveryRelativeDir('pending', requestId);
+            // The photos have been through the ingest pipeline: each is a metadata-free WebP
+            // master. It is filed once, in discoveries/masters/<requestId>/<imageId>.webp, and
+            // never moves when the report's status changes.
+            const relativeDir = imageFiles.discoveryMasterRelativeDir(requestId);
             createdDir = path.join(DISCOVERY_STORAGE_ROOT, relativeDir);
             if (!fs.existsSync(createdDir)) fs.mkdirSync(createdDir, { recursive: true });
 
             for (const file of accepted) {
-                const ext = path.extname(file.originalname).toLowerCase();
+                if (!file.ingest) {
+                    throw new Error('An uploaded photo reached createDiscoveryReport without going through the ingest pipeline');
+                }
+                // Repeated inside the transaction, so two requests racing with the same photo are caught.
+                if (await hashIsTaken(conn, file.ingest.contentHash, { includeDiscoveries: true })) {
+                    const dup = new Error(`"${String(file.originalname).slice(0, 80)}" has already been submitted. Choose a different photo.`);
+                    dup.userFacing = true;
+                    dup.code = 409;
+                    throw dup;
+                }
+                const imageId = await nextKey(conn, 'discovery_images');
                 // Never reuse the client-supplied name on disk.
-                const storedFilename = `${crypto.randomUUID()}${ext}`;
+                const storedFilename = `${imageId}.webp`;
                 const relativePath = path.join(relativeDir, storedFilename);
                 const destination = path.join(DISCOVERY_STORAGE_ROOT, relativePath);
                 // COPY, verify, and delete the temp upload only after the commit.
-                const copied = await plan.stage(file.path, destination, { mimeType: file.mimetype });
+                const copied = await plan.stage(file.path, destination, { mimeType: 'image/webp' });
                 if (!copied.ok) {
                     const failure = new Error(
                         `The photo "${file.originalname}" could not be saved cleanly after ${copied.attempts || 1} attempts ` +
@@ -455,12 +468,14 @@ async function createDiscoveryReport({ accountId, note, location, predictions, f
                     failure.code = 500;
                     throw failure;
                 }
-                imageIds.push(await insertRow(
-                    conn,
-                    'discovery_images',
-                    ['requestId', 'accountId', 'originalFilename', 'storedPath', 'mimeType', 'size'],
-                    [requestId, accountId, file.originalname, relativePath, file.mimetype, file.size]
-                ));
+                await conn.query(
+                    `INSERT INTO discovery_images
+                        (imageId, requestId, accountId, originalFilename, storedPath, mimeType, size, contentHash, perceptualHash)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [imageId, requestId, accountId, file.originalname, relativePath, 'image/webp', file.size,
+                        file.ingest.contentHash, file.ingest.perceptualHash]
+                );
+                imageIds.push(imageId);
             }
         }
 
@@ -1516,6 +1531,9 @@ function removeEmptyDiscoveryFolders(requestId) {
         const stateDir = path.join(DISCOVERY_STORAGE_ROOT, settings.plantImages.statusFolders[state]);
         imageFiles.pruneEmptyDirs(path.join(stateDir, requestId), stateDir);
     }
+    // The report's masters folder (photos that never change folder).
+    const mastersDir = path.join(DISCOVERY_STORAGE_ROOT, settings.plantImages.masterSubdir);
+    imageFiles.pruneEmptyDirs(path.join(mastersDir, requestId), mastersDir);
 }
 
 /**

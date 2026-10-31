@@ -1,7 +1,8 @@
 # Inference service dependencies (no training packages needed)
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
-pillow==10.4.0
+pillow==13.0.0
+pillow-heif==1.8.1
 python-multipart==0.0.9
 pydantic==2.8.2
 pyyaml==6.0.1

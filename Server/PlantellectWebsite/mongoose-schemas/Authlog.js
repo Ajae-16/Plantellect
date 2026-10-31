@@ -20,7 +20,10 @@ const AUTHLOG_ACTIONS = [
     'failed_login',
     // An admin flipping an approval_auto_* switch. metadata carries the metaKey,
     // the requestType, and the before/after values.
-    'approval_mode_changed'
+    'approval_mode_changed',
+    // Dataset page: an audit started, photos moved to / back from quarantine, a cluster reviewed or grouped,
+    // a part row added. metadata.action says which.
+    'dataset_changed'
 ];
 
 const authlogSchema = new mongoose.Schema(

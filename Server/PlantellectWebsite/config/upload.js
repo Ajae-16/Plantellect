@@ -29,7 +29,13 @@ function createUploader(config) {
         },
         fileFilter(req, file, cb) {
             const ext = path.extname(file.originalname).toLowerCase();
-            if (config.allowedMimeTypes.includes(file.mimetype) && config.allowedExtensions.includes(ext)) {
+            // Browsers on Windows often send no type (or application/octet-stream) for
+            // a .heic file. For the extensions listed in genericMimeExtensions only, that
+            // generic type passes this first gate; the real type is checked from the
+            // bytes by config/image-ingest.js.
+            const generic = (config.genericMimeExtensions || []).includes(ext)
+                && (file.mimetype === '' || file.mimetype === 'application/octet-stream');
+            if ((config.allowedMimeTypes.includes(file.mimetype) || generic) && config.allowedExtensions.includes(ext)) {
                 return cb(null, true);
             }
             // Marked so handleUploadError can answer 400 with this message
@@ -70,7 +76,8 @@ const discoveryUploadConfig = {
     maxSizeBytes: settings.plantImages.maxSizeBytes,
     maxFilesPerRequest: settings.plantImages.maxDiscoveryFiles,
     allowedMimeTypes: settings.plantImages.allowedMimeTypes,
-    allowedExtensions: settings.plantImages.allowedExtensions
+    allowedExtensions: settings.plantImages.allowedExtensions,
+    genericMimeExtensions: settings.plantImages.genericMimeExtensions
 };
 const uploadDiscoveryImages = createUploader(discoveryUploadConfig);
 
