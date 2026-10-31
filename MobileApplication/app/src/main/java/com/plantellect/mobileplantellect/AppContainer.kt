@@ -21,6 +21,7 @@ import com.plantellect.mobileplantellect.viewmodel.AuthViewModel
 import com.plantellect.mobileplantellect.viewmodel.DiscoveryViewModel
 import com.plantellect.mobileplantellect.viewmodel.RecordPlantViewModel
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
+import com.plantellect.mobileplantellect.viewmodel.ProfileViewModel
 import com.plantellect.mobileplantellect.viewmodel.ScanViewModel
 
 /** Hand-wired dependencies (no Hilt) so there is nothing extra for the UI team to set up. */
@@ -39,7 +40,7 @@ class AppContainer(app: Application) {
     val scans = ScanRepository(app, network.mlApi, caller, classifier, connectivity, serverMonitor)
     val records = RecordRepository(app, network.recordApi, caller, network.json, network.baseUrl)
     val discoveries = DiscoveryRepository(app, network.discoveryApi, caller, network.json, network.baseUrl)
-    val profiles = ProfileRepository(network.botanistApi, caller)
+    val profiles = ProfileRepository(network.botanistApi, network.discoveryApi, caller)
 
     val viewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { AuthViewModel(auth, network.sessionExpired) }
@@ -47,6 +48,7 @@ class AppContainer(app: Application) {
         initializer { LibraryViewModel(plants) }
         initializer { RecordPlantViewModel(records) }
         initializer { DiscoveryViewModel(discoveries) { auth.hasPermission("record_plant") } }
+        initializer { ProfileViewModel(profiles) }
     }
 }
 

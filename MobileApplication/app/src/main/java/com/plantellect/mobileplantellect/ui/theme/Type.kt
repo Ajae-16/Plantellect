@@ -9,76 +9,76 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+// ------------------------------------------------------------------ fonts (built-in, no setup needed)
+
+/** Serif for headings. Swap for Google Fonts later (see the Google Fonts version of this file). */
+val Fraunces = FontFamily.Serif
+/** Sans for everything else. */
+val Nunito = FontFamily.SansSerif
+
+// ------------------------------------------------------------------ typography (your original sizes kept)
+
 val Typography = Typography(
     headlineLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Bold,
-        fontSize = 32.sp,
-        lineHeight = 40.sp,
-        letterSpacing = 0.sp
+        fontFamily = Fraunces, fontWeight = FontWeight.Bold,
+        fontSize = 32.sp, lineHeight = 40.sp, letterSpacing = 0.sp
     ),
     headlineMedium = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Bold,
-        fontSize = 28.sp,
-        lineHeight = 34.sp,
-        letterSpacing = 0.sp
+        fontFamily = Fraunces, fontWeight = FontWeight.Bold,
+        fontSize = 28.sp, lineHeight = 34.sp, letterSpacing = 0.sp
     ),
     headlineSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 24.sp,
-        lineHeight = 30.sp,
-        letterSpacing = 0.sp
+        fontFamily = Fraunces, fontWeight = FontWeight.SemiBold,
+        fontSize = 24.sp, lineHeight = 30.sp, letterSpacing = 0.sp
     ),
     titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
+        fontFamily = Fraunces, fontWeight = FontWeight.SemiBold,
+        fontSize = 22.sp, lineHeight = 28.sp, letterSpacing = 0.sp
     ),
     titleMedium = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 18.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.15.sp
+        fontFamily = Nunito, fontWeight = FontWeight.Bold,
+        fontSize = 18.sp, lineHeight = 24.sp, letterSpacing = 0.15.sp
+    ),
+    titleSmall = TextStyle(
+        fontFamily = Nunito, fontWeight = FontWeight.Bold,
+        fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.1.sp
     ),
     bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
+        fontFamily = Nunito, fontWeight = FontWeight.Normal,
+        fontSize = 16.sp, lineHeight = 24.sp, letterSpacing = 0.5.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = 20.sp,
-        letterSpacing = 0.25.sp
+        fontFamily = Nunito, fontWeight = FontWeight.Normal,
+        fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.25.sp
+    ),
+    bodySmall = TextStyle(
+        fontFamily = Nunito, fontWeight = FontWeight.Normal,
+        fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.4.sp
     ),
     labelLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 14.sp,
-        lineHeight = 20.sp,
-        letterSpacing = 0.1.sp
+        fontFamily = Nunito, fontWeight = FontWeight.Bold,
+        fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.1.sp
     ),
     labelMedium = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
+        fontFamily = Nunito, fontWeight = FontWeight.Bold,
+        fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.5.sp
+    ),
+    labelSmall = TextStyle(
+        fontFamily = Nunito, fontWeight = FontWeight.Bold,
+        fontSize = 11.sp, lineHeight = 16.sp, letterSpacing = 0.5.sp
     )
 )
 
+// ------------------------------------------------------------------ shapes (leaf: opposite corners round)
+
+val LeafSmall = RoundedCornerShape(topStart = 16.dp, topEnd = 4.dp, bottomEnd = 16.dp, bottomStart = 4.dp)
+val LeafMedium = RoundedCornerShape(topStart = 22.dp, topEnd = 6.dp, bottomEnd = 22.dp, bottomStart = 6.dp)
+val LeafLarge = RoundedCornerShape(topStart = 32.dp, topEnd = 8.dp, bottomEnd = 32.dp, bottomStart = 8.dp)
+
 val Shapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(28.dp)
+    extraSmall = LeafSmall,
+    small = LeafSmall,
+    medium = LeafMedium,
+    large = LeafLarge,
+    extraLarge = LeafLarge
 )
