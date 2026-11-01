@@ -562,7 +562,7 @@
         });
     }
 
-    //  database photos and snapshots 
+    // ------------------------------------------------------------------ database photos and snapshots 
     async function loadDb() {
         var out = await Promise.all([api('/admin/api/dataset/db/summary'), api('/admin/api/dataset/db/snapshots')]);
         var sum = out[0], snaps = out[1].items || [];
@@ -616,7 +616,7 @@
         await loadDb().catch(fail);
     }
 
-    //  folder view / database view 
+    // ------------------------------------------------------------------ folder view / database view
     function viewOf(sectionId) {
         var section = $(sectionId);
         return section && section.dataset.view ? section.dataset.view : '';
