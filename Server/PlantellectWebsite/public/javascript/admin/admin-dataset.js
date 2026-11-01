@@ -14,6 +14,14 @@
     };
     var state = { cat: '', reviewed: false, page: 1, mPage: 1, parts: [], timer: null };
     var ex = { params: {}, page: 1, selected: {}, parent: null, dest: null };
+    var promo = { state: 'other_plant', page: 1 };
+    var VIEW_HINT = {
+        folder: 'Folder view: the hand-made training folder. Run the audit, review leaks and duplicates, and move or remove photos.',
+        db: 'Database view: approved photos marked Included, species promotion, and the snapshots the split script reads.'
+    };
+    var VIEW_KEY = 'plantellectDatasetView';
+    var currentView = 'folder';
+    var PROMO_LABEL = { other_plant: 'Other plant', promoted: 'Promoted, waiting for a retrain', supported: 'Supported' };
 
     function el(tag, cls, text) {
         var n = document.createElement(tag);
@@ -300,6 +308,66 @@
         });
     }
 
+    // ------------------------------------------------------------------ species promotion
+    // Promoting only records the decision. The species is supported once the active model's class list has it.
+    async function loadSpecies() {
+        var d = await api('/admin/api/dataset/species' + qs({ state: promo.state, page: promo.page }));
+        $('dsPromoNoModel').hidden = d.classesAvailable;
+        $('dsPromoIntro').textContent = 'A species needs at least ' + d.minimum + ' unique photos before it can be promoted (identical photos and near copies count once). ' +
+            'Promoting records the decision only: scans identify the species after you retrain and the new model lists it. ' +
+            'The next database snapshot already files a promoted species under Plant, so the retrain can learn it. ' +
+            (d.classesAvailable ? 'The active model lists ' + d.modelSpecies + ' species.' : '');
+        var s = d.summary;
+        $('dsPromoSummary').textContent = s.other_plant + ' Other plant, ' + s.promoted + ' promoted, ' + s.supported + ' supported.';
+        var head = $('dsPromo').tHead;
+        head.innerHTML = '';
+        var hr = document.createElement('tr');
+        ['Species', 'Photos', 'Unique photos', 'Contributors', 'Minimum', 'State', ''].forEach(function (h) { hr.appendChild(el('th', null, h)); });
+        head.appendChild(hr);
+        var body = $('dsPromo').tBodies[0];
+        body.innerHTML = '';
+        if (!d.species.length) {
+            var empty = document.createElement('tr');
+            var cell = el('td', 'ds-muted', 'No species here.');
+            cell.colSpan = 7;
+            empty.appendChild(cell);
+            body.appendChild(empty);
+        }
+        d.species.forEach(function (sp) {
+            var tr = document.createElement('tr');
+            var name = el('td');
+            name.appendChild(el('div', 'ds-name', sp.scientificName));
+            if (sp.commonName) name.appendChild(el('div', 'ds-muted', sp.commonName));
+            if (sp.note) name.appendChild(el('div', 'ds-note', sp.note));
+            tr.appendChild(name);
+            tr.appendChild(el('td', null, String(sp.approvedPhotos)));
+            tr.appendChild(el('td', null, sp.uniquePhotos + (sp.nearCopies ? ' (' + sp.nearCopies + ' near cop' + (sp.nearCopies === 1 ? 'y' : 'ies') + ' merged)' : '')));
+            tr.appendChild(el('td', null, String(sp.contributors)));
+            tr.appendChild(el('td', sp.minimumMet ? null : 'ds-low', sp.minimumMet ? 'Met' : (sp.minimum - sp.uniquePhotos) + ' more needed'));
+            var st = el('td');
+            st.appendChild(el('span', 'ds-tag ' + sp.state, PROMO_LABEL[sp.state] || sp.state));
+            tr.appendChild(st);
+            var act = el('td');
+            if (sp.canPromote) {
+                act.appendChild(button('Promote', 'btn-primary', async function () {
+                    if (!window.confirm('Promote ' + sp.scientificName + '? This records the decision only. Scans will not change until you retrain and the new model lists it.')) return;
+                    await post('/admin/api/dataset/species/promote', { plantId: sp.plantId });
+                    note(sp.scientificName + ' is promoted. It becomes supported once a retrained model lists it.');
+                    await loadSpecies();
+                }));
+            } else if (sp.canUndo) {
+                act.appendChild(button('Undo promotion', '', async function () {
+                    await post('/admin/api/dataset/species/unpromote', { plantId: sp.plantId });
+                    note('The promotion of ' + sp.scientificName + ' is undone.');
+                    await loadSpecies();
+                }));
+            }
+            tr.appendChild(act);
+            body.appendChild(tr);
+        });
+        pager($('dsPromoPager'), d.total, d.page, d.pageSize, function (p) { promo.page = p; loadSpecies().catch(fail); });
+    }
+
     // ------------------------------------------------------------------ folders (like a file manager)
     function exKey() { return ['split', 'kind', 'label', 'part', 'source'].map(function (k) { return ex.params[k] || ''; }).join('|'); }
     function exCount() { return Object.keys(ex.selected).length; }
@@ -494,6 +562,93 @@
         });
     }
 
+    //  database photos and snapshots 
+    async function loadDb() {
+        var out = await Promise.all([api('/admin/api/dataset/db/summary'), api('/admin/api/dataset/db/snapshots')]);
+        var sum = out[0], snaps = out[1].items || [];
+        var host = $('dbStats');
+        host.innerHTML = '';
+        host.appendChild(stat('included', sum.totals.included, sum.totals.included ? 'good' : ''));
+        host.appendChild(stat('candidates', sum.totals.candidate));
+        host.appendChild(stat('excluded', sum.totals.excluded));
+        host.appendChild(stat('included, no part', sum.totals.includedNoPart, sum.totals.includedNoPart ? 'warn' : 'good'));
+        $('dbBuild').disabled = !sum.totals.included;
+        $('dbCapNote').textContent = sum.otherPlantCap
+            ? 'Other plant photos: at most ' + sum.otherPlantCap + ' per species go into a snapshot, so a few species cannot make up most of the Other plant class. Species promoted to Plant are never capped.'
+            : 'Other plant photos are not capped per species.';
+        var body = $('dbSpecies').querySelector('tbody');
+        body.innerHTML = '';
+        sum.species.forEach(function (s) {
+            var tr = el('tr');
+            [s.scientificName, s.included, s.candidate, s.excluded, s.includedNoPart].forEach(function (v) { tr.appendChild(el('td', null, String(v))); });
+            body.appendChild(tr);
+        });
+
+        var list = $('dbSnapshots');
+        list.innerHTML = '';
+        if (!snaps.length) list.appendChild(el('p', 'ds-muted', 'No database snapshot yet.'));
+        snaps.forEach(function (sn) {
+            var c = sn.counts || {};
+            var line = el('div', 'ds-removed');
+            line.appendChild(el('strong', null, sn.name));
+            line.appendChild(el('span', 'ds-muted', when(sn.createdAt) + ' - ' + c.photos + ' photos, ' + c.species + ' species, ' +
+                c.otherPlantPhotos + ' Other plant, ' + c.groups + ' groups' +
+                (c.otherPlantCapped ? ', ' + c.otherPlantCapped + ' left out by the Other plant cap' : '')));
+            list.appendChild(line);
+            (sn.warnings || []).forEach(function (w) { list.appendChild(el('p', 'ds-muted', 'Warning: ' + w)); });
+        });
+        if (snaps.length) {
+            list.appendChild(el('p', 'ds-muted', 'To split the newest one, run inside the ML container:'));
+            list.appendChild(el('code', null, "python -m dataset_tools.cli split --root '/data/datasets/plantellect training' --snapshot " +
+                snaps[0].name + ' --out-dir /data/datasets/snapshots --dry-run'));
+        }
+    }
+
+    async function buildDbSnapshot() {
+        var btn = $('dbBuild');
+        btn.disabled = true;
+        $('dbBuildState').textContent = 'Building...';
+        try {
+            var r = await post('/admin/api/dataset/db/snapshots', {});
+            note('Snapshot ' + r.name + ' built: ' + r.counts.photos + ' photos.' + (r.warnings.length ? ' ' + r.warnings.join(' ') : ''));
+        } catch (e) { fail(e); }
+        $('dbBuildState').textContent = '';
+        await loadDb().catch(fail);
+    }
+
+    //  folder view / database view 
+    function viewOf(sectionId) {
+        var section = $(sectionId);
+        return section && section.dataset.view ? section.dataset.view : '';
+    }
+
+    /** Shows the sections and tabs of one view and hides those of the other. Nothing is reloaded. */
+    function setView(name, remember) {
+        if (name !== 'folder' && name !== 'db') name = 'folder';
+        currentView = name;
+        Array.prototype.forEach.call(document.querySelectorAll('[data-view]'), function (node) {
+            if (node.classList.contains('ds-view')) {
+                var on = node.dataset.view === name;
+                node.classList.toggle('active', on);
+                node.setAttribute('aria-pressed', on ? 'true' : 'false');
+            } else {
+                node.hidden = node.dataset.view !== name;
+            }
+        });
+        $('dsViewHint').textContent = VIEW_HINT[name];
+        var tabs = document.querySelectorAll('#datasetTopbar .admin-tab[data-view="' + name + '"]');
+        Array.prototype.forEach.call(document.querySelectorAll('#datasetTopbar .admin-tab'), function (t) { t.classList.remove('active'); t.removeAttribute('aria-current'); });
+        if (tabs.length) tabs[0].classList.add('active');
+        if (remember) { try { window.localStorage.setItem(VIEW_KEY, name); } catch (e) { /* storage may be blocked */ } }
+        if (window.AdminTopbar) window.AdminTopbar.refresh();
+    }
+
+    function startingView() {
+        var fromHash = viewOf(window.location.hash.slice(1));
+        if (fromHash) return fromHash;
+        try { return window.localStorage.getItem(VIEW_KEY) === 'db' ? 'db' : 'folder'; } catch (e) { return 'folder'; }
+    }
+
     async function fillUser() {
         var box = $('adminUser');
         if (!box) return;
@@ -505,11 +660,24 @@
 
     // ------------------------------------------------------------------ wiring
     async function refreshAll() {
-        await Promise.all([loadOverview(), loadClusters(), loadMislabels(), loadGrid(), loadFolder(), loadRemoved()].map(function (p) { return p.catch(fail); }));
+        await Promise.all([loadOverview(), loadClusters(), loadMislabels(), loadGrid(), loadSpecies(), loadFolder(), loadDb(), loadRemoved()].map(function (p) { return p.catch(fail); }));
     }
 
     function init() {
+        setView(startingView(), false);
+        $('dsViewSwitch').addEventListener('click', function (e) {
+            var button = e.target.closest('.ds-view');
+            if (!button) return;
+            setView(button.dataset.view, true);
+            window.scrollTo(0, 0);
+        });
+        // A link or tab that points into the other view (#promotionSection) switches to it first.
+        $('datasetTopbar').addEventListener('admintopbar:navigate', function (e) {
+            var wanted = viewOf(e.detail.target);
+            if (wanted && wanted !== currentView) setView(wanted, true);
+        });
         $('dsRunAudit').addEventListener('click', runAudit);
+        $('dbBuild').addEventListener('click', buildDbSnapshot);
         $('dsAddPart').addEventListener('click', async function () {
             var v = $('dsNewPart').value.trim();
             if (!v) return note('Type the new part name first.', true);
@@ -518,12 +686,22 @@
         $('dsFilters').addEventListener('click', function (e) {
             var chip = e.target.closest('.ds-chip');
             if (!chip) return;
-            Array.prototype.forEach.call(document.querySelectorAll('.ds-chip'), function (c) { c.classList.remove('active'); });
+            // Only this row of chips: the promotion table has its own row.
+            Array.prototype.forEach.call($('dsFilters').querySelectorAll('.ds-chip'), function (c) { c.classList.remove('active'); });
             chip.classList.add('active');
             state.cat = chip.dataset.cat || '';
             state.reviewed = chip.dataset.reviewed === '1';
             state.page = 1;
             loadClusters().catch(fail);
+        });
+        $('dsPromoFilters').addEventListener('click', function (e) {
+            var chip = e.target.closest('.ds-chip');
+            if (!chip) return;
+            Array.prototype.forEach.call($('dsPromoFilters').querySelectorAll('.ds-chip'), function (c) { c.classList.remove('active'); });
+            chip.classList.add('active');
+            promo.state = chip.dataset.state || '';
+            promo.page = 1;
+            loadSpecies().catch(fail);
         });
         $('exUp').addEventListener('click', function () { if (ex.parent) exGo(ex.parent); });
         $('exFind').addEventListener('input', applyFind);

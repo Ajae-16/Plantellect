@@ -1,4 +1,4 @@
-"""FastAPI route for the website's upload pipeline (plan stage 5): POST /convert/heic."""
+"""FastAPI route for the website's upload pipeline: POST /convert/heic."""
 import asyncio
 
 from fastapi import APIRouter, File, HTTPException, UploadFile

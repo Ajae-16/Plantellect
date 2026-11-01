@@ -28,6 +28,7 @@ const { listImageIssues, retryImageIssue } = require('../config/image-relocation
 const { logAuthEvent, Authlog } = require('../mongoose-schemas/Authlog');
 const plantEdit = require('../config/admin-plant-edit-mysql');
 const photoVisibility = require('../config/photo-visibility');
+const { loadActiveClasses } = require('../config/active-classes');
 const lookalike = require('../config/lookalike');
 
 const router = express.Router();
@@ -420,7 +421,7 @@ router.post('/api/plants/:plantId/descriptions/:descriptionId/primary', requireP
 });
 
 // ---------------------------------------------------------------------------
-// Public photo controls (stage 7a): show or hide each approved photo, set the primary
+// Public photo controls : show or hide each approved photo, set the primary
 // photo. Hiding deletes the public files first; a failed delete is a 500 with a message
 // and the photo stays visible. Every change is written to the audit log.
 // ---------------------------------------------------------------------------
@@ -680,32 +681,7 @@ router.get('/api/ml/coverage', requirePermission('access_admin'), async (req, re
 });
 
 /** Reads the trained model's class list from the ACTIVE model's folder, or null when not available. */
-async function loadClasses() {
-    let modelId = '';
-    try {
-        let value = await getSystemSetting('mlActiveModel');
-        if (typeof value === 'string') {
-            try { value = JSON.parse(value); } catch (_) { /* bare id */ }
-        }
-        modelId = typeof value === 'string' ? value : (value && value.modelId) || '';
-    } catch (err) {
-        console.error('mlActiveModel read failed:', err.message);
-    }
-    modelId = path.basename(modelId || settings.ml.defaultModel || 'efficientnetv2b1');
-
-    const classesPath = path.join(__dirname, '..', 'ml', 'model', modelId, 'classes.json');
-    try {
-        if (!fs.existsSync(classesPath)) return null;
-        const parsed = JSON.parse(fs.readFileSync(classesPath, 'utf8'));
-        const values = Array.isArray(parsed) ? parsed : Object.values(parsed);
-        return values
-            .map((v) => (typeof v === 'string' ? { scientific: v, common: v } : v))
-            .filter((v) => v && v.scientific && (v.kind || 'species') === 'species');
-    } catch (err) {
-        console.error('Could not read classes.json:', err.message);
-        return null;
-    }
-}
+const loadClasses = () => loadActiveClasses(getSystemSetting);
 
 /**
  * GET /admin/api/settings

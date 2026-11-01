@@ -1,4 +1,4 @@
-"""FastAPI route for the approval screen's look-alike hint (plan stage 7a): POST /lookalike/compare.
+"""FastAPI route for the approval screen's look-alike hint: POST /lookalike/compare.
 
 The website sends small copies of the pending photos and of some approved photos; the answer is a list of similarity
 numbers. No path is accepted and nothing is written to disk. One comparison runs at a time and at low CPU use, so

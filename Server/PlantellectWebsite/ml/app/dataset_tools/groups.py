@@ -1,4 +1,4 @@
-"""Stage 2, step 1: decide which photos must stay together (a "group") before any split.
+""" decide which photos must stay together (a "group") before any split.
 
 Inside one class (a species, or Other plant, or Non plant) photos are joined when they are
     1. byte-identical (same SHA-256), or near-exact copies (dHash within a few bits)

@@ -145,7 +145,7 @@ html[data-theme="dark"] .plant-dialog-ok { background: rgba(0, 191, 99, 0.18); c
 .plant-dialog .rt-toolbar button { color: inherit; }
 .request-detail-list .rt, .plant-detail-item .value.rt { text-align: left; }
 
-/* ---- stage 7a: public photo controls beside the edit dialog, and look-alike hints ---- */
+/* ----  public photo controls beside the edit dialog, and look-alike hints ---- */
 .plant-dialog-with-photos { width: min(1080px, 96vw); }
 .plant-edit-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
 .plant-edit-main { min-width: 0; }
@@ -173,6 +173,12 @@ html[data-theme="dark"] .plant-dialog-ok { background: rgba(0, 191, 99, 0.18); c
     background: none; color: inherit; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
 }
 .plant-photo-btn:disabled { opacity: 0.45; cursor: default; }
+.plant-training-summary { display: grid; gap: 6px; padding: 8px; border: 1px dashed rgba(128, 128, 128, 0.4); border-radius: 10px; font-size: 12px; }
+.plant-training-bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.plant-training-bulk select { max-width: 100%; }
+.plant-photo-training { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid rgba(128, 128, 128, 0.25); font-size: 12px; }
+.plant-photo-training label { display: grid; gap: 2px; }
+.plant-photo-training select, .plant-photo-training input { width: 100%; box-sizing: border-box; font-size: 12px; }
 .plant-photo-archive { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(128, 128, 128, 0.3); display: grid; gap: 4px; }
 .plant-photo-archive small { font-size: 11px; opacity: 0.65; }
 @media (max-width: 820px) {

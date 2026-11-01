@@ -12,7 +12,6 @@ services:
       MYSQL_USER: superadmin
       MYSQL_PASSWORD: plantpassword
       TZ: Asia/Manila
-    # Server-wide default zone, so NOW() and TIMESTAMP columns are Manila time.
     command: --default-time-zone=+08:00
     ports:
       - "3306:3306"
@@ -45,8 +44,6 @@ services:
       - ./ml/model:/app/model
       - ./datasets:/data/datasets 
     environment:
-      - MODEL_PATH=/app/model/main/plantellect_model.keras
-      - CLASSES_PATH=/app/model/main/classes.json
       - TF_CPP_MIN_LOG_LEVEL=2
       - DATASET_ROOTS=/data/datasets/plantellect training 
       - DATASET_INDEX_DIR=/data/datasets/index

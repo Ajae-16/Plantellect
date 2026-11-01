@@ -146,30 +146,24 @@ function hasAnyPartValue(parts) {
 // Model class list (the scientificName join key)
 // ---------------------------------------------------------------------------
 
-const CLASSES_PATH = path.join(__dirname, '..', 'ml', 'model', 'main', 'classes.json');
-
-let classesCache = null;
-
 /**
- * Reads the trained model's class list, or null when it is not available yet.
+ * The active model's species, as [{ scientific, common }], or null when the class list is not available.
  *
- * `ml/model/` does not exist until the model artifacts are downloaded, so every
- * caller must treat null as "cannot check", never as "no classes".
+ * Reads ml/model/<active model>/classes.json, where the active model is the mlActiveModel setting (or the
+ * configured default). It goes through config/active-classes.js, the same loader the promotion page, the
+ * coverage route and the snapshot use, so every feature agrees on which species the model knows.
+ *
+ * Async because the active model is a database setting. Not cached: an admin switching the model must take
+ * effect on the next submission, not after a restart. Every caller must treat null as "cannot check",
+ * never as "no classes".
  */
-function loadModelClasses() {
-    if (classesCache !== null) return classesCache;
+async function loadModelClasses() {
     try {
-        if (!fs.existsSync(CLASSES_PATH)) return null;
-        const parsed = JSON.parse(fs.readFileSync(CLASSES_PATH, 'utf8'));
-        const values = Array.isArray(parsed) ? parsed : Object.values(parsed);
-        classesCache = values
-            .map((v) => (typeof v === 'string' ? { scientific: v, common: v } : v))
-            .filter((v) => v && v.scientific)
-            .map((v) => ({ scientific: v.scientific, common: v.common || v.scientific }));
-        if (classesCache.length === 0) return null;
-        return classesCache;
+        const classes = await require('./active-classes').loadActiveClasses();
+        if (!classes || classes.length === 0) return null;
+        return classes.map((v) => ({ scientific: v.scientific, common: v.common || v.scientific }));
     } catch (err) {
-        console.error('Could not read classes.json:', err.message);
+        console.error('Could not read the active model classes:', err.message);
         return null;
     }
 }

@@ -6,13 +6,26 @@
 //
 //   views      access_admin
 //   changes    manage_plant
+//
+// (database-linked dataset) is served here too, from MySQL rather than the ML service:
+//   GET  /api/plants/:plantId/training    training status, part and group of a plant's approved photos
+//   POST /api/plants/:plantId/training    change them (one photo, several, or every candidate)
+//   GET  /api/dataset/db/summary          counts for the dataset page
+//   GET/POST /api/dataset/db/snapshots    list, and build a database snapshot for the split script
+//  a snapshot files a promoted species under Plant and caps Other plant photos per species
+//   (settings.dataset.otherPlantCap, reported by /api/dataset/db/summary and in each snapshot's summary).
+// Species promotion (/api/dataset/species*) does not go through the ML service: it reads the database and the
+// active model's classes.json, so it is answered here (config/species-promotion.js).
 
 const express = require('express');
 const path = require('path');
 const { Readable } = require('stream');
 const { requirePermission } = require('../middleware/authMiddleware');
 const settings = require('../config/settings');
+const trainingPhotos = require('../config/training-photos');
+const dbSnapshot = require('../config/db-snapshot');
 const { logAuthEvent } = require('../mongoose-schemas/Authlog');
+const species = require('../config/species-promotion');
 
 const router = express.Router();
 const adminDir = path.join(__dirname, '..', 'administration', 'admin');
@@ -70,6 +83,7 @@ function handle(fn) {
             await fn(req, res);
         } catch (err) {
             if (err instanceof MlError) return res.status(err.status).json({ error: err.message });
+            if (err instanceof species.SpeciesError) return res.status(err.status).json({ error: err.message });
             console.error('Dataset route error:', err.message);
             res.status(500).json({ error: 'Something went wrong' });
         }
@@ -173,6 +187,19 @@ router.get('/api/dataset/thumb/:pid', view, (req, res) => {
     return proxyThumb(req, res);
 });
 
+const PLANT_ID = /^[A-Za-z0-9_-]{1,18}$/;
+const SPECIES_STATES = ['promoted', 'other_plant', 'supported'];
+const db = () => require('../config/pool-mysql').mysqlPool;
+
+/** Species promotion table: Other plant, promoted (waiting for a retrain) and supported species. */
+router.get('/api/dataset/species', view, handle(async (req, res) => {
+    res.json(await species.listSpecies(db(), {
+        classes: await species.loadActiveClassSet(),
+        state: SPECIES_STATES.includes(req.query.state) ? req.query.state : '',
+        page: intIn(req.query.page, 1, 1, 10000), pageSize: intIn(req.query.pageSize, 25, 1, 100)
+    }));
+}));
+
 // ---------------------------------------------------------------------------
 // Changing
 // ---------------------------------------------------------------------------
@@ -249,6 +276,81 @@ router.post('/api/dataset/parts', change, handle(async (req, res) => {
     const out = await ml('/parts', { method: 'POST', body: { part, species } });
     await audit(req, { action: 'part_added', part: out.part, species: species || null, folders: out.created.length });
     res.json(out);
+}));
+
+/** Records the decision to promote a species. The next retrain, not this, makes scans identify it. */
+router.post('/api/dataset/species/promote', change, handle(async (req, res) => {
+    const plantId = req.body && req.body.plantId;
+    if (typeof plantId !== 'string' || !PLANT_ID.test(plantId)) return res.status(400).json({ error: 'Bad request' });
+    const out = await species.promoteSpecies(db(), { plantId, accountId: req.session.accountId, note: text(req.body.note, 255), classes: await species.loadActiveClassSet() });
+    if (out.changed) await audit(req, { action: 'species_promoted', plantId, scientificName: out.species.scientificName, uniquePhotos: out.species.uniquePhotos });
+    res.json(out);
+}));
+
+/** Takes a promotion back, while the active model does not list the species yet. */
+router.post('/api/dataset/species/unpromote', change, handle(async (req, res) => {
+    const plantId = req.body && req.body.plantId;
+    if (typeof plantId !== 'string' || !PLANT_ID.test(plantId)) return res.status(400).json({ error: 'Bad request' });
+    const out = await species.undoPromotion(db(), { plantId, accountId: req.session.accountId, note: text(req.body.note, 255), classes: await species.loadActiveClassSet() });
+    await audit(req, { action: 'species_unpromoted', plantId, scientificName: out.species.scientificName });
+    res.json(out);
+}));
+
+// ---------------------------------------------------------------------------
+// training status of approved photos, and database snapshots
+// ---------------------------------------------------------------------------
+
+/** Sends a { error, code } result as JSON with its status, anything else as { ok: true, ... }. */
+function sendResult(res, result) {
+    if (result.error) return res.status(result.code || 400).json({ error: result.error });
+    return res.json({ ok: true, ...result });
+}
+
+router.get('/api/plants/:plantId/training', view, handle(async (req, res) => {
+    sendResult(res, await trainingPhotos.listTrainingPhotos(req.params.plantId));
+}));
+
+/**
+ * Body: { imageIds: [...], trainingStatus?, trainingReason?, part?, groupKey? }
+ *   or: { allCandidates: true, trainingStatus: 'included' | 'excluded', part? }  (decides every candidate at once)
+ */
+router.post('/api/plants/:plantId/training', change, handle(async (req, res) => {
+    const body = req.body || {};
+    const { plantId } = req.params;
+    let result;
+    if (body.allCandidates === true) {
+        result = await trainingPhotos.decideCandidates(plantId, body.trainingStatus, body.part);
+    } else {
+        result = await trainingPhotos.setTraining(plantId, body.imageIds, body);
+    }
+    if (!result.error) {
+        await audit(req, {
+            action: 'training_changed', plantId, photos: result.changed,
+            trainingStatus: result.trainingStatus || (result.patch && result.patch.trainingStatus) || null,
+            part: result.patch && 'part' in result.patch ? result.patch.part : undefined,
+            groupChanged: Boolean(result.patch && 'groupKey' in result.patch)
+        });
+    }
+    sendResult(res, result);
+}));
+
+router.get('/api/dataset/db/summary', view, handle(async (req, res) => {
+    res.json({ ...(await trainingPhotos.trainingSummary()), otherPlantCap: settings.dataset.otherPlantCap });
+}));
+
+router.get('/api/dataset/db/snapshots', view, handle(async (req, res) => {
+    res.json({ items: await dbSnapshot.listSnapshots() });
+}));
+
+router.post('/api/dataset/db/snapshots', change, handle(async (req, res) => {
+    const result = await dbSnapshot.buildSnapshot();
+    if (!result.error) {
+        await audit(req, { action: 'db_snapshot_built', snapshot: result.name, photos: result.counts.photos, skipped: result.counts.skipped });
+    }
+    if (result.error) return res.status(result.code || 400).json({ error: result.error });
+    // The folder on this computer is not sent to the browser: only its name, which is what the split script takes.
+    const { dir, ...rest } = result;
+    res.status(201).json(rest);
 }));
 
 module.exports = router;

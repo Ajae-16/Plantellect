@@ -1,4 +1,4 @@
-// Retention job for denied photos (dataset handler plan, stage 7b).
+// Retention job for denied photos (dataset handler).
 //
 // A photo that was denied (or withdrawn by its submitter) keeps its master for
 // settings.plantImages.deniedRetentionDays days, so a botanist can still see what was

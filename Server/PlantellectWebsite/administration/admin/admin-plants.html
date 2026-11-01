@@ -450,7 +450,7 @@
                      Save buttons below: hiding a photo deletes its public files immediately. -->
                 <aside class="plant-photo-panel" aria-label="Public photos">
                     <h3>Photos</h3>
-                    <p class="plant-photo-hint">What the public can see. Hiding removes the public file at once; the photo stays in the dataset.</p>
+                    <p class="plant-photo-hint">What the public can see. Hiding removes the public file at once; the photo stays in the dataset. Training settings decide which photos go into a training snapshot, and are separate from hiding.</p>
                     <p class="plant-dialog-error" id="plantPhotoError" role="alert" hidden></p>
                     <p class="plant-dialog-ok" id="plantPhotoOk" role="status" hidden></p>
                     <div id="plantPhotoList" class="plant-photo-list"></div>
@@ -1331,6 +1331,7 @@
         // list is re-read from the server, so what is shown is what the public gets.
         // -----------------------------------------------------------------
         let photoData = null;       // GET /admin/api/plants/:id/photos
+        let trainingData = null;    // GET /admin/api/plants/:id/training 
         let photoBusy = false;
 
         function photoMessage(kind, text) {
@@ -1352,10 +1353,11 @@
                 host.innerHTML = '<p class="request-detail-muted">This plant has no approved photos.</p>';
                 return;
             }
+            const training = trainingData ? new Map((trainingData.photos || []).map(t => [t.imageId, t])) : null;
             const archivedNote = photoData.plantArchived
                 ? '<p class="request-detail-muted">This plant is archived, so no photo is public. Restore the plant to show photos.</p>'
                 : '';
-            host.innerHTML = archivedNote + photos.map(ph => {
+            host.innerHTML = archivedNote + trainingSummaryHtml() + photos.map(ph => {
                 const hidden = !ph.publicVisible;
                 const missing = ph.publicVisible && !ph.publicNow && !photoData.plantArchived;
                 const badges = [
@@ -1380,19 +1382,69 @@
                             <button type="button" class="plant-photo-btn" data-photo-act="primary" data-image="${id}"
                                     ${canPrimary ? '' : 'disabled'}>${ph.isPrimary ? 'Primary' : 'Set primary'}</button>
                         </div>
+                        ${trainingControlsHtml(training && training.get(ph.imageId))}
                     </figcaption>
                 </figure>`;
             }).join('');
         }
 
+        // ---- Training which approved photos feed a training snapshot. Separate from the
+        // public Show/Hide above: hiding a photo from the public does not remove it from training.
+        const TRAIN_LABEL = { candidate: 'Candidate', included: 'Included', excluded: 'Excluded' };
+
+        function partOptions(selected) {
+            const parts = (trainingData && trainingData.parts) || [];
+            return '<option value="">(no part)</option>' + parts.map(p =>
+                `<option value="${escapeHtml(p)}" ${p === selected ? 'selected' : ''}>${escapeHtml(p)}</option>`).join('');
+        }
+
+        function trainingSummaryHtml() {
+            if (!trainingData) return '';
+            const c = trainingData.counts || {};
+            const canBulk = (c.candidate || 0) > 0;
+            return `
+            <div class="plant-training-summary">
+                <strong>Training</strong>
+                <span>${c.included || 0} included · ${c.candidate || 0} candidate · ${c.excluded || 0} excluded</span>
+                <div class="plant-training-bulk">
+                    <select id="trainBulkPart" aria-label="Part for the photos that have none">${partOptions('')}</select>
+                    <button type="button" class="plant-photo-btn" data-train-all="included" ${canBulk ? '' : 'disabled'}>Include all candidates</button>
+                    <button type="button" class="plant-photo-btn" data-train-all="excluded" ${canBulk ? '' : 'disabled'}>Exclude all candidates</button>
+                </div>
+            </div>`;
+        }
+
+        function trainingControlsHtml(t) {
+            if (!t) return '';
+            const id = escapeHtml(t.imageId);
+            const options = trainingData.statuses.map(st =>
+                `<option value="${st}" ${st === t.trainingStatus ? 'selected' : ''}>${TRAIN_LABEL[st] || st}</option>`).join('');
+            return `
+            <div class="plant-photo-training" data-image="${id}">
+                <label>Training <select data-train-field="trainingStatus">${options}</select></label>
+                <label>Part <select data-train-field="part">${partOptions(t.part)}</select></label>
+                <label>Group <input type="text" data-train-field="groupKey" maxlength="100" value="${escapeHtml(t.groupKey)}"
+                       placeholder="same name = same split"></label>
+                <label>Reason <input type="text" data-train-field="trainingReason" maxlength="255" value="${escapeHtml(t.trainingReason)}"
+                       placeholder="why excluded (optional)"></label>
+                <button type="button" class="plant-photo-btn" data-train-save="${id}">Save training</button>
+            </div>`;
+        }
+
         async function loadPhotoPanel() {
             const plantId = editingPlantId;
             try {
-                const res = await fetch('/admin/api/plants/' + encodeURIComponent(plantId) + '/photos', { credentials: 'include' });
+                const base = '/admin/api/plants/' + encodeURIComponent(plantId);
+                const [res, trainRes] = await Promise.all([
+                    fetch(base + '/photos', { credentials: 'include' }),
+                    fetch(base + '/training', { credentials: 'include' })
+                ]);
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || 'Could not load the photos');
+                const train = await trainRes.json().catch(() => ({}));
                 if (plantId !== editingPlantId) return;       // the dialog moved on to another plant
                 photoData = data;
+                trainingData = trainRes.ok ? train : null;    // the photos still work without the training controls
                 renderPhotoPanel();
             } catch (err) {
                 photoMessage('error', err.message);
@@ -1405,7 +1457,49 @@
             primary: 'Primary photo changed.'
         };
 
+        // Training changes: one photo's fields, or every candidate at once. Not the Hide/Show buttons.
+        async function sendTraining(body, done) {
+            photoBusy = true;
+            document.querySelectorAll('#plantPhotoList button').forEach(b => { b.disabled = true; });
+            photoMessage('none');
+            try {
+                const res = await fetch('/admin/api/plants/' + encodeURIComponent(editingPlantId) + '/training', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) photoMessage('error', data.error || 'The change failed');
+                else photoMessage('ok', done(data));
+            } catch (err) {
+                photoMessage('error', 'The change failed: ' + err.message);
+            } finally {
+                photoBusy = false;
+                await loadPhotoPanel();
+            }
+        }
+
         document.getElementById('plantPhotoList').addEventListener('click', async (e) => {
+            const save = e.target.closest('[data-train-save]');
+            if (save && !photoBusy && editingPlantId) {
+                const box = save.closest('.plant-photo-training');
+                const field = (name) => box.querySelector('[data-train-field="' + name + '"]').value;
+                const status = field('trainingStatus');
+                await sendTraining({
+                    imageIds: [save.dataset.trainSave], trainingStatus: status,
+                    part: field('part'), groupKey: field('groupKey'),
+                    trainingReason: status === 'excluded' ? field('trainingReason') : ''
+                }, () => 'Training settings saved.');
+                return;
+            }
+            const all = e.target.closest('[data-train-all]');
+            if (all && !all.disabled && !photoBusy && editingPlantId) {
+                const status = all.dataset.trainAll;
+                const part = (document.getElementById('trainBulkPart') || {}).value || '';
+                if (!window.confirm((status === 'included' ? 'Include' : 'Exclude') + ' every candidate photo of this plant in training?')) return;
+                await sendTraining({ allCandidates: true, trainingStatus: status, part },
+                    (d) => d.changed + ' photo(s) ' + status + '.');
+                return;
+            }
             const btn = e.target.closest('[data-photo-act]');
             if (!btn || btn.disabled || photoBusy || !editingPlantId) return;
             const act = btn.dataset.photoAct;
@@ -1438,6 +1532,7 @@
             editDescriptionId = null;
             editData = null;
             photoData = null;
+            trainingData = null;
             photoMessage('none');
             renderPhotoPanel();
             loadPhotoPanel();

@@ -1,4 +1,4 @@
-"""HEIC/HEIF -> upright JPEG with no metadata (dataset handler plan, stage 5).
+"""HEIC/HEIF -> upright JPEG with no metadata (dataset handler).
 
 The website cannot decode HEIC itself (sharp does not fully support it), so its upload pipeline sends an iPhone
 photo here and gets back a plain JPEG, which sharp then turns into the master WebP.

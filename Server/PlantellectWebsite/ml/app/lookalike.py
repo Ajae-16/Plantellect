@@ -1,4 +1,4 @@
-"""Look-alike comparison for the admin's approval screen (dataset handler plan, stage 7a).
+"""Look-alike comparison for the admin's approval screen (dataset handler).
 
 Given the pending photos of a submission (candidates) and some already-approved photos (references), returns for each
 candidate the references it resembles, using the same MobileNetV3Large embeddings as the dataset audit. Nothing is

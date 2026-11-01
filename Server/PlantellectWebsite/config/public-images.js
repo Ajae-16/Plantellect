@@ -1,4 +1,4 @@
-// Public copies of approved photos (dataset handler plan, stage 6).
+// Public copies of approved photos (dataset handler).
 //
 // Every approved, visible photo has two small WebP copies that the public site shows:
 //
@@ -23,8 +23,8 @@
 // only, nosniff, no directory listing, and a short cache taken from
 // settings.plantImages.publicCacheSeconds. A photo with no file there answers 404.
 //
-// Stage 7a adds hide / restore (config/photo-visibility.js) and removal on denial on top
-// of these primitives; stage 7b adds the reconcile job.
+// adds hide / restore (config/photo-visibility.js) and removal on denial on top
+// of these primitives; adds the reconcile job.
 
 const fs = require('fs');
 const fsp = fs.promises;
@@ -221,7 +221,7 @@ async function ensurePublicCopies(imageIds, { executor, options } = {}) {
  * moment it stops being approved.
  *
  * Runs AFTER the decision has committed and never throws: a failed delete is logged
- * and the reconcile job (stage 7b) removes any file that no longer has a visible
+ * and the reconcile job removes any file that no longer has a visible
  * record. Returns { removed, failed }.
  */
 async function removeCopiesForImages(imageIds, { executor } = {}) {
@@ -258,7 +258,7 @@ async function removeCopiesForImages(imageIds, { executor } = {}) {
 /**
  * Startup catch-up: generates copies for every approved, visible photo that has none
  * (no hash, or a file that is missing). It only ADDS; it never deletes or compares
- * hashes. Stage 7's reconcile job extends this with orphan removal and tamper repair.
+ * hashes. reconcile job extends this with orphan removal and tamper repair.
  */
 async function fillMissingPublicCopies({ executor, options } = {}) {
     const summary = { checked: 0, made: 0, failed: 0 };

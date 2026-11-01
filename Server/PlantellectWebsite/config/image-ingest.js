@@ -1,4 +1,4 @@
-// The upload pipeline (dataset handler plan, stage 5).
+// The upload pipeline (dataset handler).
 //
 // Runs on every photo upload, after multer has applied its size and count limits
 // and BEFORE anything is written to the database:

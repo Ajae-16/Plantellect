@@ -24,7 +24,7 @@ const { assertDiscoveryClaim, linkDiscoveryRecord, DISCOVERY_STORAGE_ROOT } = re
  * verified on this server (utf8mb4_0900_ai_ci): `' Ocimum basilicum' =
  * 'Ocimum basilicum'` is 0. `warnings` never blocks a submission.
  */
-function validatePlantDraft(body) {
+async function validatePlantDraft(body) {
     const errors = [];
     const warnings = [];
 
@@ -72,11 +72,11 @@ function validatePlantDraft(body) {
         errors.push('A plant needs a description or some measurements — photos alone are never published');
     }
 
-    // Model-class match. While ml/model/main/classes.json is absent there is
-    // nothing to check against, so the name is accepted as typed — the model is
+    // Model-class match against the active model's classes.json. When that file is
+    // unavailable there is nothing to check against, so the name is accepted as typed — the model is
     // still being trained and failing every submission would be worse than an
     // unverified name.
-    const classes = loadModelClasses();
+    const classes = await loadModelClasses();
     if (classes && clean.scientificName) {
         const wanted = clean.scientificName.toLowerCase();
         const match = classes.find((c) => c.scientific.toLowerCase() === wanted);

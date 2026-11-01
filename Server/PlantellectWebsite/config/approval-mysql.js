@@ -40,7 +40,7 @@ async function ensurePrimaryContent(conn, plantId) {
          )`,
         [plantId]
     );
-    // Photos: keep the primary an admin chose (stage 7a). Before, every approval reset
+    // Photos: keep the primary an admin chose . Before, every approval reset
     // the flag to the oldest photo, which would undo the admin's pick and could hand the
     // flag to a hidden photo. Now a primary is only taken away when it can no longer be
     // shown (not approved, hidden or archived), and a new one is picked only when the

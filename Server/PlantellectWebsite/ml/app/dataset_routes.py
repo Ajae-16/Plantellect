@@ -89,7 +89,7 @@ async def audit_report():
 
 
 # ------------------------------------------------------------------------------------------------
-# Stage 3: what the admin dataset page uses. Plain `def` so FastAPI runs them in its thread pool.
+# what the admin dataset page uses. Plain `def` so FastAPI runs them in its thread pool.
 # ------------------------------------------------------------------------------------------------
 
 def _call(fn, *args, **kwargs):

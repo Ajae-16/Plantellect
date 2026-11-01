@@ -104,7 +104,9 @@
         ticking = false;
         if (manualTarget) return;
 
-        var sections = inPageTabs().map(sectionOf).filter(Boolean);
+        // A section that is not displayed (for example the other view of the Dataset page) never gets a turn
+        var sections = inPageTabs().map(sectionOf).filter(Boolean)
+            .filter(function (section) { return section.getClientRects().length > 0; });
         if (sections.length === 0) return;
 
         var scroller = getScroller();

@@ -1,4 +1,4 @@
-"""Stage 2, step 2: assign whole groups to train / val / test and write a numbered snapshot.
+"""assign whole groups to train / val / test and write a numbered snapshot.
 
 Rules
   * The unit is a group, never a photo, so a group can never straddle two splits.

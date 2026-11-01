@@ -91,7 +91,7 @@ module.exports = {
         orphanGraceSeconds: Math.max(10, numberSetting('PUBLIC_ORPHAN_GRACE_SECONDS', 120)),
         // Most denied photos the retention job purges in one run; the rest wait for the next night.
         retentionBatchSize: Math.max(1, numberSetting('RETENTION_BATCH_SIZE', 500)),
-        // Static public copies (stage 6). Written ONLY by the server, from a master, and
+        // Static public copies . Written ONLY by the server, from a master, and
         // served by their own handler in index.js (WebP only, nosniff, no listing).
         // Under public/ so the URL is /resource/plant-images/<size>/<plantId>/<imageId>.webp.
         publicDir: path.join(__dirname, '..', 'public', 'resource', 'plant-images'),
@@ -141,7 +141,7 @@ module.exports = {
     // "Looks like photo X" hints shown to the reviewer at approval (config/lookalike.js).
     // A hint never blocks an approval. The two thresholds are STARTING values from the
     // plan (section 7.6) and must be calibrated on real photos before anyone relies on
-    // them; the hash distance comes from stage 5's note that a resized copy differed by
+    // them; the hash distance  note that a resized copy differed by
     // 6 to 9 of 64 bits.
     lookalike: {
         // Largest Hamming distance (of 64 bits) between two dHashes that is still called a near copy.
@@ -158,6 +158,35 @@ module.exports = {
         // Photos are shrunk to this long edge before they go to the ML service.
         sendLongEdge: Math.max(128, numberSetting('LOOKALIKE_SEND_LONG_EDGE', 256)),
         timeoutMs: Math.max(1000, numberSetting('LOOKALIKE_TIMEOUT_MS', 20000))
+    },
+    // Dataset handler, database-linked half: which photos feed a training set, and where the
+    // database snapshots are written for the ML service to read.
+    dataset: {
+        // The host folder the ML container mounts as /data/datasets (docker-compose.yml: ./datasets).
+        dir: process.env.DATASET_DIR ? path.resolve(process.env.DATASET_DIR) : path.join(__dirname, '..', 'datasets'),
+        // Database snapshots live here, one numbered folder each, NEXT TO (not inside) the hand-made
+        // training folder, so the admin page's audit of that folder never picks them up.
+        snapshotSubdir: 'db-snapshots',
+        // The part names a photo may carry. Organisation and reporting only, never a label. Keep it in step
+        // with "parts" in datasets/index/config.json (the ML side warns about a part it does not know).
+        parts: (process.env.DATASET_PARTS || 'Leaves,Leaves with stem,Whole plant')
+            .split(',').map((p) => p.trim()).filter(Boolean),
+        // Most photos one training-status change may touch at once.
+        maxBulk: Math.max(1, numberSetting('DATASET_MAX_BULK', 200)),
+        groupKeyMaxLength: 100,
+        reasonMaxLength: 255,
+        // Most Other plant photos ONE species adds to a snapshot (plan section 7.8: "capped per species"), so a few
+        // species with hundreds of photos cannot make up most of the one Other plant class. 0 means no cap.
+        otherPlantCap: Math.max(0, numberSetting('DATASET_OTHER_PLANT_CAP', 100))
+    },
+    // Species promotion (config/species-promotion.js): moving a species from Other plant to a
+    // supported species. The minimum is the plan's proposed starting value (section 7.8).
+    // classesPath is an OPTIONAL override (SPECIES_CLASSES_PATH). Left empty, the class list is the active model's
+    // ml/model/<model>/classes.json, the same file the admin coverage route and the database snapshot read
+    // (config/active-classes.js). Either way it is re-read whenever the file changes.
+    speciesPromotion: {
+        minUniquePhotos: Math.max(1, numberSetting('SPECIES_PROMOTE_MIN_PHOTOS', 50)),
+        classesPath: process.env.SPECIES_CLASSES_PATH || ''
     },
     // Nightly housekeeping (config/maintenance.js): the public-copy reconcile job and the
     // denied-photo retention job. Local time of the server process.

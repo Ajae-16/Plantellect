@@ -385,7 +385,7 @@ router.post('/requests', requirePermission('record_plant'), plantImageUpload(get
 
     // validatePlantDraft normalises the names; what is stored must be what it
     // validated, or scientificName stops matching the model's class list.
-    const { errors, warnings, clean } = validatePlantDraft(submitted);
+    const { errors, warnings, clean } = await validatePlantDraft(submitted);
     if (files.length + discoveryImageIds.length > req.uploadMaxFiles) {
         errors.push(`At most ${req.uploadMaxFiles} photos per submission, counting report photos`);
     }

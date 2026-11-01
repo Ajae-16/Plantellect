@@ -1,4 +1,4 @@
-// Nightly housekeeping for the photo store (dataset handler plan, stage 7b).
+// Nightly housekeeping for the photo store (dataset handler).
 //
 //   startup  reconcile the public copies (config/reconcile.js)
 //   nightly  reconcile the public copies, then purge old denied photos (config/retention.js)

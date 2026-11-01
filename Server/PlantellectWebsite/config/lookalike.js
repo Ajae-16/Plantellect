@@ -1,5 +1,4 @@
-// "Looks like photo X": a hint shown to the reviewer at approval (dataset handler plan,
-// stage 7a).
+// "Looks like photo X": a hint shown to the reviewer at approval (dataset handler)
 //
 // For each pending photo of a request it looks for approved photos it resembles:
 //

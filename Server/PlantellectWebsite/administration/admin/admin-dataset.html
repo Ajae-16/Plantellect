@@ -129,18 +129,25 @@
         <main class="admin-main">
             <h1>Dataset</h1>
             <p class="admin-subtitle">Review duplicates and leaks, see species and parts, and keep the training folder clean. Nothing here deletes a photo.</p>
+            <div class="ds-viewswitch" id="dsViewSwitch" role="group" aria-label="Dataset view">
+                <button type="button" class="ds-view active" data-view="folder" aria-pressed="true">Folder view</button>
+                <button type="button" class="ds-view" data-view="db" aria-pressed="false">Database view</button>
+            </div>
+            <p class="ds-muted" id="dsViewHint"></p>
             <nav class="admin-topbar" id="datasetTopbar" aria-label="Dataset sections">
-                <a href="#overviewSection" class="admin-tab active" data-target="overviewSection">Overview</a>
-                <a href="#clustersSection" class="admin-tab" data-target="clustersSection">Leaks &amp; duplicates</a>
-                <a href="#mislabelSection" class="admin-tab" data-target="mislabelSection">Label suspects</a>
-                <a href="#gridSection" class="admin-tab" data-target="gridSection">Species</a>
-                <a href="#browserSection" class="admin-tab" data-target="browserSection">Folders</a>
-                <a href="#removedSection" class="admin-tab" data-target="removedSection">Removed</a>
+                <a href="#overviewSection" data-view="folder" class="admin-tab active" data-target="overviewSection">Overview</a>
+                <a href="#clustersSection" data-view="folder" class="admin-tab" data-target="clustersSection">Leaks &amp; duplicates</a>
+                <a href="#mislabelSection" data-view="folder" class="admin-tab" data-target="mislabelSection">Label suspects</a>
+                <a href="#gridSection" data-view="folder" class="admin-tab" data-target="gridSection">Species</a>
+                <a href="#promotionSection" data-view="db" class="admin-tab" data-target="promotionSection">Promotion</a>
+                <a href="#browserSection" data-view="folder" class="admin-tab" data-target="browserSection">Folders</a>
+                <a href="#dbSection" data-view="db" class="admin-tab" data-target="dbSection">Database</a>
+                <a href="#removedSection" data-view="folder" class="admin-tab" data-target="removedSection">Removed</a>
             </nav>
 
             <div class="plants-container">
                 <p id="dsNotice" class="admin-notice" hidden></p>
-                <section class="admin-section" id="overviewSection">
+                <section class="admin-section" id="overviewSection" data-view="folder">
                     <details class="collapse" open>
                         <summary class="collapse-summary"><h2>Overview</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">
@@ -152,7 +159,7 @@
                         </div>
                     </details>
                 </section>
-                <section class="admin-section" id="clustersSection">
+                <section class="admin-section" id="clustersSection" data-view="folder">
                     <details class="collapse" open>
                         <summary class="collapse-summary"><h2>Leaks &amp; duplicates <span class="section-count-badge" id="dsClusterCount" hidden>0</span></h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">
@@ -168,7 +175,7 @@
                         </div>
                     </details>
                 </section>
-                <section class="admin-section" id="mislabelSection">
+                <section class="admin-section" id="mislabelSection" data-view="folder">
                     <details class="collapse">
                         <summary class="collapse-summary"><h2>Label suspects <span class="section-count-badge" id="dsMislabelCount" hidden>0</span></h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">
@@ -177,7 +184,7 @@
                         </div>
                     </details>
                 </section>
-                <section class="admin-section" id="gridSection">
+                <section class="admin-section" id="gridSection" data-view="folder">
                     <details class="collapse">
                         <summary class="collapse-summary"><h2>Species and parts</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">
@@ -187,7 +194,25 @@
                         </div>
                     </details>
                 </section>
-                <section class="admin-section" id="browserSection">
+                <section class="admin-section" id="promotionSection" data-view="db">
+                    <details class="collapse" open>
+                        <summary class="collapse-summary"><h2>Species promotion</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
+                        <div class="collapse-body">
+                            <p class="ds-muted" id="dsPromoIntro"></p>
+                            <p id="dsPromoNoModel" class="admin-notice error" hidden>The active model's class list could not be read, so the server cannot tell which species are already supported. Promoting is switched off until it can.</p>
+                            <div class="ds-filters" id="dsPromoFilters">
+                                <button type="button" class="ds-chip active" data-state="other_plant">Other plant</button>
+                                <button type="button" class="ds-chip" data-state="promoted">Promoted</button>
+                                <button type="button" class="ds-chip" data-state="supported">Supported</button>
+                                <button type="button" class="ds-chip" data-state="">All</button>
+                            </div>
+                            <p class="ds-muted" id="dsPromoSummary"></p>
+                            <div class="ds-table-wrap"><table class="ds-table" id="dsPromo"><thead></thead><tbody></tbody></table></div>
+                            <div class="ds-pager" id="dsPromoPager"></div>
+                        </div>
+                    </details>
+                </section>
+                <section class="admin-section" id="browserSection" data-view="folder">
                     <details class="collapse" open>
                         <summary class="collapse-summary"><h2>Folders</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">
@@ -218,7 +243,26 @@
                     </details>
                 </section>
 
-                <section class="admin-section" id="removedSection">
+                <section class="admin-section" id="dbSection" data-view="db">
+                    <details class="collapse" open>
+                        <summary class="collapse-summary"><h2>Database photos and snapshots</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
+                        <div class="collapse-body">
+                            <p class="ds-muted">Approved photos that an admin marked <strong>Included</strong> (in the Edit dialog of each plant, under Photos) can be written to a
+                                <em>database snapshot</em>: a new folder with the photos, a manifest and the groups. The split script reads it with
+                                <code>--snapshot &lt;name&gt;</code>. Hiding or archiving a photo does not remove it from a snapshot. Nothing here changes a photo.</p>
+                            <p class="ds-muted" id="dbCapNote"></p>
+                            <div id="dbStats" class="ds-stats"><p>Loading...</p></div>
+                            <div class="ds-actions"><button type="button" class="btn btn-primary" id="dbBuild">Build database snapshot</button><span id="dbBuildState" class="ds-muted"></span></div>
+                            <h3>Snapshots</h3>
+                            <div id="dbSnapshots"></div>
+                            <details class="ds-details"><summary>Photos per species</summary>
+                                <div class="ds-table-wrap"><table class="ds-table" id="dbSpecies"><thead><tr><th>Species</th><th>Included</th><th>Candidate</th><th>Excluded</th><th>Included, no part</th></tr></thead><tbody></tbody></table></div>
+                            </details>
+                        </div>
+                    </details>
+                </section>
+
+                <section class="admin-section" id="removedSection" data-view="folder">
                     <details class="collapse">
                         <summary class="collapse-summary"><h2>Removed (quarantine) <span class="section-count-badge" id="dsRemovedCount" hidden>0</span></h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">

@@ -15,7 +15,7 @@ const imageFiles = require('./image-files');
  * Validates a new-plant draft. Returns { errors, warnings, clean }.
  * The caller must store `clean`, not the raw body.
  */
-function validatePlantDraft(body) {
+async function validatePlantDraft(body) {
     const errors = [];
     const warnings = [];
 
@@ -65,7 +65,7 @@ function validatePlantDraft(body) {
         errors.push('A plant needs a description or some measurements — photos alone are never published');
     }
 
-    const classes = loadModelClasses();
+    const classes = await loadModelClasses();
     if (classes && clean.scientificName) {
         const wanted = clean.scientificName.toLowerCase();
         const match = classes.find((c) => c.scientific.toLowerCase() === wanted);
@@ -149,7 +149,7 @@ async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
  * not go through the pipeline is refused, so a photo with its metadata can never be
  * stored by a route that forgot the middleware.
  *
- * A chosen REPORT photo is a CLAIM (stage 7b): the reporter's master is copied into the
+ * A chosen REPORT photo is a CLAIM : the reporter's master is copied into the
  * plant's masters, plants/masters/<plantId or requestId>/<new imageId>.webp, under a new
  * image id, and never moves again either. The new row stores
  *   accountId               the botanist recording the plant (the record's author)

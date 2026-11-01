@@ -1,4 +1,4 @@
-"""Stage 1 audit: duplicates, leaks across splits, the same photo under two classes, label suspects.
+""" duplicates, leaks across splits, the same photo under two classes, label suspects.
 
 Cheapest test first:  identical SHA-256  ->  dHash within a few bits  ->  embedding cosine.
 Categories (worst first):
@@ -118,7 +118,7 @@ def run_audit(rows, vecs_by_sha, cfg, embedder_name, warnings=(), degraded=False
     soft_capped = len(soft_clusters) > MAX_SOFT_CLUSTERS
     clusters += soft_clusters[:MAX_SOFT_CLUSTERS]
 
-    # a group that spans two splits (Stage 2 fills group_key)
+    # a group that spans two splits 
     by_group = defaultdict(list)
     for i, r in enumerate(rows):
         if r.get("group_key"):

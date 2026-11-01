@@ -1,4 +1,4 @@
-// Reconcile job for the public photo copies (dataset handler plan, stage 7b).
+// Reconcile job for the public photo copies (dataset handler).
 //
 // public/resource/plant-images holds derived data: a thumbnail and a display copy of every
 // approved, visible photo, each made FROM a master. This job keeps that folder honest. It

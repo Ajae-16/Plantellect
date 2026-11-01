@@ -22,7 +22,7 @@ const AUTHLOG_ACTIONS = [
     // the requestType, and the before/after values.
     'approval_mode_changed',
     // Dataset page: an audit started, photos moved to / back from quarantine, a cluster reviewed or grouped,
-    // a part row added. metadata.action says which.
+    // a part row added, a species promoted or un-promoted. metadata.action says which.
     'dataset_changed',
     // Admin plant modal: a photo shown, hidden, or made the primary photo.
     // metadata.action is 'hide' | 'show' | 'primary', with plantId and imageId.

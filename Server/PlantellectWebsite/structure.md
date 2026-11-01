@@ -86,16 +86,16 @@ PlantellectWebsite/
 │                              #   DROPS TABLES ONLY — clear plant-images/ and certificates/
 │                              #   afterwards, or ids restart at plant_000001 and serve the
 │                              #   previous database's photos. It prints that instruction.
-│   ├── public-images.js       # Stage 6: thumbnail + display WebP copies of approved, visible photos in
+│   ├── public-images.js       # thumbnail + display WebP copies of approved, visible photos in
 │   │                          #   public/resource/plant-images/{thumbnail,display}/<plantId>/<imageId>.webp, made FROM
 │   │                          #   the master after an approval commits (and at startup for any that are missing),
 │   │                          #   hashes stored on plant_images. visibleImageSql() is the one public-visibility rule.
 │   │                          #   publicImageHandler() is the static mount: WebP only, nosniff, no listing, 404 for all else
-│   ├── reconcile.js           # Stage 7b: startup + nightly job that keeps public/resource/plant-images honest: deletes files with
+│   ├── reconcile.js           #  startup + nightly job that keeps public/resource/plant-images honest: deletes files with
 │   │                          #   no visible record, regenerates missing copies and copies whose SHA-256 no longer matches the row
-│   ├── retention.js           # Stage 7b: nightly purge of masters of photos denied longer than deniedRetentionDays; keeps a
+│   ├── retention.js           # nightly purge of masters of photos denied longer than deniedRetentionDays; keeps a
 │   │                          #   denied_photo_tombstones row (hash + reason code, nothing personal). findTombstone() reads it
-│   ├── maintenance.js         # Stage 7b: runs reconcile at startup, reconcile + retention nightly (settings.maintenance.nightlyHour)
+│   ├── maintenance.js         # runs reconcile at startup, reconcile + retention nightly (settings.maintenance.nightlyHour)
 │   ├── image-files.js         # Photo folder layout + verified copy (copy, compare bytes, check the
 │   │                          #   image parses, retry up to 5x, THEN delete the source) + FileMovePlan
 │   ├── image-relocation.js    # Moves photos between pending/approved/denied, updates storedPath,

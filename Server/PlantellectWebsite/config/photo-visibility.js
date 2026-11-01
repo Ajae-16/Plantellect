@@ -1,5 +1,4 @@
-// Admin control of which approved photos the public can see (dataset handler plan,
-// stage 7a).
+// Admin control of which approved photos the public can see (dataset handler)
 //
 // Three actions on one approved photo of a plant:
 //

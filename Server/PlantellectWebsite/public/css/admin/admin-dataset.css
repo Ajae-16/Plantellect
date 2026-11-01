@@ -41,7 +41,8 @@
 .ds-tag.leak, .ds-tag.cross_class { background: #f5c6c0; color: #5a1710; }
 .ds-tag.similar_leak { background: #f7dfae; color: #523500; }
 .ds-tag.redundant { background: #c9defa; color: #12315a; }
-.ds-tag.done { background: #d6ecd2; color: #1d4a14; }
+.ds-tag.done, .ds-tag.supported { background: #d6ecd2; color: #1d4a14; }
+.ds-tag.promoted { background: #f7dfae; color: #523500; }
 
 /* ---- photos ---- */
 .ds-members { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
@@ -86,7 +87,16 @@ html[data-theme="dark"] .ds-movepanel, html[data-theme="dark"] .ds-movepanel sel
 .ds-low { color: #b9770e; }
 .ds-removed { display: flex; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(0, 0, 0, 0.08); flex-wrap: wrap; }
 
+.ds-viewswitch { display: inline-flex; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 999px; overflow: hidden; margin: 4px 0 6px; }
+.ds-view { padding: 6px 18px; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 0.9rem; }
+.ds-view + .ds-view { border-left: 1px solid rgba(0, 0, 0, 0.2); }
+.ds-view.active { background: #4caf50; color: #fff; font-weight: 600; }
+.ds-view:focus-visible { outline: 2px solid #4caf50; outline-offset: -2px; }
+/* A section or tab of the other view: the hidden attribute must win over any display rule. */
+.admin-section[data-view][hidden], .admin-tab[data-view][hidden] { display: none !important; }
+
 /* ---- dark theme (the admin's own toggle) ---- */
+html[data-theme="dark"] .ds-viewswitch, html[data-theme="dark"] .ds-view + .ds-view { border-color: var(--dk-border); }
 html[data-theme="dark"] .ds-stat, html[data-theme="dark"] .ds-card, html[data-theme="dark"] .ds-chip,
 html[data-theme="dark"] .ds-tile, html[data-theme="dark"] .ds-table th, html[data-theme="dark"] .ds-table td,
 html[data-theme="dark"] .ds-removed { border-color: var(--dk-border); }

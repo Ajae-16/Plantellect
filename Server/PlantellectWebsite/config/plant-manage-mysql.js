@@ -428,7 +428,7 @@ async function createPlantChangeRequest(accountId, plantId, body) {
             }
 
             if (changes.scientificName) {
-                const classes = loadModelClasses();
+                const classes = await loadModelClasses();
                 if (classes) {
                     const match = classes.find((c) => c.scientific.toLowerCase() === changes.scientificName.to.toLowerCase());
                     if (match) changes.scientificName.to = match.scientific;

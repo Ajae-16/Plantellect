@@ -1,4 +1,4 @@
-"""Everything the admin dataset page does to the dataset (plan stage 3).
+"""Everything the admin dataset page does to the dataset.
 
 All file work happens here, inside the ML container where the dataset is mounted. A request never carries a
 path: photos are named by an opaque id (pid = hash of the path, resolved through the index), clusters by their
