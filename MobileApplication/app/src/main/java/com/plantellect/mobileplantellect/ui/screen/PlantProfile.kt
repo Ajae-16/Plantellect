@@ -1,6 +1,5 @@
 package com.plantellect.mobileplantellect.ui.screen
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -24,7 +23,8 @@ import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 /**
  * The plant's profile, loaded from GET /api/plants/:plantId: photos, names, category and
  * toxicity, what it looks like, uses, benefits, things to watch out for, other botanists'
- * descriptions, and who recorded / reviewed / reported it. Full screen over the library.
+ * descriptions (each with thumbs up / down), and who recorded / reviewed / reported it.
+ * Full screen over the library.
  */
 @Composable
 fun PlantProfileDialog(plantId: String, fallbackName: String, heroUrl: String?, vm: LibraryViewModel, onClose: () -> Unit) {
@@ -35,6 +35,7 @@ fun PlantProfileDialog(plantId: String, fallbackName: String, heroUrl: String?, 
         value = ProfileLoad.Loading
         value = fetchPlantProfile(client, vm, plantId, force = attempt > 0)
     }
+    val votes = rememberVotes(client, vm, plantId, reloadKey = attempt)
     var viewing by remember { mutableStateOf<String?>(null) }
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -57,7 +58,12 @@ fun PlantProfileDialog(plantId: String, fallbackName: String, heroUrl: String?, 
                     ProfileLoad.Failed -> Message("Could not load plant", "Check your connection and try again.") {
                         Button({ attempt++ }) { Text("Try again") }
                     }
-                    is ProfileLoad.Ready -> ProfileBody(s.data, heroUrl) { viewing = it }
+                    is ProfileLoad.Ready -> ProfileBody(
+                        p = s.data, fallbackHero = heroUrl, votes = votes,
+                        // A description just got hidden by down votes: draw the page again.
+                        onHidden = { attempt++ },
+                        onView = { viewing = it }
+                    )
                 }
             }
         }
@@ -101,7 +107,13 @@ private fun Pill(text: String, container: Color, content: Color) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ProfileBody(p: PlantProfileData, fallbackHero: String?, onView: (String) -> Unit) {
+private fun ProfileBody(
+    p: PlantProfileData,
+    fallbackHero: String?,
+    votes: VotesController,
+    onHidden: () -> Unit,
+    onView: (String) -> Unit
+) {
     val c = MaterialTheme.colorScheme
     val hero = p.images.firstOrNull() ?: fallbackHero
     val primary = p.descriptions.firstOrNull { it.isPrimary } ?: p.descriptions.firstOrNull()
@@ -144,6 +156,9 @@ private fun ProfileBody(p: PlantProfileData, fallbackHero: String?, onView: (Str
             Text("Primary description by ${primary.author}", style = MaterialTheme.typography.labelLarge, color = c.primary)
         }
 
+        // The primary description's thumbs, right under the byline (same place as the web).
+        DescriptionVoteBar(votes, primary?.descriptionId, onHidden)
+
         Section("What it looks like", primary?.looks, "No description recorded yet.")
         Section("Common uses", primary?.uses)
         Section("Health benefits", primary?.benefits)
@@ -182,6 +197,11 @@ private fun ProfileBody(p: PlantProfileData, fallbackHero: String?, onView: (Str
                         if (d.uses.isNotBlank()) Block("Common uses", d.uses)
                         if (d.benefits.isNotBlank()) Block("Health benefits", d.benefits)
                         if (d.harmful.isNotBlank()) Block("Things to watch out for", d.harmful, warn = true)
+
+                        if (d.descriptionId != null) {
+                            HorizontalDivider(color = c.outlineVariant)
+                            DescriptionVoteBar(votes, d.descriptionId, onHidden)
+                        }
                     }
                 }
             }

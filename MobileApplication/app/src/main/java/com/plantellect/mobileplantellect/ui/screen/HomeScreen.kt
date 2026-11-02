@@ -107,7 +107,8 @@ fun HomeScreen(
                             toxicityLevel = p.cardToxicity, vm = vm,
                             modifier = Modifier.fillMaxWidth(),
                             index = featured.indexOf(p),
-                            // addedAt = p.<creation date field>,   // wire the date here
+                            // addedAt = p.dateUploaded,   // optional: if your DTO has the field. Otherwise the
+                            //                             // date is read from the plant profile automatically.
                             onClick = { open = p.cardId to p.cardName }
                         )
                     }
@@ -133,7 +134,7 @@ fun HomeScreen(
                         description = p.cardDescription, photoUrl = vm.imageUrl(p),
                         toxicityLevel = p.cardToxicity, vm = vm,
                         modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
-                        // addedAt = p.<creation date field>,
+                        // addedAt = p.dateUploaded,
                         onClick = { open = p.cardId to p.cardName }
                     )
                 }
@@ -328,6 +329,9 @@ private fun PlaceholderArt(slug: String, phA: Color, phB: Color) {
  * and a gradient at the bottom with the uppercase name, the green bar, the scientific name,
  * the added date and a 2-line description. Entrance animation, slow photo zoom and the
  * animated placeholder follow home.css.
+ *
+ * The "Added ..." date comes from [addedAt] when the caller has it, otherwise from the
+ * plant's profile (dateUploaded), read through [rememberCardInfo].
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -347,7 +351,7 @@ fun PlantCard(
     val info = rememberCardInfo(plantId, vm, description, toxicityLevel)
     val slug = typeSlug(info.type)
     val (phA, phB) = placeholderColors(slug)
-    val added = formatAdded(addedAt)
+    val added = formatAdded(addedAt ?: info.addedIso)
 
     // pcIn: fade + rise 24 + scale .96 -> 1, 70 ms stagger, played once per card
     val enter = remember(plantId) { Animatable(if (plantId in entrancePlayed) 1f else 0f) }

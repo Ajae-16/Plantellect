@@ -53,6 +53,7 @@ import com.plantellect.mobileplantellect.ui.theme.ScanWarn
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 import com.plantellect.mobileplantellect.viewmodel.SearchBy
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -192,7 +193,8 @@ fun LibraryScreen(vm: LibraryViewModel) {
                         photoUrl = vm.imageUrl(p),
                         listToxicity = p.cardToxicity,
                         vm = vm,
-                        // addedAt = p.<creation date field>,   // wire the date here
+                        // addedAt = p.dateUploaded,   // optional: if your DTO has the field. Otherwise the
+                        //                             // date is read from the plant profile automatically.
                         onClick = { open = p.cardId to p.cardName }
                     )
                 }
@@ -236,6 +238,9 @@ private val LibraryCardHeight = 236.dp
  * Same order as the web card (image, name, chips, date, note), but every part has a fixed slot,
  * so all cards have the same size: 90 dp image, one-line name, a two-line chip slot,
  * a date slot, and a 2-line note. Anything longer is clipped or cut with "…".
+ *
+ * The "Added ..." date comes from [addedAt] when the caller has it, otherwise from the
+ * plant's profile (dateUploaded), read through [rememberCardInfo].
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -251,7 +256,7 @@ fun LibraryPlantCard(
 ) {
     val c = MaterialTheme.colorScheme
     val info = rememberCardInfo(id, vm, null, listToxicity)
-    val added = formatAdded(addedAt)
+    val added = formatAdded(addedAt ?: info.addedIso)
 
     Card(
         modifier.fillMaxWidth().height(LibraryCardHeight).clickable(onClick = onClick),
@@ -391,15 +396,21 @@ fun normalizeToxicity(raw: String?): String = when (val k = raw?.trim()?.lowerca
     else -> k
 }
 
-/** "Added Oct 31, 2026" from an ISO timestamp, or null when there is no (valid) date. */
+/**
+ * "Added Oct 31, 2026" from the server's timestamp (ISO instant like 2026-10-31T08:12:00.000Z,
+ * or a plain yyyy-MM-dd date), or null when there is no (valid) date.
+ */
 fun formatAdded(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
+    val fmt = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
     return try {
-        "Added " + DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
-            .withZone(ZoneId.systemDefault())
-            .format(Instant.parse(raw))
+        "Added " + fmt.withZone(ZoneId.systemDefault()).format(Instant.parse(raw))
     } catch (e: Exception) {
-        null
+        try {
+            "Added " + fmt.format(LocalDate.parse(raw.trim().take(10)))
+        } catch (e2: Exception) {
+            null
+        }
     }
 }
 
@@ -411,17 +422,19 @@ fun formatAdded(raw: String?): String? {
  * What a card shows besides the name.
  * [toxicity] is normalised ("none", "mild", ...) and null while it is still unknown.
  * [benefits] is the primary description's benefits text, for the library note.
+ * [addedIso] is the plant's upload date as the server sent it (dateUploaded), null while unknown.
  */
 data class CardInfo(
     val type: String,
     val description: String?,
     val toxicity: String? = null,
-    val benefits: String? = null
+    val benefits: String? = null,
+    val addedIso: String? = null
 )
 
 /**
- * Type, description, toxicity and benefits for a card. Uses the list row's values when it has them;
- * otherwise reads the plant's profile (cached, shared with the other badges).
+ * Type, description, toxicity, benefits and upload date for a card. Uses the list row's values
+ * when it has them; otherwise reads the plant's profile (cached, shared with the other badges).
  */
 @Composable
 fun rememberCardInfo(
@@ -445,7 +458,8 @@ fun rememberCardInfo(
             type = p.typeLabel,
             description = text,
             toxicity = normalizeToxicity(listToxicity ?: p.toxicityLevel),
-            benefits = benefits
+            benefits = benefits,
+            addedIso = p.addedIso
         )
     }
     return info

@@ -1,5 +1,6 @@
 package com.plantellect.mobileplantellect.data.remote.dto
 
+import com.plantellect.mobileplantellect.data.remote.ContributeOffer
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -190,6 +191,11 @@ data class PredictResponse(
     val outcome: String? = null,
     /** species | non_plant | other_plant | low_confidence | close_call (enforce mode only). */
     val reason: String? = null,
+    /**
+     * Present only when the server decided this photo may be offered for training
+     * ("Help improve the ML"). Absent otherwise, so it must default to null.
+     */
+    @SerialName("contribute_offer") val contributeOffer: ContributeOffer? = null,
     val error: String? = null
 ) {
     /** One decision for the UI, whether or not the admin has confidence enforcement switched on. */

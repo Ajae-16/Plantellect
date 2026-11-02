@@ -31,7 +31,7 @@ import java.util.Date
 
 /** Same closed set of states the server sends; an unknown state shows its raw value. */
 private val REPORT_STATE_LABELS = mapOf(
-    "waiting" to "Waiting for a botanist",
+    "waiting" to "Waiting for a contributor",
     "recording" to "Recorded — awaiting admin review",
     "not_recorded" to "Not recorded — you can record it instead",
     "added" to "Added to the library",
@@ -239,10 +239,10 @@ private fun ReportCard(
                 Text("Where: $it", style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
             }
 
-            // Only for a community rejection; a single botanist's verdict stays private.
+            // Only for a community rejection; a single contributor's verdict stays private.
             if (report.state == "not_a_plant" && report.voterCount > 0) {
                 Text(
-                    "${report.voterCount} botanist${if (report.voterCount == 1) "" else "s"} agreed this is not a plant.",
+                    "${report.voterCount} contributor${if (report.voterCount == 1) "" else "s"} agreed this is not a plant.",
                     style = MaterialTheme.typography.bodySmall,
                     color = c.onSurfaceVariant
                 )
@@ -266,6 +266,9 @@ private fun ReportCard(
 /**
  * Two steps: (1) the form with current / new / confirm-new, (2) an "Are you sure?" dialog.
  * UI only: [onConfirmed] runs when the user taps "Yes, change it".
+ *
+ * NOTE: the server has no change-password endpoint yet (routes/auth.js only has register, login,
+ * logout and me), so there is nothing to call from the TODO below until one is added.
  */
 @Composable
 private fun ChangePasswordDialog(

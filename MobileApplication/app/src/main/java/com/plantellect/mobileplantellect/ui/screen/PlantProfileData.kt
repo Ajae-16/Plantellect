@@ -26,6 +26,8 @@ import java.util.Locale
 data class ProfilePerson(val name: String, val role: String?)
 
 data class ProfileDescription(
+    /** Needed to vote on this description (POST /api/plants/:id/descriptions/:descriptionId/vote). */
+    val descriptionId: String?,
     val author: String?,
     val specialization: String?,
     val isPrimary: Boolean,
@@ -42,7 +44,10 @@ data class PlantProfileData(
     val typeLabel: String,
     val toxicityLevel: String?,
     val cautionNote: String,
+    /** Upload date ready to show in the profile ("Oct 31, 2026"). */
     val added: String?,
+    /** Upload date exactly as the server sent it (dateUploaded / createdAt); the cards format it. */
+    val addedIso: String?,
     val quantity: String?,
     val images: List<String>,
     val descriptions: List<ProfileDescription>,
@@ -113,6 +118,7 @@ private fun parseProfile(id: String, root: JsonObject, vm: LibraryViewModel): Pl
     val descriptions = (root["descriptions"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.map { d ->
         val author = d["author"] as? JsonObject
         ProfileDescription(
+            descriptionId = d["descriptionId"].str(),
             author = author?.get("name").str(),
             specialization = author?.get("specialization").str(),
             isPrimary = d["isPrimary"].bool(),
@@ -133,6 +139,8 @@ private fun parseProfile(id: String, root: JsonObject, vm: LibraryViewModel): Pl
     }.mapNotNull { vm.resolveUrl(it) }
     if (images.isEmpty()) images = listOfNotNull(vm.resolveUrl(root["imageUrl"].str()))
 
+    val addedRaw = root["dateUploaded"].str() ?: root["createdAt"].str()
+
     return PlantProfileData(
         id = id,
         name = root["name"].str() ?: root["commonName"].str() ?: "Unnamed plant",
@@ -140,7 +148,8 @@ private fun parseProfile(id: String, root: JsonObject, vm: LibraryViewModel): Pl
         typeLabel = root["typeLabel"].str() ?: root["type"].str().orEmpty(),
         toxicityLevel = root["toxicityLevel"].str(),
         cautionNote = richToPlain(root["cautionNote"].str()),
-        added = formatDate(root["dateUploaded"].str() ?: root["createdAt"].str()),
+        added = formatDate(addedRaw),
+        addedIso = addedRaw,
         quantity = root["quantity"].str(),
         images = images,
         descriptions = descriptions,

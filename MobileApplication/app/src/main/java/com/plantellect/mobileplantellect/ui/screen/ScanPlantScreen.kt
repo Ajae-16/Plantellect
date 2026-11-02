@@ -103,6 +103,11 @@ fun ScanPlantScreen() {
     val vm: ScanViewModel = viewModel(factory = app.container.viewModelFactory)
     val uiState by vm.state.collectAsStateWithLifecycle()
 
+    /** "Help improve the ML" card state. Null = no offer for the photo on screen. */
+    val contribution by vm.contribution.collectAsStateWithLifecycle()
+    /** "Not identified?" report form state. */
+    val report by vm.report.collectAsStateWithLifecycle()
+
     /** Developer mode (Settings): percentages and technical status. Off = plain-language output. */
     val debug by app.container.settings.debugMode.collectAsStateWithLifecycle()
     /** Kept fresh every 10 s by ServerMonitor; offline scans never wait on the server. */
@@ -478,17 +483,49 @@ fun ScanPlantScreen() {
                             debug = debug,
                             onCancel = { vm.reset() }
                         )
-                        is ScanUiState.Done -> ResultCard(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            outcome = state.outcome,
-                            debug = debug,
-                            serverReachable = serverReachable,
-                            onScanAnyway = { vm.scanAnyway(state.uri) },
-                            onRetake = { vm.reset() },
-                            onRetry = { vm.retry(state.uri) }
-                        )
+                        is ScanUiState.Done -> {
+                            ResultCard(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                outcome = state.outcome,
+                                debug = debug,
+                                serverReachable = serverReachable,
+                                onScanAnyway = { vm.scanAnyway(state.uri) },
+                                onRetake = { vm.reset() },
+                                onRetry = { vm.retry(state.uri) }
+                            )
+
+                            // "Help improve the ML": only when the server offered this photo for training.
+                            contribution?.let { offer ->
+                                ContributionCard(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    ui = offer,
+                                    onHelp = { vm.contribute() },
+                                    onClose = { vm.dismissContribution() }
+                                )
+                            }
+
+                            // "Not identified?": needs the server, so it is hidden offline.
+                            val canReport = serverReachable && (
+                                    state.outcome is ScanOutcome.Server ||
+                                            state.outcome is ScanOutcome.OnDevice ||
+                                            state.outcome is ScanOutcome.NotAPlant
+                                    )
+                            if (canReport) {
+                                NotIdentifiedCard(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    ui = report,
+                                    onOpened = { vm.loadReportSummary() },
+                                    onSend = { note, location, allow -> vm.submitReport(note, location, allow) },
+                                    onWithdraw = { vm.withdrawReport() }
+                                )
+                            }
+                        }
                     }
                     Spacer(Modifier.height(24.dp))
                 }
@@ -956,7 +993,7 @@ private fun MatchList(
         }
         if (uncertain) {
             Text(
-                "We're not fully sure. A clearer photo of the leaves t will help.",
+                "We're not fully sure. A clearer photo of the leaves will help.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.onSurfaceVariant
             )

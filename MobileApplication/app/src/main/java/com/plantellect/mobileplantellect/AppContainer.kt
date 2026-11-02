@@ -11,6 +11,7 @@ import com.plantellect.mobileplantellect.data.logic.ApiCaller
 import com.plantellect.mobileplantellect.data.logic.NetworkMonitor
 import com.plantellect.mobileplantellect.data.logic.ServerMonitor
 import com.plantellect.mobileplantellect.data.remote.NetworkModule
+import com.plantellect.mobileplantellect.data.remote.ScanExtrasApi
 import com.plantellect.mobileplantellect.data.repository.AuthRepository
 import com.plantellect.mobileplantellect.data.repository.DiscoveryRepository
 import com.plantellect.mobileplantellect.data.repository.PlantRepository
@@ -23,6 +24,7 @@ import com.plantellect.mobileplantellect.viewmodel.RecordPlantViewModel
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 import com.plantellect.mobileplantellect.viewmodel.ProfileViewModel
 import com.plantellect.mobileplantellect.viewmodel.ScanViewModel
+import retrofit2.Retrofit
 
 /** Hand-wired dependencies (no Hilt) so there is nothing extra for the UI team to set up. */
 class AppContainer(app: Application) {
@@ -35,9 +37,28 @@ class AppContainer(app: Application) {
     /** Answers "can we reach the server right now?" (refreshed every 10 s while the app is open). */
     val serverMonitor = ServerMonitor(connectivity, network.okHttpClient, network.baseUrl)
 
+    /**
+     * "Help improve the ML" and the "Not identified?" report (contribute, summary, file, withdraw).
+     * Same OkHttp client as every other API, so it shares the session cookie. No JSON converter is
+     * needed: ScanExtrasApi returns raw ResponseBody and ScanRepository reads it with org.json.
+     */
+    private val scanExtrasApi: ScanExtrasApi = Retrofit.Builder()
+        .baseUrl(network.baseUrl)
+        .client(network.okHttpClient)
+        .build()
+        .create(ScanExtrasApi::class.java)
+
     val auth = AuthRepository(network.authApi, caller, session, network.cookieJar, app.contentResolver)
     val plants = PlantRepository(network.plantApi, caller, network.baseUrl)
-    val scans = ScanRepository(app, network.mlApi, caller, classifier, connectivity, serverMonitor)
+    val scans = ScanRepository(
+        context = app,
+        api = network.mlApi,
+        extras = scanExtrasApi,
+        caller = caller,
+        classifier = classifier,
+        network = connectivity,
+        server = serverMonitor
+    )
     val records = RecordRepository(app, network.recordApi, caller, network.json, network.baseUrl)
     val discoveries = DiscoveryRepository(app, network.discoveryApi, caller, network.json, network.baseUrl)
     val profiles = ProfileRepository(network.botanistApi, network.discoveryApi, caller)
