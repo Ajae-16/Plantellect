@@ -220,7 +220,7 @@ fun NotIdentifiedCard(
             }
 
             // Always visible at the cap, so the person can SEE why the option is unavailable.
-            if (atCap && ui.summary != null) {
+            if (atCap) {
                 Text(
                     "You have ${ui.summary.open} open report${if (ui.summary.open == 1) "" else "s"} of " +
                             "${ui.summary.limit}. One must be reviewed or withdrawn before you can file another.",

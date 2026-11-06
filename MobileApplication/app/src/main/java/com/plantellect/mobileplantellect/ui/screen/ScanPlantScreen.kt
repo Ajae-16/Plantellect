@@ -11,7 +11,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -93,7 +92,6 @@ import kotlin.math.roundToInt
 
 private const val TAG = "ScanPlantScreen"
 
-@OptIn(ExperimentalGetImage::class)
 @Composable
 fun ScanPlantScreen() {
     val context = LocalContext.current

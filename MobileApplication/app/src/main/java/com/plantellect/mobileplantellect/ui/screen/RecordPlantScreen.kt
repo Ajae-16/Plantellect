@@ -500,7 +500,7 @@ private fun Dropdown(
             isError = error != null,
             supportingText = error?.let { { Text(it) } },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
-            modifier = Modifier.menuAnchor().fillMaxWidth().errorTarget(errorKey),
+            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth().errorTarget(errorKey),
             shape = MaterialTheme.shapes.small
         )
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -1178,7 +1178,7 @@ fun RecordPlantScreen() {
 
             PlantSurface(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ScrollableTabRow(selectedTabIndex = f.tab, edgePadding = 8.dp, containerColor = Color.Transparent) {
+                    PrimaryScrollableTabRow(selectedTabIndex = f.tab, edgePadding = 8.dp, containerColor = Color.Transparent) {
                         listOf("New plant", "Add to existing", "Request change", "My submissions").forEachIndexed { i, label ->
                             Tab(selected = f.tab == i, onClick = { f.tab = i }, text = { Text(label) })
                         }
