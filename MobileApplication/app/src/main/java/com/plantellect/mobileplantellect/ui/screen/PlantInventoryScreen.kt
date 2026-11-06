@@ -5,6 +5,9 @@ import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 
 /** The library tab. The real screen is [LibraryScreen]; this just supplies the shared view model. */
 @Composable
-fun PlantInventoryScreen(vm: LibraryViewModel = libraryViewModel()) {
-    LibraryScreen(vm)
+fun PlantInventoryScreen(
+    vm: LibraryViewModel = libraryViewModel(),
+    onOpenBotanist: (String) -> Unit = {}
+) {
+    LibraryScreen(vm, onOpenBotanist)
 }

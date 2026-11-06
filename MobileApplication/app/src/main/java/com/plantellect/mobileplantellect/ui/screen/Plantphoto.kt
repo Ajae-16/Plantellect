@@ -11,18 +11,24 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocalFlorist
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.plantellect.mobileplantellect.PlantellectApp
+import com.plantellect.mobileplantellect.ui.theme.extraColors
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,7 +40,26 @@ import java.io.InputStream
 private val photoCache = LruCache<String, ImageBitmap>(48)
 
 /**
- * A plant's photo on top of the leaf placeholder (like the cards on the web home page).
+ * The one placeholder every plant card uses (Home, Library, plant profile, profile lists): the same soft
+ * green gradient as the website's card image box with a leaf in the middle. It is drawn here, in one place,
+ * so no card can end up with a different grey or letter tile behind a missing photo.
+ */
+@Composable
+fun PlantPlaceholder(modifier: Modifier = Modifier) {
+    val extra = MaterialTheme.extraColors
+    Box(
+        modifier.background(Brush.linearGradient(listOf(extra.photoBackdropStart, extra.photoBackdropEnd))),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Filled.LocalFlorist, contentDescription = null,
+            tint = extra.forest.copy(alpha = 0.55f), modifier = Modifier.size(40.dp)
+        )
+    }
+}
+
+/**
+ * A plant's photo on top of the [PlantPlaceholder] (like the cards on the web home page).
  * The placeholder shows while the photo loads, and stays if there is no photo or it fails.
  * The caller decides the size and shape (e.g. `.height(120.dp).clip(RoundedCornerShape(12.dp))`).
  * [placeholder] = false is for the full-screen viewer: no backdrop, no leaf.
@@ -58,11 +83,8 @@ fun PlantPhoto(
         }?.also { photoCache.put(url, it) }
     }
 
-    Box(
-        if (placeholder) modifier.background(MaterialTheme.colorScheme.surfaceVariant) else modifier,
-        contentAlignment = Alignment.Center
-    ) {
-        if (placeholder) LeafBadge(name, size = 56.dp)
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (placeholder) PlantPlaceholder(Modifier.fillMaxSize())
         AnimatedVisibility(visible = bmp != null, enter = fadeIn(), modifier = Modifier.fillMaxSize()) {
             bmp?.let { Image(it, contentDescription = name, modifier = Modifier.fillMaxSize(), contentScale = scale) }
         }

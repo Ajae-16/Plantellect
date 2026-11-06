@@ -1,21 +1,21 @@
 package com.plantellect.mobileplantellect.ui.screen
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.plantellect.mobileplantellect.data.logic.ProfileValidator
 import com.plantellect.mobileplantellect.data.remote.dto.AccountDto
+import com.plantellect.mobileplantellect.data.remote.dto.ProfilePlantDto
 import com.plantellect.mobileplantellect.ui.theme.LeafMedium
 import com.plantellect.mobileplantellect.viewmodel.ProfileViewModel
 import com.plantellect.mobileplantellect.viewmodel.ReportItem
@@ -57,35 +58,64 @@ private fun formatWhen(value: String?): String {
 }
 
 /**
- * @param account  the signed-in account from /me, or null when signed out (guest).
- * @param baseUrl  server origin (e.g. "https://host/"), used to open relative plant links.
- * @param onSignIn called from the guest prompt.
+ * ONE profile screen for everybody (the old "Profile" and "Contributor profile" screens, combined).
+ *
+ * Your own profile: identity, Change password, and two tabs: My reports | My contributions.
+ * Anyone else's profile (tap a contributor's name anywhere): the same layout, read-only, with their
+ * Contributions and the plants they reported. The Library, the plant profile, Home and Discoveries all
+ * open it through the "profile/{accountId}" route.
+ *
+ * @param account       the signed-in account from /me, or null when signed out (guest).
+ * @param myAccountId   the signed-in account's id.
+ * @param viewAccountId whose profile to show. Null or equal to [myAccountId] = your own profile.
+ * @param baseUrl       server origin, used to open relative plant links.
+ * @param onOpenPlant   opens a plant inside the app (the plant profile).
  */
 @Composable
 fun ProfileScreen(
     account: AccountDto?,
     vm: ProfileViewModel,
     baseUrl: String,
-    onSignIn: () -> Unit
+    onSignIn: () -> Unit,
+    myAccountId: String? = account?.accountId,
+    viewAccountId: String? = null,
+    onOpenPlant: (String) -> Unit = {}
 ) {
     val c = MaterialTheme.colorScheme
     val s by vm.state.collectAsState()
+    val b by vm.botanist.collectAsState()
+    val edit by vm.edit.collectAsState()
     val uriHandler = LocalUriHandler.current
+
+    val isOwn = viewAccountId == null || viewAccountId == myAccountId
+    val target = if (isOwn) myAccountId else viewAccountId
 
     var showChangePassword by remember { mutableStateOf(false) }
     var passwordNotice by remember { mutableStateOf<String?>(null) }
+    var tab by rememberSaveable(target) { mutableIntStateOf(0) }
 
     fun open(url: String) {
         val full = if (url.startsWith("http")) url else baseUrl.trimEnd('/') + "/" + url.trimStart('/')
         uriHandler.openUri(full)
     }
 
-    // Reports are only fetched when signed in, so a guest never triggers a failing call.
-    LaunchedEffect(account != null) { if (account != null) { vm.load(1); vm.loadOwnProfile() } }
-    val edit by vm.edit.collectAsState()
+    // Own: reports + own profile refresh. Anyone: the public profile (photo, counts, plants).
+    // A person with nothing public simply gets no profile data (the server answers 404).
+    LaunchedEffect(account != null, target, isOwn) {
+        if (isOwn && account != null) { vm.load(1); vm.loadOwnProfile() }
+        target?.let { if (account != null) vm.loadBotanist(it) }
+    }
+
+    // The view model is shared: never show the previous person's profile for a frame while this one loads.
+    val p = b.profile?.takeIf { it.accountId == target }
 
     PlantellectPage {
-        PageHeading("Personal space", "Your profile", "Your account and the plants you have reported.")
+        PageHeading(
+            if (isOwn) "Personal space" else "Contributor",
+            if (isOwn) "Your profile" else (p?.name ?: "Profile"),
+            if (isOwn) "Your account, your reports and the plants you recorded."
+            else "Their contributions and the plants they reported."
+        )
 
         if (account == null) {
             PlantSurface(Modifier.fillMaxWidth()) {
@@ -95,7 +125,7 @@ fun ProfileScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        "Sign in to see your profile and reports.",
+                        "Sign in to see profiles and reports.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = c.onSurface,
                         textAlign = TextAlign.Center
@@ -106,100 +136,128 @@ fun ProfileScreen(
             return@PlantellectPage
         }
 
-        // ---- identity: username, email, roles ----
-        PlantSurface(Modifier.fillMaxWidth()) {
-            Row(
-                Modifier.fillMaxWidth().padding(20.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(shape = LeafMedium, color = c.primaryContainer, modifier = Modifier.size(64.dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            account.username.take(2).uppercase(),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = c.onPrimaryContainer
+        // ---- identity ----
+        if (isOwn) {
+            PlantSurface(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ProfilePicture(
+                            url = vm.photoUrl(account.photoUrl),
+                            name = account.username,
+                            initials = account.username.take(2).uppercase()
                         )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(account.username.ifBlank { "-" }, style = MaterialTheme.typography.titleLarge, color = c.onSurface)
+                            Text(account.email.ifBlank { "-" }, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+                            Text(
+                                "Roles: " + (account.roles.joinToString(", ").ifEmpty { "None" }),
+                                style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant
+                            )
+                        }
+                    }
+                    account.bio?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = c.onSurface)
                     }
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            }
+        } else {
+            if (b.loading && p == null) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+            if (!b.loading && p == null) {
+                PlantSurface(Modifier.fillMaxWidth()) {
                     Text(
-                        account.username.ifBlank { "-" },
-                        style = MaterialTheme.typography.titleLarge,
-                        color = c.onSurface
+                        "This profile is not available. A person's profile appears once they have a plant in the library.",
+                        Modifier.padding(20.dp),
+                        style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant
                     )
-                    Text(
-                        account.email.ifBlank { "-" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = c.onSurfaceVariant
-                    )
-                    Text(
-                        "Roles: " + (account.roles.joinToString(", ").ifEmpty { "None" }),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = c.onSurfaceVariant
-                    )
+                }
+            }
+            p?.let { other ->
+                PlantSurface(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            ProfilePicture(
+                                url = vm.photoUrl(other.photoUrl),
+                                name = other.name,
+                                initials = other.name.take(2).uppercase()
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(other.name, style = MaterialTheme.typography.titleLarge, color = c.onSurface)
+                                if (other.username.isNotBlank())
+                                    Text("@${other.username}", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+                                val role = when (other.role) {
+                                    "admin" -> "Administrator"
+                                    "superadmin" -> "Superadministrator"
+                                    else -> null
+                                }
+                                role?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = c.primary) }
+                                other.specialization?.takeIf { it.isNotBlank() }?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        other.bio?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, style = MaterialTheme.typography.bodyMedium, color = c.onSurface)
+                        }
+                    }
                 }
             }
         }
 
-        // ---- security: change password ----
-        SectionTitle("Security")
-
-        OutlinedButton(onClick = { passwordNotice = null; vm.clearEditMessages(); showChangePassword = true }) {
-            Text("Change password")
+        // ---- counts (anyone with a public profile) ----
+        p?.let {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Stat("Recorded", it.metrics.verifiedPlants, Modifier.weight(1f))
+                Stat("Reviewed", it.metrics.reviewedPlants, Modifier.weight(1f))
+                Stat("Reported", it.metrics.reportedPlants, Modifier.weight(1f))
+            }
         }
 
-        passwordNotice?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = c.primary)
+        // ---- security: own only ----
+        if (isOwn) {
+            SectionTitle("Security")
+            OutlinedButton(onClick = { passwordNotice = null; vm.clearEditMessages(); showChangePassword = true }) {
+                Text("Change password")
+            }
+            passwordNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.primary) }
         }
 
-        // ---- my reports ----
-        SectionTitle("My reports")
-
-        Text(
-            if (s.total == 0 && !s.loading)
-                "You have not reported any unidentified plants yet. You can do that from the Scan page."
-            else "${s.total} report${if (s.total == 1) "" else "s"} filed.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = c.onSurfaceVariant
-        )
-
-        s.notice?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = c.error)
+        // ---- tabs ----
+        // Own:    My reports | My contributions
+        // Other:  Contributions | Reported plants
+        val canRecord = "record_plant" in account.permissions
+        val tabs = buildList<Pair<String, String>> {
+            if (isOwn) {
+                add("reports" to "My reports (${s.total})")
+                if (p != null || canRecord) add("contributions" to "My contributions (${p?.contributions?.size ?: 0})")
+            } else if (p != null) {
+                add("contributions" to "Contributions (${p.contributions.size})")
+                add("reported" to "Reported plants (${p.reported.size})")
+            }
         }
-
-        if (s.loading && s.reports.isEmpty()) {
-            CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
-        }
-
-        s.reports.forEach { report ->
-            ReportCard(
-                report = report,
-                withdrawing = s.withdrawingId == report.requestId,
-                onWithdraw = { vm.withdraw(report.requestId) },
-                onOpen = ::open
-            )
-        }
-
-        if (s.total > s.pageSize) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(onClick = vm::prevPage, enabled = s.hasPrev && !s.loading) { Text("Previous") }
-                Text(
-                    "Page ${s.page} of ${s.pageCount}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = c.onSurfaceVariant
+        if (tabs.isNotEmpty()) {
+            val selected = tab.coerceIn(0, tabs.lastIndex)
+            TabRow(selectedTabIndex = selected) {
+                tabs.forEachIndexed { i, (_, label) ->
+                    Tab(selected = selected == i, onClick = { tab = i }, text = { Text(label, maxLines = 1) })
+                }
+            }
+            when (tabs[selected].first) {
+                "reports" -> MyReportsSection(s.total, s.loading, s.notice, s.reports, s.withdrawingId,
+                    s.page, s.pageCount, s.pageSize, s.hasPrev, s.hasNext,
+                    onWithdraw = vm::withdraw, onPrev = vm::prevPage, onNext = vm::nextPage,
+                    onOpenPlant = onOpenPlant, onOpenWeb = ::open)
+                "contributions" -> PlantList(
+                    p?.contributions.orEmpty(),
+                    if (isOwn) "You have not recorded any plants yet." else "Nothing recorded yet.",
+                    onOpenPlant
                 )
-                OutlinedButton(onClick = vm::nextPage, enabled = s.hasNext && !s.loading) { Text("Next") }
+                "reported" -> PlantList(p?.reported.orEmpty(), "No reported plants yet.", onOpenPlant)
             }
         }
     }
 
     // Dialogs live outside the page column so they never add spacing to it.
-    if (showChangePassword && account != null) {
+    if (showChangePassword && account != null && isOwn) {
         ChangePasswordDialog(
             busy = edit.changingPassword,
             serverError = edit.passwordMessage?.takeIf { it.isError }?.text,
@@ -212,6 +270,99 @@ fun ProfileScreen(
                 }
             }
         )
+    }
+}
+
+/** Profile picture in the app's leaf shape; initials when there is no photo. */
+@Composable
+private fun ProfilePicture(url: String?, name: String, initials: String) {
+    val c = MaterialTheme.colorScheme
+    Surface(shape = LeafMedium, color = c.primaryContainer, modifier = Modifier.size(72.dp)) {
+        Box(contentAlignment = Alignment.Center) {
+            if (url != null) PlantPhoto(url, name, Modifier.fillMaxSize(), maxPx = 256, placeholder = false)
+            else Text(initials, style = MaterialTheme.typography.titleLarge, color = c.onPrimaryContainer)
+        }
+    }
+}
+
+@Composable
+private fun Stat(label: String, value: Int, modifier: Modifier) {
+    Surface(modifier, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("$value", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun PlantList(plants: List<ProfilePlantDto>, empty: String, onOpen: (String) -> Unit) {
+    val c = MaterialTheme.colorScheme
+    if (plants.isEmpty()) {
+        Text(empty, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        plants.forEach { pl ->
+            PlantSurface(Modifier.fillMaxWidth().clickable { onOpen(pl.id) }) {
+                Row(
+                    Modifier.fillMaxWidth().padding(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    PlantPhoto(pl.imageUrl, pl.name, Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)))
+                    Column {
+                        Text(pl.name, style = MaterialTheme.typography.titleMedium, color = c.onSurface)
+                        if (pl.scientificName.isNotBlank())
+                            Text(pl.scientificName, style = MaterialTheme.typography.bodySmall,
+                                fontStyle = FontStyle.Italic, color = c.onSurfaceVariant)
+                        if (pl.typeLabel.isNotBlank())
+                            Text(pl.typeLabel, style = MaterialTheme.typography.labelMedium, color = c.primary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MyReportsSection(
+    total: Int, loading: Boolean, notice: String?, reports: List<ReportItem>, withdrawingId: String?,
+    page: Int, pageCount: Int, pageSize: Int, hasPrev: Boolean, hasNext: Boolean,
+    onWithdraw: (String) -> Unit, onPrev: () -> Unit, onNext: () -> Unit,
+    onOpenPlant: (String) -> Unit, onOpenWeb: (String) -> Unit
+) {
+    val c = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            if (total == 0 && !loading)
+                "You have not reported any unidentified plants yet. You can do that from the Scan page."
+            else "$total report${if (total == 1) "" else "s"} filed.",
+            style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant
+        )
+        notice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.error) }
+        if (loading && reports.isEmpty()) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+
+        reports.forEach { report ->
+            ReportCard(
+                report = report,
+                withdrawing = withdrawingId == report.requestId,
+                onWithdraw = { onWithdraw(report.requestId) },
+                onOpen = { url ->
+                    // Open the plant inside the app when the link carries a plantId, else the web page.
+                    val id = url.substringAfter("plantId=", "").takeIf { it.isNotBlank() }
+                    if (id != null) onOpenPlant(id) else onOpenWeb(url)
+                }
+            )
+        }
+
+        if (total > pageSize) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onPrev, enabled = hasPrev && !loading) { Text("Previous") }
+                Text("Page $page of $pageCount", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+                OutlinedButton(onClick = onNext, enabled = hasNext && !loading) { Text("Next") }
+            }
+        }
     }
 }
 
@@ -232,11 +383,7 @@ private fun ReportCard(
                     color = c.onSurface,
                     modifier = Modifier.weight(1f)
                 )
-                Text(
-                    formatWhen(report.submittedAt),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = c.onSurfaceVariant
-                )
+                Text(formatWhen(report.submittedAt), style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
             }
 
             report.note?.takeIf { it.isNotBlank() }?.let {

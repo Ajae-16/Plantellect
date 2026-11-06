@@ -80,7 +80,9 @@ class DiscoveryRepository(
     suspend fun resolve(id: String) = act { api.resolve(id) }
     suspend fun reopen(id: String) = act { api.reopen(id) }
     suspend fun reinstate(id: String) = act { api.reinstate(id) }
-    suspend fun vote(id: String) = act { api.vote(id) }
+
+    /** Toggle: casts the vote, or takes it back when this account already voted. See [VoteResultDto.retracted]. */
+    suspend fun toggleVote(id: String): ApiResult<VoteResultDto> = caller.call { api.vote(id) }
     suspend fun disqualify(id: String, reason: String) = act { api.disqualify(id, DisqualifyRequest(reason)) }
 
     private suspend fun act(block: suspend () -> Response<MessageDto>) = caller.call(block)

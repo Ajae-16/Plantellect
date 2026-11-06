@@ -57,12 +57,14 @@ import kotlinx.coroutines.delay
 /**
  * Home: quick actions, an auto-scrolling row of plant cards, and a short list below it.
  * Tapping a card opens that plant's profile directly. Pull down to refresh.
+ * [onOpenBotanist] opens a contributor's profile when their name is tapped inside the plant profile.
  */
 @Composable
 fun HomeScreen(
     onNavigateToScan: () -> Unit,
     onNavigateToInventory: () -> Unit,
-    vm: LibraryViewModel = libraryViewModel()
+    vm: LibraryViewModel = libraryViewModel(),
+    onOpenBotanist: (String) -> Unit = {}
 ) {
     val ui by vm.ui.collectAsState()
     var open by remember { mutableStateOf<Pair<String, String>?>(null) }   // plant id to name
@@ -145,7 +147,14 @@ fun HomeScreen(
     }
 
     open?.let { (id, name) ->
-        PlantProfileDialog(id, name, heroUrl = null, vm = vm, onClose = { open = null })
+        PlantProfileDialog(
+            plantId = id,
+            fallbackName = name,
+            heroUrl = null,
+            vm = vm,
+            onOpenBotanist = onOpenBotanist,
+            onClose = { open = null }
+        )
     }
 }
 

@@ -542,7 +542,7 @@ async function getDiscoveryImageForReview(imageId) {
  * approval  or by a `reject` denial leaves the queue for
  * good, and a `revise`-denied one stays in it as live work.
  */
-async function listPendingDiscoveries({ page, pageSize } = {}) {
+async function listPendingDiscoveries({ page, pageSize, accountId } = {}) {
     const paging = parsePaging({ page, pageSize });
     const activeContributors = await countActiveContributors();
     const threshold = effectiveNotAPlantThreshold(activeContributors);
@@ -568,7 +568,11 @@ disqualifier.username AS disqualifierName,
                 -- about the one thing it exists to coordinate.
                 holder.status AS holderStatus,
                 (SELECT r.status FROM approval_requests r WHERE r.requestId = ar.recordRequestId) AS recordStatus,
-               (SELECT COUNT(*) FROM discovery_votes v WHERE v.requestId = ar.requestId) AS voteCount
+               (SELECT COUNT(*) FROM discovery_votes v WHERE v.requestId = ar.requestId) AS voteCount,
+               -- Did the account asking vote "not a plant" on this report? The client needs it to show
+               -- "Undo vote" (and to keep Claim disabled) without remembering anything itself.
+               EXISTS (SELECT 1 FROM discovery_votes mv
+                       WHERE mv.requestId = ar.requestId AND mv.accountId = ?) AS myVote
         FROM approval_requests ar
         JOIN accounts a ON a.accountId = ar.accountId
         JOIN roles rl ON rl.roleId = a.roleId
@@ -586,7 +590,8 @@ disqualifier.username AS disqualifierName,
                   (ar.resolvedBy IS NOT NULL) ASC,
                   ar.createdAt DESC
          LIMIT ? OFFSET ?`,
-        [DISCOVERY_TYPE, paging.pageSize, paging.offset]
+        // The first ? is the myVote check in the SELECT list, so accountId comes first.
+        [accountId || '', DISCOVERY_TYPE, paging.pageSize, paging.offset]
     );
     // LEFT JOIN, or an INNER JOIN: an unclaimed report has claimedBy = NULL and no
 // matching holder row, so an inner join drops exactly the reports the queue exists
@@ -678,6 +683,8 @@ function mapDiscoveryCard(row, images, options = {}) {
         disqualifyReason: row.disqualifyReason || null,
         disqualifierName: row.disqualifierName || null,
         voteCount: Number(row.voteCount || 0),
+        // Only the contributor queue selects myVote; every other caller of this mapper gets false.
+        myVote: Boolean(row.myVote),
         notAPlantThreshold: options.threshold ?? null,
         activeContributors: options.activeContributors ?? null,
         claimable: !claimLive && row.status === 'pending' &&

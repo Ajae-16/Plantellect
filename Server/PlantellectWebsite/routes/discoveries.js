@@ -217,7 +217,9 @@ router.get('/', requirePermission('record_plant'), async (req, res) => {
     try {
         res.json(await listPendingDiscoveries({
             page: req.query.page,
-            pageSize: req.query.pageSize
+            pageSize: req.query.pageSize,
+            // Lets each card say whether THIS contributor already voted "not a plant" on it.
+            accountId: req.session.accountId
         }));
     } catch (err) {
         console.error('List discoveries error:', err.message);

@@ -1,117 +1,1 @@
-package com.plantellect.mobileplantellect.data.logic
-
-import com.plantellect.mobileplantellect.data.remote.dto.PlantProfileData
-import com.plantellect.mobileplantellect.data.remote.dto.ProfileDescription
-import com.plantellect.mobileplantellect.data.remote.dto.ProfilePerson
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.doubleOrNull
-import java.text.DateFormat
-import java.text.SimpleDateFormat
-import java.util.Locale
-
-// uses / benefits / harmful / cautionNote keep the contributor's typed marks (**bold**, ==highlight== ...):
-// the screen draws them with RichTextView, cards shorten them with RichText.plain().
-//
-// Turns the raw GET /api/plants/:plantId JSON tree into PlantProfileData. Read from the tree on
-// purpose (like plant-profile.js), so a field the server adds or reshapes cannot break the profile.
-
-private fun JsonElement?.str(): String? = (this as? JsonPrimitive)?.contentOrNull
-private fun JsonElement?.num(): Double? = (this as? JsonPrimitive)?.doubleOrNull
-private fun JsonElement?.bool(): Boolean = (this as? JsonPrimitive)?.booleanOrNull == true
-
-/** [resolveUrl] turns a server path like /resource/plant-images/... into an absolute address. */
-fun parseProfile(id: String, root: JsonObject, resolveUrl: (String?) -> String?): PlantProfileData {
-    val descriptions = (root["descriptions"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.map { d ->
-        val author = d["author"] as? JsonObject
-        ProfileDescription(
-            descriptionId = d["descriptionId"].str(),
-            author = author?.get("name").str(),
-            specialization = author?.get("specialization").str(),
-            isPrimary = d["isPrimary"].bool(),
-            looks = describeParts(d["parts"] as? JsonObject),
-            uses = d["uses"].str().orEmpty(),
-            benefits = d["benefits"].str().orEmpty(),
-            harmful = d["harmful"].str().orEmpty()
-        )
-    }
-
-    var images = (root["images"] as? JsonArray).orEmpty().mapNotNull { img ->
-        when (img) {
-            is JsonObject -> img["imageUrl"].str() ?: img["url"].str()
-            ?: (img["imageId"].str() ?: img["id"].str())?.let { "/api/plants/$id/images/$it" }
-            is JsonPrimitive -> img.contentOrNull
-            else -> null
-        }
-    }.mapNotNull { resolveUrl(it) }
-    if (images.isEmpty()) images = listOfNotNull(resolveUrl(root["imageUrl"].str()))
-
-    val addedRaw = root["dateUploaded"].str() ?: root["createdAt"].str()
-
-    return PlantProfileData(
-        id = id,
-        name = root["name"].str() ?: root["commonName"].str() ?: "Unnamed plant",
-        scientificName = root["scientificName"].str().orEmpty(),
-        typeLabel = root["typeLabel"].str() ?: root["type"].str().orEmpty(),
-        toxicityLevel = root["toxicityLevel"].str(),
-        cautionNote = root["cautionNote"].str().orEmpty(),
-        added = formatDate(addedRaw),
-        addedIso = addedRaw,
-        quantity = root["quantity"].str(),
-        images = images,
-        descriptions = descriptions,
-        recordedBy = people(root["recordedBy"]),
-        reviewedBy = people(root["reviewedBy"]),
-        reportedBy = people(root["reportedBy"])
-    )
-}
-
-/** A row may be an array of { name, accountId, role }, one object, or a joined string. */
-private fun people(e: JsonElement?): List<ProfilePerson> = when (e) {
-    null, is JsonNull -> emptyList()
-    is JsonArray -> e.flatMap { people(it) }
-    is JsonObject -> {
-        val n = e["name"].str()
-        if (n.isNullOrBlank()) emptyList() else listOf(ProfilePerson(n, e["role"].str() ?: e["profileType"].str()))
-    }
-    is JsonPrimitive -> e.content.split(Regex("\\s*[;,]\\s*")).map { it.trim() }.filter { it.isNotEmpty() }.map { ProfilePerson(it, null) }
-}
-
-private fun formatDate(raw: String?): String? {
-    if (raw.isNullOrBlank() || raw.length < 10) return null
-    return runCatching {
-        val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(raw.substring(0, 10)) ?: return null
-        DateFormat.getDateInstance(DateFormat.MEDIUM).format(d)
-    }.getOrNull()
-}
-
-private fun number(d: Double) = if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()
-
-private fun range(min: Double?, max: Double?, note: String?, unit: String): String {
-    val n = note?.takeIf { it.isNotBlank() }
-    if (min == null && max == null) return n.orEmpty()
-    if (min != null && max != null && min != max) {
-        return number(min) + "–" + number(max) + unit + (if (n != null) " ($n)" else "")
-    }
-    val only = min ?: max!!
-    return number(only) + unit + (if (n != null) " — $n" else "")
-}
-
-/** "What it looks like", built from the contributor's measurements (describeParts in plant-profile.js). */
-private fun describeParts(parts: JsonObject?): String {
-    if (parts == null) return ""
-    val lines = mutableListOf<String>()
-    val height = range(parts["heightMinCm"].num(), parts["heightMaxCm"].num(), parts["heightNote"].str(), " cm")
-    val width = range(parts["widthMinCm"].num(), parts["widthMaxCm"].num(), parts["widthNote"].str(), " cm")
-    if (height.isNotEmpty()) lines += "Height: $height"
-    if (width.isNotEmpty()) lines += "Width: $width"
-    parts["color"].str()?.takeIf { it.isNotBlank() }?.let { lines += "Color: $it" }
-    parts["shape"].str()?.takeIf { it.isNotBlank() }?.let { lines += "Shape: $it" }
-    parts["texture"].str()?.takeIf { it.isNotBlank() }?.let { lines += "Texture: $it" }
-    return lines.joinToString("\n")
-}
+package com.plantellect.mobileplantellect.data.logicimport com.plantellect.mobileplantellect.data.remote.dto.PlantProfileDataimport com.plantellect.mobileplantellect.data.remote.dto.ProfileDescriptionimport com.plantellect.mobileplantellect.data.remote.dto.ProfilePersonimport kotlinx.serialization.json.JsonArrayimport kotlinx.serialization.json.JsonElementimport kotlinx.serialization.json.JsonNullimport kotlinx.serialization.json.JsonObjectimport kotlinx.serialization.json.JsonPrimitiveimport kotlinx.serialization.json.booleanOrNullimport kotlinx.serialization.json.contentOrNullimport kotlinx.serialization.json.doubleOrNullimport java.text.DateFormatimport java.text.SimpleDateFormatimport java.util.Locale// uses / benefits / harmful / cautionNote keep the contributor's typed marks (**bold**, ==highlight== ...):// the screen draws them with RichTextView, cards shorten them with RichText.plain().//// Turns the raw GET /api/plants/:plantId JSON tree into PlantProfileData. Read from the tree on// purpose (like plant-profile.js), so a field the server adds or reshapes cannot break the profile.private fun JsonElement?.str(): String? = (this as? JsonPrimitive)?.contentOrNullprivate fun JsonElement?.num(): Double? = (this as? JsonPrimitive)?.doubleOrNullprivate fun JsonElement?.bool(): Boolean = (this as? JsonPrimitive)?.booleanOrNull == true/** [resolveUrl] turns a server path like /resource/plant-images/... into an absolute address. */fun parseProfile(id: String, root: JsonObject, resolveUrl: (String?) -> String?): PlantProfileData {    val descriptions = (root["descriptions"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.map { d ->        val author = d["author"] as? JsonObject        ProfileDescription(            descriptionId = d["descriptionId"].str(),            author = author?.get("name").str(),            // The server should send author.accountId and author.photoUrl; the alternatives are tolerated.            authorId = author?.get("accountId").str() ?: author?.get("id").str(),            authorPhotoUrl = resolveUrl(                author?.get("photoUrl").str() ?: author?.get("profilePhotoUrl").str()            ),            specialization = author?.get("specialization").str(),            isPrimary = d["isPrimary"].bool(),            looks = describeParts(d["parts"] as? JsonObject),            uses = d["uses"].str().orEmpty(),            benefits = d["benefits"].str().orEmpty(),            harmful = d["harmful"].str().orEmpty()        )    }    var images = (root["images"] as? JsonArray).orEmpty().mapNotNull { img ->        when (img) {            is JsonObject -> img["imageUrl"].str() ?: img["url"].str()            ?: (img["imageId"].str() ?: img["id"].str())?.let { "/api/plants/$id/images/$it" }            is JsonPrimitive -> img.contentOrNull            else -> null        }    }.mapNotNull { resolveUrl(it) }    if (images.isEmpty()) images = listOfNotNull(resolveUrl(root["imageUrl"].str()))    val addedRaw = root["dateUploaded"].str() ?: root["createdAt"].str()    return PlantProfileData(        id = id,        name = root["name"].str() ?: root["commonName"].str() ?: "Unnamed plant",        scientificName = root["scientificName"].str().orEmpty(),        typeLabel = root["typeLabel"].str() ?: root["type"].str().orEmpty(),        toxicityLevel = root["toxicityLevel"].str(),        cautionNote = root["cautionNote"].str().orEmpty(),        added = formatDate(addedRaw),        addedIso = addedRaw,        quantity = root["quantity"].str(),        images = images,        descriptions = descriptions,        recordedBy = people(root["recordedBy"]),        reviewedBy = people(root["reviewedBy"]),        reportedBy = people(root["reportedBy"])    )}/** A row may be an array of { name, accountId, role }, one object, or a joined string (no ids then: not tappable). */private fun people(e: JsonElement?): List<ProfilePerson> = when (e) {    null, is JsonNull -> emptyList()    is JsonArray -> e.flatMap { people(it) }    is JsonObject -> {        val n = e["name"].str()        if (n.isNullOrBlank()) emptyList()        else listOf(            ProfilePerson(                name = n,                role = e["role"].str() ?: e["profileType"].str(),                accountId = e["accountId"].str() ?: e["id"].str()            )        )    }    is JsonPrimitive -> e.content.split(Regex("\\s*[;,]\\s*")).map { it.trim() }.filter { it.isNotEmpty() }.map { ProfilePerson(it, null) }}private fun formatDate(raw: String?): String? {    if (raw.isNullOrBlank() || raw.length < 10) return null    return runCatching {        val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(raw.substring(0, 10)) ?: return null        DateFormat.getDateInstance(DateFormat.MEDIUM).format(d)    }.getOrNull()}private fun number(d: Double) = if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()private fun range(min: Double?, max: Double?, note: String?, unit: String): String {    val n = note?.takeIf { it.isNotBlank() }    if (min == null && max == null) return n.orEmpty()    if (min != null && max != null && min != max) {        return number(min) + "–" + number(max) + unit + (if (n != null) " ($n)" else "")    }    val only = min ?: max!!    return number(only) + unit + (if (n != null) " — $n" else "")}/** "What it looks like", built from the contributor's measurements (describeParts in plant-profile.js). */private fun describeParts(parts: JsonObject?): String {    if (parts == null) return ""    val lines = mutableListOf<String>()    val height = range(parts["heightMinCm"].num(), parts["heightMaxCm"].num(), parts["heightNote"].str(), " cm")    val width = range(parts["widthMinCm"].num(), parts["widthMaxCm"].num(), parts["widthNote"].str(), " cm")    if (height.isNotEmpty()) lines += "Height: $height"    if (width.isNotEmpty()) lines += "Width: $width"    parts["color"].str()?.takeIf { it.isNotBlank() }?.let { lines += "Color: $it" }    parts["shape"].str()?.takeIf { it.isNotBlank() }?.let { lines += "Shape: $it" }    parts["texture"].str()?.takeIf { it.isNotBlank() }?.let { lines += "Texture: $it" }    return lines.joinToString("\n")}

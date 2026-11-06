@@ -76,7 +76,36 @@ class DiscoveryViewModel(
     fun resolve(id: String) = act(id, "Marked resolved") { repo.resolve(it) }
     fun reopen(id: String) = act(id, "Reopened") { repo.reopen(it) }
     fun reinstate(id: String) = act(id, "Reinstated") { repo.reinstate(it) }
-    fun vote(id: String) = act(id, "Vote recorded") { repo.vote(it) }
+    /** Casts your "not a plant" vote. */
+    fun vote(id: String) = voteToggle(id, wantVoted = true)
+
+    /** Takes your vote back. The card's myVote turns false after the refresh, which enables Claim again. */
+    fun unvote(id: String) = voteToggle(id, wantVoted = false)
+
+    /**
+     * The server has ONE vote route that toggles (cast / retract), and its answer says which one it did.
+     * If it did the opposite of what the person asked for (the card on screen was out of date), toggle once
+     * more so the result is what they tapped for.
+     */
+    private fun voteToggle(id: String, wantVoted: Boolean) = run {
+        when (val r = repo.toggleVote(id)) {
+            is ApiResult.Success -> {
+                var result = r.value
+                if (result.retracted == wantVoted && !result.rejected) {
+                    (repo.toggleVote(id) as? ApiResult.Success)?.let { result = it.value }
+                }
+                notice(
+                    when {
+                        result.rejected -> "Vote recorded. Enough contributors agreed, so this report was closed as not a plant."
+                        wantVoted -> "Vote recorded"
+                        else -> "Vote removed"
+                    }
+                )
+                refresh()
+            }
+            is ApiResult.Failure -> fail(r.error)
+        }
+    }
     fun disqualify(id: String, reason: String) = act(id, "Recorded as not a plant") { repo.disqualify(it, reason) }
 
     fun ownerImageUrl(imageId: String) = repo.ownerImageUrl(imageId)

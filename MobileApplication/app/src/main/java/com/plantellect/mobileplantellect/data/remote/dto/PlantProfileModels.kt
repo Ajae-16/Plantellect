@@ -1,46 +1,1 @@
-package com.plantellect.mobileplantellect.data.remote.dto
-
-// What GET /api/plants/:plantId returns, as the profile screen needs it. Built by
-// data/logic/PlantProfileParser.kt from the raw JSON tree (like plant-profile.js reads it),
-// so a field the server adds, or sends in another shape, cannot break the screen.
-
-data class ProfilePerson(val name: String, val role: String?)
-
-data class ProfileDescription(
-    /** Needed to vote on this description (POST /api/plants/:id/descriptions/:descriptionId/vote). */
-    val descriptionId: String?,
-    val author: String?,
-    val specialization: String?,
-    val isPrimary: Boolean,
-    val looks: String,       // built from the measurements
-    /** uses, benefits and harmful keep the contributor's typed marks; draw them with RichTextView. */
-    val uses: String,
-    val benefits: String,
-    val harmful: String
-)
-
-data class PlantProfileData(
-    val id: String,
-    val name: String,
-    val scientificName: String,
-    val typeLabel: String,
-    val toxicityLevel: String?,
-    val cautionNote: String,
-    /** Upload date ready to show in the profile ("Oct 31, 2026"). */
-    val added: String?,
-    /** Upload date exactly as the server sent it (dateUploaded / createdAt); the cards format it. */
-    val addedIso: String?,
-    val quantity: String?,
-    val images: List<String>,
-    val descriptions: List<ProfileDescription>,
-    val recordedBy: List<ProfilePerson>,
-    val reviewedBy: List<ProfilePerson>,
-    val reportedBy: List<ProfilePerson>
-)
-
-sealed interface ProfileLoad {
-    data object Loading : ProfileLoad
-    data class Ready(val data: PlantProfileData) : ProfileLoad
-    data object NotFound : ProfileLoad
-    data object Failed : ProfileLoad
-}
+package com.plantellect.mobileplantellect.data.remote.dto// What GET /api/plants/:plantId returns, as the profile screen needs it. Built by// data/logic/PlantProfileParser.kt from the raw JSON tree (like plant-profile.js reads it),// so a field the server adds, or sends in another shape, cannot break the screen./** [accountId] makes the name tappable (opens that person's profile). Null = plain text. */data class ProfilePerson(val name: String, val role: String?, val accountId: String? = null)data class ProfileDescription(    /** Needed to vote on this description (POST /api/plants/:id/descriptions/:descriptionId/vote). */    val descriptionId: String?,    val author: String?,    /** The author's account id: makes the name tappable. */    val authorId: String?,    /** Absolute URL of the author's profile picture, or null. */    val authorPhotoUrl: String?,    val specialization: String?,    val isPrimary: Boolean,    val looks: String,       // built from the measurements    /** uses, benefits and harmful keep the contributor's typed marks; draw them with RichTextView. */    val uses: String,    val benefits: String,    val harmful: String)data class PlantProfileData(    val id: String,    val name: String,    val scientificName: String,    val typeLabel: String,    val toxicityLevel: String?,    val cautionNote: String,    /** Upload date ready to show in the profile ("Oct 31, 2026"). */    val added: String?,    /** Upload date exactly as the server sent it (dateUploaded / createdAt); the cards format it. */    val addedIso: String?,    val quantity: String?,    val images: List<String>,    val descriptions: List<ProfileDescription>,    val recordedBy: List<ProfilePerson>,    val reviewedBy: List<ProfilePerson>,    val reportedBy: List<ProfilePerson>)sealed interface ProfileLoad {    data object Loading : ProfileLoad    data class Ready(val data: PlantProfileData) : ProfileLoad    data object NotFound : ProfileLoad    data object Failed : ProfileLoad}

@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.plantellect.mobileplantellect.data.logic.*
+import com.plantellect.mobileplantellect.data.remote.dto.BotanistProfileDto
 import com.plantellect.mobileplantellect.data.repository.ProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +38,13 @@ data class ReportsUiState(
     val hasNext: Boolean get() = page * pageSize < total
 }
 
+/** The public profile of whoever the screen is showing (yourself or another botanist). */
+data class BotanistUiState(
+    val loading: Boolean = false,
+    val profile: BotanistProfileDto? = null,
+    val error: String? = null
+)
+
 /** Result line for one action on the profile (bio / password / photo). */
 data class ProfileMessage(val text: String, val isError: Boolean)
 
@@ -60,8 +68,23 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
     private val _edit = MutableStateFlow(ProfileEditState())
     val edit: StateFlow<ProfileEditState> = _edit.asStateFlow()
 
-    /** Loadable photo URL for the account's relative photoUrl (send the session cookie: use the app's OkHttp client). */
+    private val _botanist = MutableStateFlow(BotanistUiState())
+    val botanist: StateFlow<BotanistUiState> = _botanist.asStateFlow()
+
+    /** Loadable photo URL for a relative photoUrl (send the session cookie: use the app's OkHttp client). */
     fun photoUrl(relative: String?): String? = repo.photoUrl(relative)
+
+    /** Loads the public profile (photo, metrics, contributions, reported plants) of any account. */
+    fun loadBotanist(accountId: String) {
+        _botanist.update { BotanistUiState(loading = true) }
+        viewModelScope.launch {
+            val next = when (val r = repo.botanistProfile(accountId)) {
+                is ApiResult.Success -> BotanistUiState(profile = r.value)
+                is ApiResult.Failure -> BotanistUiState(error = "This profile could not be loaded.")
+            }
+            _botanist.value = next
+        }
+    }
 
     /** Refreshes bio / photo from the server. Quiet on failure: the cached account is still shown. */
     fun loadOwnProfile() {

@@ -42,7 +42,12 @@ interface DiscoveryApi {
     @POST("${ApiConfig.DISCOVERIES}/{id}/resolve") suspend fun resolve(@Path("id") id: String): Response<MessageDto>
     @POST("${ApiConfig.DISCOVERIES}/{id}/reopen") suspend fun reopen(@Path("id") id: String): Response<MessageDto>
     @POST("${ApiConfig.DISCOVERIES}/{id}/reinstate") suspend fun reinstate(@Path("id") id: String): Response<MessageDto>
-    @POST("${ApiConfig.DISCOVERIES}/{id}/vote") suspend fun vote(@Path("id") id: String): Response<MessageDto>
+    /**
+     * "Not a plant" vote. The server TOGGLES: the first call casts the vote, the next one from the same
+     * account takes it back (there is no DELETE route). The answer says which one happened (retracted).
+     * Closed once the report is claimed or recorded.
+     */
+    @POST("${ApiConfig.DISCOVERIES}/{id}/vote") suspend fun vote(@Path("id") id: String): Response<VoteResultDto>
 
     @POST("${ApiConfig.DISCOVERIES}/{id}/disqualify")
     suspend fun disqualify(@Path("id") id: String, @Body body: DisqualifyRequest): Response<MessageDto>

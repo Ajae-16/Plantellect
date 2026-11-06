@@ -7,7 +7,7 @@ val termsSections: List<TermsSection> = listOf(
     TermsSection("Date of Effect: September 26, 2026",
         "Plantellect Development Team"),
     TermsSection("1. Overview and Age Limitations",
-        "Greetings from Plantellect! Your use of our web application, including any material," +
+        "Greetings from Plantellect! Your use of our mobile application, including any material," +
                 " features, and services provided by our platform, is governed by these terms " +
                 "and conditions. You accept these terms by registering, using, or gaining access to Plantellect. " +
                 "Please do not use our application if you disagree with any of these terms. Additionally, in order to " +

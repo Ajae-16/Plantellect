@@ -172,7 +172,9 @@ data class DiscoveryCardDto(
     val notAPlantThreshold: Int? = null,
     val activeBotanists: Int? = null,
     /** false = somebody is already on it: hide the Claim button. */
-    val claimable: Boolean = false
+    val claimable: Boolean = false,
+    /** true = the signed-in contributor has a "not a plant" vote on this report (sent by the server). */
+    val myVote: Boolean = false
 )
 
 @Serializable
@@ -184,6 +186,20 @@ data class DiscoveryQueueDto(
     val activeBotanists: Int? = null,
     val notAPlantThreshold: Int? = null,
     val notAPlantVotes: Int? = null
+)
+
+/**
+ * Answer of POST /api/discoveries/{id}/vote. The server TOGGLES: [retracted] = true means your
+ * existing vote was taken back, false means a new vote was cast.
+ */
+@Serializable
+data class VoteResultDto(
+    val requestId: String = "",
+    val voteCount: Int = 0,
+    val threshold: Int? = null,
+    val activeContributors: Int? = null,
+    val retracted: Boolean = false,
+    val rejected: Boolean = false
 )
 
 /** Sidebar dot: UNCLAIMED, not pending. */
@@ -261,6 +277,7 @@ data class BotanistProfileDto(
     val username: String = "",
     val role: String = "",
     val bio: String? = null,
+    val photoUrl: String? = null,
     val specialization: String? = null,
     val joinedAt: String? = null,
     val metrics: BotanistMetricsDto = BotanistMetricsDto(),

@@ -1,9 +1,12 @@
 package com.plantellect.mobileplantellect.ui.screen
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -14,32 +17,36 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.plantellect.mobileplantellect.PlantellectApp
 import com.plantellect.mobileplantellect.data.remote.dto.PlantProfileData
+import com.plantellect.mobileplantellect.data.remote.dto.ProfileDescription
 import com.plantellect.mobileplantellect.data.remote.dto.ProfileLoad
 import com.plantellect.mobileplantellect.data.remote.dto.ProfilePerson
 import com.plantellect.mobileplantellect.ui.theme.ContributorPalette
 import com.plantellect.mobileplantellect.ui.theme.contributor
 import com.plantellect.mobileplantellect.ui.theme.extraColors
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 
 /**
  * The plant's profile, loaded from GET /api/plants/:plantId: photos, names, category and
  * toxicity, what it looks like, uses, benefits, things to watch out for, other botanists'
  * descriptions (each with thumbs up / down), and who recorded / reviewed / reported it.
- * Full screen over the library.
+ * Every contributor shows their profile picture and a tappable, underlined name that opens
+ * their profile ([onOpenBotanist]). Full screen over the library.
  */
 @Composable
-fun PlantProfileDialog(plantId: String, fallbackName: String, heroUrl: String?, vm: LibraryViewModel, onClose: () -> Unit) {
+fun PlantProfileDialog(
+    plantId: String,
+    fallbackName: String,
+    heroUrl: String?,
+    vm: LibraryViewModel,
+    onOpenBotanist: (String) -> Unit,
+    onClose: () -> Unit
+) {
     val c = MaterialTheme.colorScheme
     val client = (LocalContext.current.applicationContext as PlantellectApp).container.network.okHttpClient
     var attempt by remember { mutableStateOf(0) }
@@ -74,7 +81,9 @@ fun PlantProfileDialog(plantId: String, fallbackName: String, heroUrl: String?, 
                         p = s.data, fallbackHero = heroUrl, votes = votes,
                         // A description just got hidden by down votes: draw the page again.
                         onHidden = { attempt++ },
-                        onView = { viewing = it }
+                        onView = { viewing = it },
+                        // Close this dialog first, then go to the profile screen.
+                        onOpenBotanist = { id -> onClose(); onOpenBotanist(id) }
                     )
                 }
             }
@@ -124,7 +133,8 @@ private fun ProfileBody(
     fallbackHero: String?,
     votes: VotesController,
     onHidden: () -> Unit,
-    onView: (String) -> Unit
+    onView: (String) -> Unit,
+    onOpenBotanist: (String) -> Unit
 ) {
     val c = MaterialTheme.colorScheme
     val hero = p.images.firstOrNull() ?: fallbackHero
@@ -165,7 +175,7 @@ private fun ProfileBody(
         }
 
         if (primary != null && p.descriptions.size > 1 && primary.author != null) {
-            ContributorByline(primary.author)
+            ContributorByline(primary, onOpenBotanist)
         }
 
         // The primary description's thumbs, right under the byline (same place as the web).
@@ -202,8 +212,14 @@ private fun ProfileBody(
             boxes.forEach { (i, d) ->
                 ContributorBox(MaterialTheme.extraColors.contributor(i + 1)) { colors ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(Modifier.size(12.dp).background(colors.accent, CircleShape))
-                        Text(d.author ?: "A contributor", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = colors.fg)
+                        Avatar(
+                            d.author, d.authorPhotoUrl, 32.dp, colors.accent, colors.fg,
+                            onClick = d.authorId?.let { id -> { onOpenBotanist(id) } }
+                        )
+                        PersonLink(
+                            d.author ?: "A contributor", d.authorId, colors.fg,
+                            MaterialTheme.typography.titleSmall, onOpenBotanist
+                        )
                     }
                     d.specialization?.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = colors.fg.copy(alpha = 0.8f))
@@ -224,9 +240,9 @@ private fun ProfileBody(
 
         HorizontalDivider()
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            PeopleRow("Recorded by", p.recordedBy)
-            PeopleRow("Reviewed by", p.reviewedBy)
-            PeopleRow("Reported by", p.reportedBy)
+            PeopleRow("Recorded by", p.recordedBy, onOpenBotanist)
+            PeopleRow("Reviewed by", p.reviewedBy, onOpenBotanist)
+            PeopleRow("Reported by", p.reportedBy, onOpenBotanist)
             Text("Quantity on record: ${p.quantity ?: "—"}", style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
         }
     }
@@ -241,20 +257,9 @@ private fun Section(title: String, body: String?, empty: String = "No informatio
     }
 }
 
+/** "Primary description by NAME" with the author's picture, in the first contributor color. NAME is a tappable link. */
 @Composable
-private fun Block(title: String, body: String, warn: Boolean = false) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            title, style = MaterialTheme.typography.labelLarge,
-            color = if (warn) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-        )
-        RichTextView(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-/** "Primary description by NAME" in the first contributor color, shown when more than one person described the plant. */
-@Composable
-private fun ContributorByline(name: String) {
+private fun ContributorByline(d: ProfileDescription, onOpen: (String) -> Unit) {
     val colors = MaterialTheme.extraColors.contributor(0)
     Surface(
         shape = RoundedCornerShape(50),
@@ -262,20 +267,16 @@ private fun ContributorByline(name: String) {
         border = BorderStroke(1.dp, colors.accent)
     ) {
         Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            Modifier.padding(start = 6.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Box(Modifier.size(12.dp).background(colors.accent, CircleShape))
-            Text(
-                buildAnnotatedString {
-                    append("Primary description by ")
-                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                    append(name)
-                    pop()
-                },
-                style = MaterialTheme.typography.labelLarge, color = colors.fg
+            Avatar(
+                d.author, d.authorPhotoUrl, 32.dp, colors.accent, colors.fg,
+                onClick = d.authorId?.let { id -> { onOpen(id) } }
             )
+            Text("Primary description by", style = MaterialTheme.typography.labelLarge, color = colors.fg)
+            PersonLink(d.author.orEmpty(), d.authorId, colors.fg, MaterialTheme.typography.labelLarge, onOpen)
         }
     }
 }
@@ -308,16 +309,28 @@ private fun BoxSection(title: String, body: String, colors: ContributorPalette) 
     }
 }
 
-/** Names with the role the SERVER gave them (never guessed from the name). Nobody named: row hidden. */
+/**
+ * Names with the role the SERVER gave them (never guessed from the name). Each name with an accountId is an
+ * underlined link to that person's profile. Nobody named: row hidden.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PeopleRow(label: String, people: List<ProfilePerson>) {
+private fun PeopleRow(label: String, people: List<ProfilePerson>, onOpen: (String) -> Unit) {
     if (people.isEmpty()) return
-    val text = people.joinToString(", ") { person ->
-        person.name + when (person.role) {
-            "admin" -> " (Administrator)"
-            "superadmin" -> " (Superadministrator)"
-            else -> ""
+    val c = MaterialTheme.colorScheme
+    val style = MaterialTheme.typography.bodySmall
+    FlowRow(verticalArrangement = Arrangement.spacedBy(2.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+        Text("$label: ", style = style, color = c.onSurfaceVariant)
+        people.forEachIndexed { i, person ->
+            val role = when (person.role) {
+                "admin" -> " (Administrator)"
+                "superadmin" -> " (Superadministrator)"
+                else -> ""
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PersonLink(person.name, person.accountId, c.primary, style, onOpen)
+                Text(role + if (i < people.lastIndex) ", " else "", style = style, color = c.onSurfaceVariant)
+            }
         }
     }
-    Text("$label: $text", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
+}

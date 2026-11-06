@@ -61,9 +61,44 @@ class LibraryViewModel(
     private var all: List<PlantSummaryDto> = emptyList()
     private var loadJob: Job? = null
 
+    /** Types as the server last listed them (GET /plants/types). */
+    private var serverTypes: List<PlantTypeDto> = emptyList()
+
+    /** Type names seen on the plants themselves: a new type shows in the filter even if the types list is stale. */
+    private var seenTypeNames: Set<String> = emptySet()
+
     init {
-        viewModelScope.launch { (repo.types() as? ApiResult.Success)?.let { r -> _ui.update { it.copy(types = r.value) } } }
-        reload()
+        refreshTypes()
+        refetch()
+    }
+
+    /**
+     * Reads the plant types from the server again. The ViewModel lives as long as the Activity, so a type
+     * added on the website after the app opened would never appear if this only ran once.
+     * Called on start, on pull to refresh, and whenever the Library screen or its Filters panel opens.
+     */
+    fun refreshTypes() {
+        viewModelScope.launch {
+            (repo.types() as? ApiResult.Success)?.let { r ->
+                serverTypes = r.value
+                publishTypes()
+            }
+        }
+    }
+
+    /** Server types plus any type seen on a loaded plant, one chip per name (case-insensitive), A to Z. */
+    private fun publishTypes() {
+        val byKey = linkedMapOf<String, PlantTypeDto>()
+        serverTypes.forEach { t ->
+            val k = t.typeName.trim().lowercase()
+            if (k.isNotEmpty() && k !in byKey) byKey[k] = t
+        }
+        seenTypeNames.forEach { n ->
+            val k = n.trim().lowercase()
+            if (k.isNotEmpty() && k !in byKey) byKey[k] = PlantTypeDto(typeId = "seen:$k", typeName = n.trim(), label = n.trim())
+        }
+        val merged = byKey.values.sortedBy { it.typeName.trim().lowercase() }
+        _ui.update { it.copy(types = merged) }
     }
 
     fun setQuery(q: String) {
@@ -72,11 +107,15 @@ class LibraryViewModel(
         loadJob = viewModelScope.launch { delay(250); fetchAll() }   // debounce typing
     }
 
-    fun setSearchBy(by: SearchBy) { _ui.update { it.copy(searchBy = by) }; reload() }
+    fun setSearchBy(by: SearchBy) { _ui.update { it.copy(searchBy = by) }; refetch() }
 
-    fun setType(typeName: String?) { _ui.update { it.copy(typeName = typeName) }; reload() }
+    fun setType(typeName: String?) { _ui.update { it.copy(typeName = typeName) }; refetch() }
 
-    fun reload() { loadJob?.cancel(); loadJob = viewModelScope.launch { fetchAll() } }
+    /** Pull to refresh: the plants AND the type list. */
+    fun reload() { refreshTypes(); refetch() }
+
+    /** Plants only (a filter or search change does not need the type list again). */
+    private fun refetch() { loadJob?.cancel(); loadJob = viewModelScope.launch { fetchAll() } }
 
     fun nextPage() { if (_ui.value.hasNext) goToPage(_ui.value.page + 1) }
     fun prevPage() { if (_ui.value.hasPrev) goToPage(_ui.value.page - 1) }
@@ -179,6 +218,9 @@ class LibraryViewModel(
             }
         }
 
+        // Remember every type name on these plants so the filter always has a chip for it.
+        seenTypeNames = seenTypeNames + collected.mapNotNull { (it.type.ifBlank { it.typeLabel }).trim().takeIf { n -> n.isNotEmpty() } }
+        publishTypes()
         all = collected.distinctBy { it.id }.applySearch(s.query, s.searchBy)
         _ui.update { it.copy(loading = false, page = 1, total = all.size, items = pageSlice(1)) }
     }
