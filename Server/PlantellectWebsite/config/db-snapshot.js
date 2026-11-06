@@ -19,9 +19,10 @@
 //     there before the retrain, so the next model can learn it), everything else is Other plant. Other
 //     plant photos are capped per species (settings.dataset.otherPlantCap) so a few species cannot make up
 //     most of the one Other plant class; the photos left out are counted and reported, never hidden.
-//   * Archiving or hiding a photo does not remove it from a snapshot: archive and dataset exclusion
-//     are two separate buttons (plan section 6). Only status 'approved', trainingStatus 'included' and
-//     a master that still exists count.
+//   * Hiding a photo does not remove it from a snapshot: hide and dataset exclusion are two separate
+//     buttons . An ARCHIVED photo is left out, because archiving is the admin taking a
+//     photo out of use . Only status 'approved', trainingStatus 'included',
+//     not archived and a master that still exists count.
 //   * A snapshot is never edited and never mixed with another. It is built in a hidden folder and
 //     renamed into place last, so a half-written snapshot never looks finished.
 //   * Files are hard-linked from the masters (copied when the drive cannot link). Masters are written
@@ -171,7 +172,7 @@ async function loadRows(db) {
          JOIN plants p ON p.plantId = i.plantId
          LEFT JOIN species_status ss ON ss.plantId = p.plantId
          WHERE i.status = 'approved' AND i.trainingStatus = 'included'
-           AND i.masterPurgedAt IS NULL AND i.plantId IS NOT NULL
+           AND i.masterPurgedAt IS NULL AND i.archivedAt IS NULL AND i.plantId IS NOT NULL
          ORDER BY p.scientificName, i.imageId`
     );
     return rows;

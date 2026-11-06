@@ -147,7 +147,7 @@ body {
    MY REPORTS
    Deliberately NOT inside .profile-card: the reports are the
    one part of this page that a plain `user` sees, and a
-   botanist sees too. Putting them inside the card would tie
+   contributor sees too. Putting them inside the card would tie
    their visibility to the account header's own state.
    ========================================================= */
 

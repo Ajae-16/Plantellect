@@ -9,7 +9,7 @@ const { mysqlPool } = require('../config/pool-mysql');
 const {
     createDiscoveryReport,
     getDiscoveryImageForOwner,
-    getDiscoveryImageForBotanist,
+    getDiscoveryImageForContributor,
     listPendingDiscoveries,
     getDiscoveryCounts,
     claimDiscovery,
@@ -88,7 +88,9 @@ router.post('/',
                 note: req.body.note,
                 location: req.body.location,
                 predictions: parsePredictions(req.body.predictions),
-                files
+                files,
+                // The reporter's tick: "also use this photo as a contribution image".
+                allowContribution: ['1', 'true', 'on'].includes(String(req.body.allowContribution || '').toLowerCase())
             });
             if (result.error) {
                 discardFiles(files);
@@ -105,7 +107,7 @@ router.post('/',
                 openReports: result.openReports,
                 maxOpenReports: result.maxOpenReports,
                 dispatchedTo: result.dispatchedTo,
-                message: 'Report filed. A botanist will pick it up from the queue.'
+                message: 'Report filed. A contributor will pick it up from the queue.'
             });
         } catch (err) {
             discardFiles(files);
@@ -134,7 +136,7 @@ function parsePredictions(raw) {
 /**
  * GET /api/discoveries/images/:imageId — the OWNER's view.
  *
- * A separate route from the botanist view below, not a widened condition on this
+ * A separate route from the contributor view below, not a widened condition on this
  * one: `requirePermission('record_plant') || accountId match` in a single query
  * is exactly how an owner-only guarantee quietly becomes "anyone who can record
  * can read anyone's report photo".
@@ -162,9 +164,9 @@ router.get('/images/:imageId', requireAuth, async (req, res) => {
 });
 
 /**
- * GET /api/discoveries/report-images/:imageId — the BOTANIST's view, status-free.
+ * GET /api/discoveries/report-images/:imageId — the CONTRIBUTOR's view, status-free.
  *
- * A botanist must be able to read the reporter's photo: the reporter is usually
+ * A contributor must be able to read the reporter's photo: the reporter is usually
  * a plain `user` who cannot identify a plant, so the photo is the reason the
  * report exists.
  *
@@ -174,7 +176,7 @@ router.get('/images/:imageId', requireAuth, async (req, res) => {
  */
 router.get('/report-images/:imageId', requirePermission('record_plant'), async (req, res) => {
     try {
-        const image = await getDiscoveryImageForBotanist(req.params.imageId);
+        const image = await getDiscoveryImageForContributor(req.params.imageId);
         if (!image) return res.status(404).json({ error: 'Image not found' });
         const resolved = resolveInsideDiscoveryRoot(image.storedPath);
         if (!resolved) return res.status(404).json({ error: 'Image not found' });
@@ -192,7 +194,7 @@ router.get('/report-images/:imageId', requirePermission('record_plant'), async (
 });
 
 // ---------------------------------------------------------------------------
-// The botanist queue (section J)
+// The contributor queue (section J)
 // ---------------------------------------------------------------------------
 
 /** The closed reason set, so the client never hardcodes it. */
@@ -210,7 +212,7 @@ router.get('/count', requirePermission('record_plant'), async (req, res) => {
     }
 });
 
-/** GET /api/discoveries — the queue. A botanist sees only plant_discovery rows. */
+/** GET /api/discoveries — the queue. A contributor sees only plant_discovery rows. */
 router.get('/', requirePermission('record_plant'), async (req, res) => {
     try {
         res.json(await listPendingDiscoveries({
@@ -230,7 +232,7 @@ router.get('/', requirePermission('record_plant'), async (req, res) => {
 /**
  * GET /api/discoveries/mine — requireAuth, for ANY signed-in account.
  *
- * A botanist may file reports too, so this must not be gated on record_plant: a
+ * A contributor may file reports too, so this must not be gated on record_plant: a
  * section that hid itself for one role would be a second bug.
  */
 router.get('/mine', requireAuth, async (req, res) => {
@@ -263,7 +265,7 @@ router.get('/mine/summary', requireAuth, async (req, res) => {
  * Claim. 200, or 409 naming the current claimer.
  *
  * The conditional UPDATE ... WHERE it is still unheld IS the concurrency story:
- * two botanists racing produce one winner and one clean 409, with no lock table
+ * two contributors racing produce one winner and one clean 409, with no lock table
  * and no FOR UPDATE retry loop.
  */
 router.post('/:requestId/claim', requirePermission('record_plant'), async (req, res) => {
@@ -290,7 +292,7 @@ router.post('/:requestId/unclaim', requirePermission('record_plant'), async (req
 });
 
 /**
- * Release — admin, or any botanist acting on a claim whose holder is not active.
+ * Release — admin, or any contributor acting on a claim whose holder is not active.
  * Audited with the actor and the previous holder.
  */
 router.post('/:requestId/release', requirePermission('record_plant'), async (req, res) => {
@@ -348,7 +350,7 @@ router.post('/:requestId/disqualify', requirePermission('record_plant'), async (
     }
 });
 
-/** Reinstate — open to ANY botanist, unlike reopen which is author-only. */
+/** Reinstate — open to ANY contributor, unlike reopen which is author-only. */
 router.post('/:requestId/reinstate', requirePermission('record_plant'), async (req, res) => {
     try {
         const result = await reinstateDisqualified(req.params.requestId, req.session.accountId);
@@ -363,7 +365,7 @@ router.post('/:requestId/reinstate', requirePermission('record_plant'), async (r
 /**
  * Vote "not a plant". Does NOT require holding the claim — a vote is an
  * endorsement, not responsibility for the work — and does not consume a claim
- * slot. A LIVE claim closes the vote, because a botanist part-way through a
+ * slot. A LIVE claim closes the vote, because a contributor part-way through a
  * record must not have their work rejected underneath them.
  *
  * 409 below the electorate floor: a stored-but-inert ballot reads as a bug to
@@ -383,7 +385,7 @@ router.post('/:requestId/vote', requirePermission('record_plant'), async (req, r
 /**
  * Cancel — the reporter withdraws their own report.
  *
- * requireAuth + owner, NOT the botanist gate: this belongs to the reporter. The
+ * requireAuth + owner, NOT the contributor gate: this belongs to the reporter. The
  * owner predicate lives in the UPDATE, and a miss is 404 so neither another
  * account nor an admin can confirm the report exists.
  */

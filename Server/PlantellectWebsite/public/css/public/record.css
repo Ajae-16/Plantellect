@@ -467,7 +467,7 @@ body, html {
    ?from=<requestId> arrives from discoveries.html. The banner
    shows the REPORT's photos, which are already on the server;
    it never offers to re-upload the reporter's own file — that
-   would mint an approved plant image from a file this botanist
+   would mint an approved plant image from a file this contributor
    did not choose.
    ========================================================= */
 
@@ -591,7 +591,7 @@ body, html {
     white-space: nowrap;
 }
 
-/* A report photo the botanist may tick. The checkbox sits over the corner. */
+/* A report photo the contributor may tick. The checkbox sits over the corner. */
 .record-thumb-choice {
     position: absolute;
     top: 6px;
@@ -1008,3 +1008,20 @@ body, html {
 /* The Others text box sits right under its dropdown. */
 #newTypeOther,
 #change-typeOther { margin-top: 0.1rem; }
+/* Change request: the names share the first row, "This plant's type" takes a
+   whole row, and the taxonomy takes a whole row of its own whose boxes wrap into
+   several columns, as on the NEW PLANT tab. .record-field-wide had no rule, so
+   those two boxes were squeezed into single grid cells. */
+.record-grid > .record-field-wide {
+    grid-column: 1 / -1;
+}
+
+#change-type {
+    min-width: 0;
+}
+
+#change-type #change-typeName,
+#change-type #change-typeOther {
+    width: 100%;
+    max-width: 320px;
+}

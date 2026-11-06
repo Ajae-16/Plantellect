@@ -5,7 +5,7 @@
 
 /* =========================================================
    discoveries.css
-   The botanist queue: cards, status flags, report photos and
+   The contributor queue: cards, status flags, report photos and
    the per-card action row.
 
    Built on the same tokens record.css uses rather than a
@@ -57,7 +57,7 @@ body header {
     font-size: 0.9rem;
 }
 
-/* The quorum line. Not decoration: "1 of 5 botanists agree" only
+/* The quorum line. Not decoration: "1 of 5 contributors agree" only
    means something if the electorate is named. */
 .discoveries-quorum {
     padding: 0.75rem 1rem;
@@ -131,7 +131,7 @@ body header {
     color: var(--color-dark-forest-green);
 }
 
-.reporter-role.role-botanist {
+.reporter-role.role-contributor {
     background-color: #d9f2e3;
     color: #16663c;
 }

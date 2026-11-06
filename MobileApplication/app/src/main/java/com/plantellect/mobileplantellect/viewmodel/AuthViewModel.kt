@@ -1,6 +1,5 @@
 package com.plantellect.mobileplantellect.viewmodel
 
-import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.plantellect.mobileplantellect.data.logic.*
@@ -13,9 +12,9 @@ data class AuthUiState(
     val busy: Boolean = false,
     /** Server / network message for a snackbar or banner. */
     val error: String? = null,
-    /** Per-field messages. Keys: identifier, firstName, lastName, email, username, password, confirm, terms, certificate. */
+    /** Per-field messages. Keys: identifier, firstName, lastName, email, username, password, confirm, terms. */
     val fieldErrors: Map<String, String> = emptyMap(),
-    /** Set after a botanist sign-up so the UI can say "awaiting review" or "approved". */
+    /** One-off info message for the UI. Nothing sets it now that sign-up has no review step. */
     val notice: String? = null,
     /** True while the sign-out request is running (drives the confirmation dialog's spinner). */
     val signingOut: Boolean = false
@@ -47,18 +46,12 @@ class AuthViewModel(
         }
     }
 
-    fun register(form: RegisterForm, certificate: Uri?, confirmPassword: String = form.password) {
-        val problems = AuthValidator.register(form, hasCertificate = certificate != null, confirmPassword = confirmPassword)
+    fun register(form: RegisterForm, confirmPassword: String = form.password) {
+        val problems = AuthValidator.register(form, confirmPassword = confirmPassword)
         if (problems.isNotEmpty()) { _ui.value = AuthUiState(fieldErrors = problems); return }
         launchBusy {
-            when (val r = repo.register(form, certificate)) {
-                is ApiResult.Success -> AuthUiState(
-                    notice = when {
-                        r.value.autoApproved -> "Botanist role approved."
-                        r.value.pending -> "Account created. Your botanist request is awaiting review."
-                        else -> null
-                    }
-                )
+            when (val r = repo.register(form)) {
+                is ApiResult.Success -> AuthUiState()
                 is ApiResult.Failure -> AuthUiState(error = r.error.userMessage())
             }
         }

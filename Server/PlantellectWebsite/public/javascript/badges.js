@@ -27,9 +27,7 @@
         severe:   { title: 'Severe toxicity',   symbol: 'dangerous',    glyph: '\u2620' }
     };
 
-    // Same rules as the public profile: a botanist is certificate-verified.
     var ROLE_BADGES = {
-        botanist:   { label: 'Verified botanist', modifier: 'verified', symbol: 'verified',  glyph: '\u2713' },
         admin:      { label: 'Admin',             modifier: 'admin',    symbol: 'shield',    glyph: '' },
         superadmin: { label: 'Admin',             modifier: 'admin',    symbol: 'shield',    glyph: '' },
         user:       { label: 'User',              modifier: 'user',     symbol: 'person',    glyph: '' }
@@ -61,7 +59,7 @@
         '</span>';
     }
 
-    /** Who submitted something: Verified botanist / Admin / User. Empty when the role is unknown. */
+    /** Who submitted something: Admin / User. Empty when the role is unknown. */
     function roleBadge(roleName) {
         var cfg = ROLE_BADGES[String(roleName || '').toLowerCase()];
         if (!cfg) return '';

@@ -39,10 +39,10 @@ async function listPublicPlants({ search, type, page, pageSize }) {
                  WHERE i.plantId = p.plantId AND ${visibleImageSql('i')}
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId,
                 (SELECT d.benefits FROM plant_description d
-                 WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE
+                 WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE AND d.hiddenAt IS NULL
                  LIMIT 1) AS primaryBenefits,
                 (SELECT d.harmful FROM plant_description d
-                 WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE
+                 WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE AND d.hiddenAt IS NULL
                  LIMIT 1) AS primaryHarmful
          FROM plants p
          JOIN plant_types t ON p.typeId = t.typeId
@@ -112,7 +112,7 @@ async function getPublicPlantDetail(plantId) {
          JOIN accounts a ON d.accountId = a.accountId
          LEFT JOIN profiles pr ON pr.accountId = a.accountId
          LEFT JOIN plant_parts pp ON d.partsId = pp.partId
-         WHERE d.plantId = ? AND d.status = 'approved'
+         WHERE d.plantId = ? AND d.status = 'approved' AND d.hiddenAt IS NULL
          ORDER BY d.isPrimary DESC, d.createdAt ASC`,
         [plantId]
     );
@@ -158,10 +158,15 @@ async function getPublicPlantDetail(plantId) {
     };
 }
 
-async function getBotanistProfile(accountId) {
+/**
+ * The public profile of one account: a contributor (any `user`) or, for an
+ * administrator viewer, an admin. The caller decides who may see it; this only
+ * reads. `status` is returned so a suspended account can be treated as absent.
+ */
+async function getContributorProfile(accountId) {
     const [rows] = await mysqlPool.query(
-        `SELECT a.accountId, a.username, a.createdAt, r.roleName,
-                pr.firstName, pr.lastName, pr.bio, pr.specialization
+        `SELECT a.accountId, a.username, a.createdAt, a.status, r.roleName,
+                pr.firstName, pr.lastName, pr.bio, pr.specialization, pr.imagePath, pr.updatedAt AS profileUpdatedAt
          FROM accounts a
          JOIN roles r ON a.roleId = r.roleId
          LEFT JOIN profiles pr ON pr.accountId = a.accountId
@@ -172,7 +177,7 @@ async function getBotanistProfile(accountId) {
     const a = rows[0];
 
     const [stats] = await mysqlPool.query(
-        `SELECT COUNT(DISTINCT pc.plantId) AS plantCount,
+        `SELECT COUNT(DISTINCT CASE WHEN pc.role = 'contributor' THEN pc.plantId END) AS plantCount,
                 COALESCE(SUM(CASE WHEN pc.role = 'reviewer' THEN 1 ELSE 0 END), 0) AS reviewedCount,
                 COALESCE(SUM(CASE WHEN pc.role = 'reporter' THEN 1 ELSE 0 END), 0) AS reportedCount
          FROM plant_contributors pc
@@ -211,8 +216,12 @@ async function getBotanistProfile(accountId) {
         name: [a.firstName, a.lastName].filter(Boolean).join(' ') || a.username,
         username: a.username,
         role: a.roleName,
+        status: a.status,
         bio: a.bio,
         specialization: a.specialization,
+        // Stored path of the profile photo. routes/contributors.js turns it into photoUrl and never sends it.
+        imagePath: a.imagePath || null,
+        profileUpdatedAt: a.profileUpdatedAt,
         joinedAt: a.createdAt,
         metrics: {
             verifiedPlants: stats[0].plantCount,
@@ -241,11 +250,21 @@ async function getBotanistProfile(accountId) {
 }
 
 async function listPlantTypes() {
+    // Every plant owns its own plant_types row, so the same name repeats. The
+    // list is names, not rows: keep the first row per name (case-insensitive,
+    // trimmed) so the API never returns a duplicated typeName.
     const [rows] = await mysqlPool.query(
         `SELECT typeId, typeName, isMedicinal, isHarmful, toxicityLevel, cautionNote
-         FROM plant_types ORDER BY typeName ASC`
+         FROM plant_types ORDER BY typeName ASC, typeId ASC`
     );
-    return rows.map((r) => ({
+    const seenNames = new Set();
+    const unique = rows.filter((r) => {
+        const key = String(r.typeName || '').trim().toLowerCase();
+        if (!key || seenNames.has(key)) return false;
+        seenNames.add(key);
+        return true;
+    });
+    return unique.map((r) => ({
         typeId: r.typeId,
         typeName: r.typeName,
         label: r.typeName,
@@ -273,11 +292,15 @@ async function resolveScientificNames(names) {
     return new Map(rows.map((r) => [r.scientificName, r]));
 }
 
-/** Species present in the database, in classes.json, or both. */
+/**
+ * Species present in the database, in classes.json, or both. A species counts as "present" when
+ * it has an approved RECORD photo: a private scan contribution is training-only and does not make
+ * a plant look photographed.
+ */
 async function getMlCoverage(classes) {
     const [rows] = await mysqlPool.query(
         `SELECT DISTINCT p.scientificName FROM plants p
-         JOIN plant_images i ON i.plantId = p.plantId AND i.status = 'approved'
+         JOIN plant_images i ON i.plantId = p.plantId AND i.status = 'approved' AND i.origin = 'record'
          WHERE p.archivedAt IS NULL`
     );
     const plantNames = new Set(rows.map((r) => r.scientificName));
@@ -315,7 +338,7 @@ async function listHandledDiscoverySpecies(executor = mysqlPool) {
 module.exports = {
     listPublicPlants,
     getPublicPlantDetail,
-    getBotanistProfile,
+    getContributorProfile,
     listPlantTypes,
     resolveScientificNames,
     getMlCoverage,

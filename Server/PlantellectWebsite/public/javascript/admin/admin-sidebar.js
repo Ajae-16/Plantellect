@@ -92,7 +92,6 @@
     /* ---------------------------------------------------------
        4. Sidebar notification badges
           Pass already-known counts to skip a fetch:
-            loadNavBadges({ dashboard: 3 })
             loadNavBadges({ plants: 2 })
             loadNavBadges()            // fetches all
        --------------------------------------------------------- */
@@ -120,9 +119,6 @@
 
     async function loadNavBadges(known) {
         known = known || {};
-        var dashCount = ('dashboard' in known)
-            ? known.dashboard
-            : await fetchCount('/admin/api/role-requests', 'requests');
         var plantCount = ('plants' in known)
             ? known.plants
             : await fetchCount('/admin/api/plant-requests', 'requests');
@@ -135,20 +131,27 @@
             ? known.discoveries
             : await fetchTotal('/admin/api/discovery-reports', 'requests');
 
+        // Community feedback on plant descriptions (hidden / downvoted / popular): its own
+        // endpoint. Its count is added to the Plants link badge, where the reports are worked.
+        var feedbackCount = ('feedback' in known)
+            ? known.feedback
+            : await fetchTotal('/admin/api/description-feedback/count', 'total');
+
         // A caller that cannot supply a count omits the key entirely rather than
         // passing undefined, so `'discoveries' in known` means the number is real.
-        applyBadge('navBadgeDashboard', dashCount);
-        applyBadge('navBadgePlants', plantCount);
+        // The Plants link carries pending requests plus plant reports; the Dashboard link has no dot.
+        applyBadge('navBadgePlants', plantCount + feedbackCount);
         // The Discoveries link moved out of the sidebar into the Plants topbar,
         // so its badge lives there now. Pages without these ids simply skip them.
         applyBadge('plantsTabBadgePending', plantCount);
         applyBadge('plantsTabBadgeDiscoveries', discoveryCount);
+        applyBadge('plantsTabBadgeReports', feedbackCount);
 
         var hamburger = document.querySelector('.admin-hamburger');
         if (hamburger) {
             hamburger.classList.toggle(
                 'has-notifications',
-                (dashCount + plantCount + discoveryCount) > 0
+                (plantCount + discoveryCount + feedbackCount) > 0
             );
         }
     }

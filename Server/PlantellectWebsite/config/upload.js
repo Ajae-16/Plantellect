@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 
 /**
- * Builds a multer instance from a settings block (certificates or plantImages).
+ * Builds a multer instance from a settings block (plantImages).
  *
  * The on-disk filename is always a fresh UUID plus the validated extension, so a
  * client-supplied name never reaches the filesystem. originalFilename is kept
@@ -52,7 +52,6 @@ function createUploader(config) {
 
 const settings = require('./settings');
 
-const uploadCertificate = createUploader(settings.certificates);
 const uploadPlantImages = createUploader(settings.plantImages);
 
 /**
@@ -60,7 +59,7 @@ const uploadPlantImages = createUploader(settings.plantImages);
  *
  * Same fileFilter and same maxSizeBytes as a plant image — a report cannot
  * become a way to upload something the library would reject — but its own file
- * count, because settings.plantImages.maxFilesPerRequest (20) is a botanist's
+ * count, because settings.plantImages.maxFilesPerRequest (20) is a contributor's
  * submission allowance and ten open reports at 20 photos each is not a
  * per-account disk bound anyone intended.
  *
@@ -150,7 +149,6 @@ function handleUploadError(config) {
 
 module.exports = {
     createUploader,
-    uploadCertificate,
     uploadPlantImages,
     uploadDiscoveryImages,
     plantImageUpload,

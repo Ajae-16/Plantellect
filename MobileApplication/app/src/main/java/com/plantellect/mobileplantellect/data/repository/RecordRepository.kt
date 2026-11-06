@@ -23,6 +23,21 @@ class RecordRepository(
     private val json: Json,
     private val baseUrl: String
 ) {
+    /** Photos allowed per submission. Starts at the built-in default until [limits] has answered with the admin's live value. */
+    @Volatile
+    var maxPhotos: Int = UploadLimits.MAX_CONTRIBUTION_PHOTOS
+        private set
+
+    /** The live photo limits (GET /api/plants/limits). A success also updates [maxPhotos]. */
+    suspend fun limits(): ApiResult<PhotoLimitsDto> =
+        caller.call { api.limits() }.also { r ->
+            (r as? ApiResult.Success)?.value?.maxFilesPerRequest?.takeIf { it >= 1 }?.let { maxPhotos = it }
+        }
+
+    /** Values already used at each taxonomy level (kingdom, phylum, class, order, family, genus, species). */
+    suspend fun taxonomySuggestions(): ApiResult<Map<String, List<String>>> =
+        caller.call { api.taxonomySuggestions() }.map { it.values }
+
     /** A duplicate species is accepted: the server converts it into a contribution at approval time. */
     suspend fun submitPlant(draft: PlantDraftRequest): ApiResult<PlantSubmitResponse> {
         val problems = RecordValidator.plant(draft)
@@ -39,8 +54,8 @@ class RecordRepository(
         photos: List<Uri>,
         discoveryRequestId: String? = null
     ): ApiResult<ContributionResponse> {
-        if (photos.size > UploadLimits.MAX_CONTRIBUTION_PHOTOS) {
-            return ApiResult.Failure(AppError.Http(400, "At most ${UploadLimits.MAX_CONTRIBUTION_PHOTOS} photos per submission."))
+        if (photos.size > maxPhotos) {
+            return ApiResult.Failure(AppError.Http(400, "At most ${maxPhotos} photos per submission."))
         }
         val problems = RecordValidator.contribution(parts, uses, benefits, harmful, photos.size)
         if (problems.isNotEmpty()) return ApiResult.Failure(AppError.Http(400, problems.joinToString("; ")))
@@ -76,8 +91,8 @@ class RecordRepository(
         try { ImageParts.jpegParts(context, photos) } catch (e: Exception) { null }
 
     private fun tooMany(photos: List<Uri>): AppError? =
-        if (photos.size > UploadLimits.MAX_CONTRIBUTION_PHOTOS)
-            AppError.Http(400, "At most ${UploadLimits.MAX_CONTRIBUTION_PHOTOS} photos per submission.")
+        if (photos.size > maxPhotos)
+            AppError.Http(400, "At most ${maxPhotos} photos per submission.")
         else null
 
     suspend fun types(): ApiResult<List<RecTypeName>> = when (val r = caller.call { api.recordTypes() }) {

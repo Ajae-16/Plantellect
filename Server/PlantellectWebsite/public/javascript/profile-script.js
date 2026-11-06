@@ -12,7 +12,7 @@
  */
 
 const REPORT_STATE_LABELS = {
-    waiting: 'Waiting for a botanist',
+    waiting: 'Waiting for a contributor',
     recording: 'Recorded — awaiting admin review',
     not_recorded: 'Not recorded — you can record it instead',
     added: 'Added to the library',
@@ -101,11 +101,11 @@ function renderReport(report) {
         parts.push(`<p class="report-muted">Where: ${escapeHtml(report.location)}</p>`);
     }
 
-    // Only for a community rejection. A single botanist's verdict is a private
+    // Only for a community rejection. A single contributor's verdict is a private
     // working note to the claimer, and publishing that would put a message
     // nobody authorised for public consumption into a user's own profile.
     if (report.state === 'not_a_plant' && report.voterCount > 0) {
-        parts.push(`<p class="report-muted">${report.voterCount} botanist${report.voterCount === 1 ? '' : 's'} ` +
+        parts.push(`<p class="report-muted">${report.voterCount} contributor${report.voterCount === 1 ? '' : 's'} ` +
             'agreed this is not a plant.</p>');
     }
 

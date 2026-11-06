@@ -1,0 +1,47 @@
+/* =========================================================
+   admin-auth.html
+   auth.css styles a card that holds a sign-in panel AND a sign-up panel
+   (the forms-wrapper is 200% wide, sliding between them). This page has only
+   the sign-in panel, so the wrapper is brought back to 100% and the card is
+   given a sensible width. Load AFTER auth.css.
+   ========================================================= */
+
+.admin-auth-container {
+    max-width: 480px;
+    min-height: 0 !important;
+    margin: 24px auto;
+    border-radius: 16px;
+}
+
+.admin-auth-container .forms-wrapper {
+    width: 100%;
+}
+
+.admin-auth-container .form-container {
+    flex: 1 1 100%;
+    width: 100%;
+}
+
+.admin-auth-error {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(169, 68, 66, 0.18);
+    border: 1px solid var(--color-error);
+    color: #ffd9d7;
+    font-family: var(--font-primary);
+    font-size: 13px;
+    text-align: center;
+}
+
+.admin-auth-error[hidden] { display: none; }
+
+.login-btn:disabled {
+    opacity: 0.6;
+    cursor: progress;
+}
+
+.eye-icon:focus-visible {
+    outline: 2px solid var(--color-library-green);
+    outline-offset: 2px;
+}

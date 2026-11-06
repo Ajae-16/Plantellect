@@ -65,7 +65,7 @@
 
     // Fields a change request can touch. A request has two independent halves:
     //   BASE         the plant's shared record: names, type (own editor) and taxonomy
-    //   DESCRIPTION  one description the botanist wrote: text plus its measurements.
+    //   DESCRIPTION  one description the contributor wrote: text plus its measurements.
     //                `part` fields live under `parts` in the request body and under
     //                'parts.<key>' in the server's value map.
     var BASE_TEXT_FIELDS = [
@@ -92,11 +92,11 @@
     var minePage = 1;
     var mineTotal = 0;
     var mineStale = false;
-    var typeNames = [];             // [{ typeName, plantCount }] from /api/plants/types, most used first
+    var typeNames = [];             // [{ typeName }] from /api/plants/types, unique names, A-Z
     var taxonomyValues = {};        // level -> [values already in the library], for the suggestions
     var contributePlant = null;     // { id, name, scientificName, lookup }
     var changePlant = null;         // the /editable payload for the plant chosen on the change tab
-    var changeDescription = null;   // the one of the botanist's own descriptions the description half edits
+    var changeDescription = null;   // the one of the contributor's own descriptions the description half edits
     var existingForNew = null;      // the library plant a new-plant draft collides with
     var searchTimer = null;
     var changeTimer = null;
@@ -111,6 +111,7 @@
     var modalOpener = null;
     var fromProfile = false;        // opened with ?plantId= (the plant profile's Contribute button)
     var lockedPlant = null;         // set when opened from a plant card: the one plant this page may touch
+    var fromScan = false;           // opened with ?from=scan (the scan page's "Record it"): a description is required
 
     // ------------------------------------------------------------ helpers ----
     function byId(id) { return document.getElementById(id); }
@@ -138,7 +139,7 @@
     /**
      * An error is a <p class="record-field-error"> placed right below the box it
      * belongs to (below the whole row when the box sits in a search row, below the
-     * whole group for a checkbox). It is removed as soon as the botanist edits
+     * whole group for a checkbox). It is removed as soon as the contributor edits
      * that box.
      */
     function errorAnchor(input) {
@@ -309,7 +310,7 @@
     }
 
     /**
-     * Fills a <select> with the type names already in use, most used first, and
+     * Fills a <select> with the type names already in use (A-Z, no counts), and
      * "Others" last. `selected` is kept chosen; if it is not in the list (a plant
      * whose own type name nobody else uses) it is added so the current value is
      * never lost. With no `selected`, the current choice (including "Others") stays.
@@ -322,6 +323,9 @@
 
         var first = document.createElement('option');
         first.value = '';
+        // Label only: shown while nothing is chosen, but not listed in the open dropdown.
+        first.disabled = true;
+        first.hidden = true;
         first.textContent = typeNames.length ? 'Select a type\u2026' : 'No types available yet';
         select.appendChild(first);
 
@@ -329,8 +333,7 @@
         typeNames.forEach(function (type) {
             var option = document.createElement('option');
             option.value = type.typeName;
-            option.textContent = type.typeName +
-                ' (' + type.plantCount + ' plant' + (type.plantCount === 1 ? '' : 's') + ')';
+            option.textContent = type.typeName;
             select.appendChild(option);
             if (type.typeName === wanted) seen = true;
         });
@@ -429,11 +432,11 @@
 
     // ---------------------------------------------------------- image lists ----
     /**
-     * A list of photos the botanist has picked for one form.
+     * A list of photos the contributor has picked for one form.
      *
      * The <input type="file"> is only a way to ADD to it: its own FileList cannot
      * drop a single file, and a list that cannot drop one photo is a list the
-     * botanist has to throw away and rebuild. Everything that is sent is read from
+     * contributor has to throw away and rebuild. Everything that is sent is read from
      * `items`, never from the input.
      *
      * An empty list hides its grid. `reserved()` is how many report photos the
@@ -602,7 +605,10 @@
     /** Opened from a plant page: the plant exists, so "New plant" does not apply. */
     function initPlantContext() {
         var params = new URLSearchParams(window.location.search);
-        fromProfile = Boolean(params.get('plantId')) && !discoveryParam();
+        // ?from=scan&plantId= picks the plant for "Add to existing" but does not lock the page to it: the
+        // person can still choose another plant or record a new one.
+        fromScan = scanHandoffParam();
+        fromProfile = Boolean(params.get('plantId')) && !discoveryParam() && !fromScan;
         if (!fromProfile) return;
         var newTab = byId('tab-new');
         if (newTab) newTab.hidden = true;
@@ -640,6 +646,7 @@
             history.replaceState(null, '', window.location.pathname + '?' + params.toString());
         }
 
+        syncScanNote(tab);
         if (tab === 'mine') loadMine();
     }
 
@@ -817,7 +824,9 @@
             add('newHarmful', 'Describe the things to watch out for, or untick "Harmful plant".');
         }
         if (!hasAnyPartValue(parts) && !value('newUses') && !value('newBenefits') && !caution) {
-            add('newUses', 'Add a description or some measurements — names and photos alone are never published.');
+            add('newUses', fromScan
+                ? 'Add a description or some measurements. Recording from a scan needs one; the name and photo are not enough.'
+                : 'Add a description or some measurements — names and photos alone are never published.');
         }
         return errors;
     }
@@ -867,7 +876,7 @@
         form.append('benefits', value('newBenefits'));
         // Omitted, not sent empty, when the plant is not marked harmful.
         if (harmfulVisible('new')) form.append('harmful', value('newHarmful'));
-        // Present ONLY when the botanist arrived from the queue. The server
+        // Present ONLY when the contributor arrived from the queue. The server
         // verifies the claim in the submit transaction, so this is provenance
         // and not a permission.
         if (discoveryRequestId) {
@@ -883,7 +892,7 @@
             var result = await api('/api/plants/requests', { method: 'POST', body: form });
 
             // The scan photo is only really submitted now; before this the cache
-            // entry was the botanist's only copy.
+            // entry was the contributor's only copy.
             if (typeof window.dropScanPhoto === 'function') {
                 for (var i = 0; i < cachedKeys.length; i++) await window.dropScanPhoto(cachedKeys[i]);
             }
@@ -914,11 +923,12 @@
             await loadTypes();
             loadTaxonomySuggestions();
             finishDiscovery();
+            finishScanHandoff();
             mineStale = true;
             showTab('mine');
         } catch (err) {
             // The species turned out to exist: turn the draft into a contribution
-            // instead of leaving the botanist with a dead end.
+            // instead of leaving the contributor with a dead end.
             if (err.status === 409 && err.body && err.body.existingPlantId) {
                 try {
                     var data = await api('/api/plants/lookup?plantId=' + encodeURIComponent(err.body.existingPlantId));
@@ -1054,7 +1064,7 @@
         el.contributeResults.hidden = false;
     }
 
-    /** Forgets the chosen plant without touching what the botanist is typing. */
+    /** Forgets the chosen plant without touching what the contributor is typing. */
     function clearSelection() {
         selectToken++;
         contributePlant = null;
@@ -1068,7 +1078,7 @@
     /**
      * Chooses the plant a contribution goes to.
      *
-     * The Find box is FILLED with the plant, not just annotated: the botanist
+     * The Find box is FILLED with the plant, not just annotated: the contributor
      * should be able to read what they picked in the place they typed it. Typing
      * over it clears the choice (see the input handler), so the box and the choice
      * can never disagree.
@@ -1087,7 +1097,7 @@
 
         try {
             var data = await api('/api/plants/lookup?plantId=' + encodeURIComponent(plant.id));
-            if (token !== selectToken) return;   // the botanist moved on
+            if (token !== selectToken) return;   // the contributor moved on
             if (data.exists) {
                 var found = data.plant;
                 contributePlant.name = found.name;
@@ -1312,8 +1322,17 @@
             });
         }
         var photos = contributeList.count() + chosenIds('contribute').length;
-        if (!hasAnyPartValue(parts) && !value('contributeUses') && !value('contributeBenefits') &&
-            !caution && photos === 0) {
+        var hasDescription = hasAnyPartValue(parts) || Boolean(value('contributeUses')) ||
+            Boolean(value('contributeBenefits')) || Boolean(caution);
+        if (fromScan) {
+            // From a scan the photo is already in hand, so it does not count as the contribution.
+            if (!hasDescription) {
+                errors.push({
+                    input: byId('contributeUses'),
+                    message: 'Add a description or some measurements. Recording from a scan needs one; a photo alone is not enough.'
+                });
+            }
+        } else if (!hasDescription && photos === 0) {
             errors.push({
                 input: byId('contributeUses'),
                 message: 'Add a description, some measurements, or at least one photo.'
@@ -1346,6 +1365,8 @@
         form.append('benefits', value('contributeBenefits'));
         if (harmfulVisible('contribute')) form.append('harmful', value('contributeHarmful'));
         contributeList.files().forEach(function (file) { form.append('images', file, file.name); });
+        // The server applies the same "description required" rule when this is present.
+        if (fromScan) form.append('fromScan', '1');
         // Same provenance field as the new-plant form, and for the same reason: a
         // report can be worked through either tab, and the link has to be
         // recorded whichever route was taken.
@@ -1381,6 +1402,7 @@
                 await selectPlant({ id: lockedPlant.id, name: lockedPlant.name, scientificName: lockedPlant.scientificName });
             }
             finishDiscovery();
+            finishScanHandoff();
             mineStale = true;
             showTab('mine');
         } catch (err) {
@@ -1392,12 +1414,12 @@
 
     // ------------------------------------------------------ request change ----
     /**
-     * "Request change": the botanist picks an existing plant, edits what is wrong
+     * "Request change": the contributor picks an existing plant, edits what is wrong
      * and says why; an admin approves or denies it. Nothing changes until then.
      *
      * The form is built from the plant's CURRENT values (GET .../editable), and
      * only fields that differ are sent. A blank field means "no change": a
-     * botanist cannot clear a value, so removal has to be explained in the reason.
+     * contributor cannot clear a value, so removal has to be explained in the reason.
      * The server stores each change with the value it was compared against, so an
      * approval can refuse a request that has gone stale.
      */
@@ -1432,7 +1454,7 @@
         el.changeSearch.value = plantLabel(plant);
         try {
             var data = await api('/api/plants/' + encodeURIComponent(plant.id) + '/editable');
-            if (token !== changeToken) return;   // the botanist moved on
+            if (token !== changeToken) return;   // the contributor moved on
             if (data.archived) {
                 setNotice('That plant is archived and cannot be changed.', 'error');
                 return;
@@ -1578,7 +1600,7 @@
         return box;
     }
 
-    /** The fields of ONE of the botanist's own descriptions. */
+    /** The fields of ONE of the contributor's own descriptions. */
     function renderChangeDescriptionFields(data, description) {
         el.changeDescFields.innerHTML = '';
         DESC_FIELDS.forEach(function (field) {
@@ -1619,7 +1641,7 @@
             ? 'A change to this plant\u2019s info is already waiting for review (' + data.pendingBaseRequestId + ').'
             : 'Common name, scientific name, plant type and taxonomy. This is the plant\u2019s shared record.';
 
-        // ---- the description half: only descriptions this botanist wrote ----
+        // ---- the description half: only descriptions this contributor wrote ----
         var own = data.descriptions || [];
         var free = own.filter(function (d) { return !d.hasPendingChange; });
         changeDescription = free[0] || null;
@@ -1642,7 +1664,7 @@
             ? 'You have no approved description on this plant yet, so there is nothing of yours to change. Add one under Contribute.'
             : !changeDescription
                 ? 'Every description of yours on this plant already has a change waiting for review.'
-                : 'Uses, benefits, things to watch out for and measurements. Each botanist\u2019s description is separate, so this only changes one you wrote.';
+                : 'Uses, benefits, things to watch out for and measurements. Each contributor\u2019s description is separate, so this only changes one you wrote.';
         if (changeDescription) renderChangeDescriptionFields(data, changeDescription);
 
         el.changeForm.hidden = false;
@@ -1755,7 +1777,7 @@
             return;
         }
 
-        // Only the halves the botanist ticked are sent. An unticked half is not
+        // Only the halves the contributor ticked are sent. An unticked half is not
         // requested, so the record it covers is never touched.
         var baseOn = el.changeBaseToggle.checked && !el.changeBaseToggle.disabled;
         var descOn = el.changeDescToggle.checked && !el.changeDescToggle.disabled;
@@ -1956,7 +1978,7 @@
             if (request.note) html += '<p class="record-note">' + escapeHtml(request.note) + '</p>';
 
             // A record made from a claimed discovery report loses its link to that
-            // report the moment the botanist leaves the banner screen, and the
+            // report the moment the contributor leaves the banner screen, and the
             // note field is not a reliable substitute: the report is the evidence.
             if (request.discoveryRequestId) {
                 html += '<p class="record-muted">From discovery report ' +
@@ -2063,7 +2085,7 @@
     // ------------------------------------------------------- deep links ------
     /**
      * Opened from a plant card: the Find box and type filter on BOTH picker tabs
-     * are disabled, so the botanist cannot drift onto another plant. A note says
+     * are disabled, so the contributor cannot drift onto another plant. A note says
      * which plant is locked and links to the library for working on another.
      */
     function lockPlantPickers(plant) {
@@ -2118,7 +2140,7 @@
         var scientific = (params.get('scientificName') || '').trim();
         var common = (params.get('commonName') || '').trim();
         if (tab === 'new' && (scientific || common)) {
-            // A HINT, not a prefill. The prediction is the reason the botanist is
+            // A HINT, not a prefill. The prediction is the reason the contributor is
             // being asked, so it is not trustworthy input and must not silently
             // become the recorded name.
             if (el.newPlantHint) {
@@ -2131,7 +2153,7 @@
             if (scientific) await loadCarried('new', scientific);
             // The scan's "Record this plant" link always opens this tab, even for a
             // species that is already in the library. Look it up now (the name box
-            // stays empty: the prediction is a hint) so the botanist is offered the
+            // stays empty: the prediction is a hint) so the contributor is offered the
             // contribution path immediately instead of finding out at submit.
             if (scientific) {
                 try {
@@ -2151,8 +2173,13 @@
             var data = await api('/api/plants/types');
             // One entry per NAME, most used first (the server groups them): every plant
             // owns its own type row, so the list is names, not rows.
-            typeNames = (data.types || []).map(function (type) {
-                return { typeName: type.typeName, plantCount: Number(type.plantCount) || 0 };
+            var seenTypes = {};
+            typeNames = [];
+            (data.types || []).forEach(function (type) {
+                var key = String(type.typeName || '').trim().toLowerCase();
+                if (!key || seenTypes[key]) return;
+                seenTypes[key] = true;
+                typeNames.push({ typeName: type.typeName });
             });
 
             // The Find-a-plant filters on the two picker tabs. Their value is the
@@ -2181,7 +2208,7 @@
 
     // --------------------------------banner --
     /**
-     * ?from=<requestId> is how discoveries.html hands a report to a botanist.
+     * ?from=<requestId> is how discoveries.html hands a report to a contributor.
      *
      * The report's photos are SHOWN in the banner and OFFERED as tickable photos
      * in both forms. Ticking one asks the server to COPY it into the submission
@@ -2193,6 +2220,29 @@
         var params = new URLSearchParams(window.location.search);
         var from = params.get('from');
         return from && /^req_\d{6}$/.test(from) ? from : null;
+    }
+
+    /** ?from=scan is how the scan page's "Record it" hands over. Not a request id, so discoveryParam() ignores it. */
+    function scanHandoffParam() {
+        return new URLSearchParams(window.location.search).get('from') === 'scan';
+    }
+
+    function syncScanNote(tab) {
+        var note = byId('scanHandoffNote');
+        if (note) note.hidden = !(fromScan && (tab === 'new' || tab === 'contribute'));
+    }
+
+    /** The trip is over once a submission lands: later submissions from this page are ordinary ones. */
+    function finishScanHandoff() {
+        if (!fromScan) return;
+        fromScan = false;
+        syncScanNote(activeTab);
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('from') === 'scan') {
+            params.delete('from');
+            var query = params.toString();
+            history.replaceState(null, '', window.location.pathname + (query ? '?' + query : ''));
+        }
     }
 
     async function initDiscoveryBanner() {
@@ -2238,7 +2288,8 @@
                 noteLi.textContent = card.note;
                 list.appendChild(noteLi);
             }
-            discoveryImages = (card.images || []).filter(function (image) { return image.imageId && image.url; });
+            // Only photos the reporter allowed as contribution images can be attached to a record.
+            discoveryImages = (card.images || []).filter(function (image) { return image.imageId && image.url && image.allowContribution !== false; });
             discoveryImages.forEach(function (image) {
                 var li = document.createElement('li');
                 var open = document.createElement('button');
@@ -2332,11 +2383,9 @@
         // asked who this is — one fetch, one answer, no second try/catch here to
         // collapse every failure into user = null.
         var user = await window.plantAuth.ready;
-        // A signed-out visitor and a signed-in non-botanist are in the SAME state
-        // here: neither can record, and signing in would not change that for a
-        // plain account. So they get one message rather than two presentations of
-        // one fact.
-        const NO_RECORD = 'Botanist access required. Every form is hidden because the APIs would answer 403 anyway.';
+        // Every signed-in account can record, so this is the signed-out state (or
+        // an account whose permission was removed). One message for both.
+        const NO_RECORD = 'Sign in to record plants. Every form is hidden because the APIs would answer 403 anyway.';
         if (!user || !(user.permissions || []).includes('record_plant')) {
             setGate(NO_RECORD);
             el.ui.hidden = true;
@@ -2347,7 +2396,7 @@
 
         initModal();
 
-        // An error under a box goes away as soon as the botanist edits that box.
+        // An error under a box goes away as soon as the contributor edits that box.
         ['input', 'change'].forEach(function (type) {
             el.ui.addEventListener(type, function (event) { clearFieldError(event.target); });
         });

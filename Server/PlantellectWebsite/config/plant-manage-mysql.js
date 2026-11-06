@@ -1,4 +1,4 @@
-// Change requests: a botanist asks for a correction to a plant that is already in
+// Change requests: a contributor asks for a correction to a plant that is already in
 // the library, and an admin approves or denies it.
 //
 // A change request has TWO independent scopes, and each one is its own request
@@ -11,15 +11,15 @@
 //       taxonomy.*                   the plant's OWN taxonomy row: kingdom, phylum,
 //                                    class, order, family, genus, species
 //
-//   scope 'description'  ONE botanist's own description of the plant. A plant has
+//   scope 'description'  ONE contributor's own description of the plant. A plant has
 //       one plant_description row (plus its plant_parts row) per contribution, so
 //       there is one request per description: uses, benefits, harmful and the
-//       measurements (parts.*). payload.descriptionId says which one. A botanist
+//       measurements (parts.*). payload.descriptionId says which one. A contributor
 //       can only ask to change a description they wrote themselves.
 //
 // The two never write into each other. A base request cannot touch a description,
 // a description request cannot touch the plant's record, and approving or denying
-// one leaves the other exactly as it was. A botanist may file either, or both in
+// one leaves the other exactly as it was. A contributor may file either, or both in
 // one submit (which simply creates two requests).
 //
 // Entry points used from outside:
@@ -218,10 +218,10 @@ async function loadPendingChanges(executor, plantId) {
 // ---------------------------------------------------------------------------
 
 /**
- * Everything the "Request change" form needs for one plant and one botanist:
+ * Everything the "Request change" form needs for one plant and one contributor:
  *   base.*          the shared record (names, type, taxonomy) and whether a base
  *                   request is already waiting
- *   descriptions    ONLY the descriptions this botanist wrote, each with its own
+ *   descriptions    ONLY the descriptions this contributor wrote, each with its own
  *                   values and its own pending flag
  * The keys of a description's `values` are exactly the keys of a change
  * (`parts.<field>` for measurements).
@@ -353,7 +353,7 @@ function failure(error, code) {
 }
 
 /**
- * Files a change request. The body names the scopes the botanist chose:
+ * Files a change request. The body names the scopes the contributor chose:
  *   { base: { reason, commonName?, scientificName?, taxonomy?, type? },
  *     description: { descriptionId, reason, uses?, benefits?, harmful?, parts? } }
  * A scope that is absent is not requested and stays untouched. Each scope that is
@@ -382,7 +382,7 @@ async function createPlantChangeRequest(accountId, plantId, body) {
     try {
         await conn.beginTransaction();
 
-        // Locking the plant row serialises two botanists filing at once, so the
+        // Locking the plant row serialises two contributors filing at once, so the
         // pending checks below cannot be raced.
         const plant = await loadPlantRecord(conn, plantId, true);
         if (!plant) {
@@ -572,7 +572,7 @@ async function applyPlantChange(conn, request) {
         }
     }
 
-    // Stale check: the row must still hold what the botanist saw.
+    // Stale check: the row must still hold what the contributor saw.
     for (const key of keys) {
         if (norm(key, currentValue(key, plant, desc)) !== norm(key, changes[key].from)) {
             return {

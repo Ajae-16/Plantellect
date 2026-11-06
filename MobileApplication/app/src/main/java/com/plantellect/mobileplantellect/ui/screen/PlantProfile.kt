@@ -18,6 +18,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.plantellect.mobileplantellect.PlantellectApp
+import com.plantellect.mobileplantellect.data.remote.dto.PlantProfileData
+import com.plantellect.mobileplantellect.data.remote.dto.ProfileLoad
+import com.plantellect.mobileplantellect.data.remote.dto.ProfilePerson
+import com.plantellect.mobileplantellect.ui.theme.ContributorPalette
+import com.plantellect.mobileplantellect.ui.theme.contributor
+import com.plantellect.mobileplantellect.ui.theme.extraColors
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 
 /**
@@ -71,14 +83,14 @@ fun PlantProfileDialog(plantId: String, fallbackName: String, heroUrl: String?, 
 
     viewing?.let { url ->
         Dialog(onDismissRequest = { viewing = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Surface(Modifier.fillMaxSize(), color = Color.Black.copy(alpha = 0.92f)) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.extraColors.overlay.copy(alpha = 0.92f)) {
                 Box(Modifier.fillMaxSize().clickable { viewing = null }) {
                     PlantPhoto(
                         url, fallbackName, Modifier.fillMaxSize().padding(16.dp),
                         maxPx = 2048, scale = ContentScale.Fit, placeholder = false
                     )
                     TextButton({ viewing = null }, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
-                        Text("Close", color = Color.White)
+                        Text("Close", color = MaterialTheme.extraColors.onOverlay)
                     }
                 }
             }
@@ -144,16 +156,16 @@ private fun ProfileBody(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (p.typeLabel.isNotBlank()) Pill(p.typeLabel, c.secondaryContainer, c.onSecondaryContainer)
             when (tox) {
-                "mild" -> Pill("Mild toxicity", Color(0xFFF2C94C), Color.Black)
-                "moderate" -> Pill("Moderate toxicity", Color(0xFFF2994A), Color.Black)
-                "severe" -> Pill("Severe toxicity", Color(0xFFEB5757), Color.White)
+                "mild" -> Pill("Mild toxicity", MaterialTheme.extraColors.pillMild.background, MaterialTheme.extraColors.pillMild.content)
+                "moderate" -> Pill("Moderate toxicity", MaterialTheme.extraColors.pillModerate.background, MaterialTheme.extraColors.pillModerate.content)
+                "severe" -> Pill("Severe toxicity", MaterialTheme.extraColors.pillSevere.background, MaterialTheme.extraColors.pillSevere.content)
                 null -> {}
                 else -> Pill("Toxicity: $tox", c.errorContainer, c.onErrorContainer)
             }
         }
 
         if (primary != null && p.descriptions.size > 1 && primary.author != null) {
-            Text("Primary description by ${primary.author}", style = MaterialTheme.typography.labelLarge, color = c.primary)
+            ContributorByline(primary.author)
         }
 
         // The primary description's thumbs, right under the byline (same place as the web).
@@ -173,33 +185,36 @@ private fun ProfileBody(
             Card(colors = CardDefaults.cardColors(containerColor = c.errorContainer), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Things to watch out for", style = MaterialTheme.typography.titleSmall, color = c.onErrorContainer)
-                    warnings.forEach { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.onErrorContainer) }
+                    warnings.forEach { RichTextView(it, style = MaterialTheme.typography.bodyMedium, color = c.onErrorContainer) }
                 }
             }
         } else {
             Section("Things to watch out for", null, "Nothing hazardous recorded.")
         }
 
-        val boxes = others.filter { it.looks.isNotBlank() || it.uses.isNotBlank() || it.benefits.isNotBlank() || it.harmful.isNotBlank() }
+        // One colored box per other contributor; the color follows their place in the list (the primary has color 0).
+        val boxes = others.withIndex().filter { (_, d) ->
+            d.looks.isNotBlank() || d.uses.isNotBlank() || d.benefits.isNotBlank() || d.harmful.isNotBlank()
+        }
         if (boxes.isNotEmpty()) {
             HorizontalDivider()
-            Text("More details from other botanists", style = MaterialTheme.typography.titleMedium, color = c.onSurface)
-            boxes.forEach { d ->
-                Card(colors = CardDefaults.cardColors(containerColor = c.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Column {
-                            Text(d.author ?: "A botanist", style = MaterialTheme.typography.titleSmall, color = c.primary)
-                            d.specialization?.takeIf { it.isNotBlank() }?.let {
-                                Text(it, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
-                            }
-                        }
-                        if (d.looks.isNotBlank()) Block("What it looks like", d.looks)
-                        if (d.uses.isNotBlank()) Block("Common uses", d.uses)
-                        if (d.benefits.isNotBlank()) Block("Health benefits", d.benefits)
-                        if (d.harmful.isNotBlank()) Block("Things to watch out for", d.harmful, warn = true)
-
-                        if (d.descriptionId != null) {
-                            HorizontalDivider(color = c.outlineVariant)
+            Text("More details from other contributors", style = MaterialTheme.typography.titleMedium, color = c.onSurface)
+            boxes.forEach { (i, d) ->
+                ContributorBox(MaterialTheme.extraColors.contributor(i + 1)) { colors ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.size(12.dp).background(colors.accent, CircleShape))
+                        Text(d.author ?: "A contributor", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = colors.fg)
+                    }
+                    d.specialization?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = colors.fg.copy(alpha = 0.8f))
+                    }
+                    if (d.looks.isNotBlank()) BoxSection("What it looks like", d.looks, colors)
+                    if (d.uses.isNotBlank()) BoxSection("Common uses", d.uses, colors)
+                    if (d.benefits.isNotBlank()) BoxSection("Health benefits", d.benefits, colors)
+                    if (d.harmful.isNotBlank()) BoxSection("Things to watch out for", d.harmful, colors)
+                    if (d.descriptionId != null) {
+                        HorizontalDivider(color = colors.accent.copy(alpha = 0.4f))
+                        CompositionLocalProvider(LocalContentColor provides colors.fg) {
                             DescriptionVoteBar(votes, d.descriptionId, onHidden)
                         }
                     }
@@ -222,7 +237,7 @@ private fun Section(title: String, body: String?, empty: String = "No informatio
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
         if (body.isNullOrBlank()) Text(empty, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        else Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+        else RichTextView(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -233,7 +248,63 @@ private fun Block(title: String, body: String, warn: Boolean = false) {
             title, style = MaterialTheme.typography.labelLarge,
             color = if (warn) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
         )
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+        RichTextView(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+/** "Primary description by NAME" in the first contributor color, shown when more than one person described the plant. */
+@Composable
+private fun ContributorByline(name: String) {
+    val colors = MaterialTheme.extraColors.contributor(0)
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = colors.bg,
+        border = BorderStroke(1.dp, colors.accent)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(Modifier.size(12.dp).background(colors.accent, CircleShape))
+            Text(
+                buildAnnotatedString {
+                    append("Primary description by ")
+                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                    append(name)
+                    pop()
+                },
+                style = MaterialTheme.typography.labelLarge, color = colors.fg
+            )
+        }
+    }
+}
+
+/** A contributor's box: tinted background, an accent edge on the left, text in the box's own color. */
+@Composable
+private fun ContributorBox(colors: ContributorPalette, content: @Composable ColumnScope.(ContributorPalette) -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = colors.bg,
+        contentColor = colors.fg,
+        border = BorderStroke(1.dp, colors.accent),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            Box(Modifier.width(6.dp).fillMaxHeight().background(colors.accent))
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { this.content(colors) }
+        }
+    }
+}
+
+@Composable
+private fun BoxSection(title: String, body: String, colors: ContributorPalette) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(
+            title.uppercase(), style = MaterialTheme.typography.labelSmall,
+            color = colors.fg.copy(alpha = 0.85f), fontWeight = FontWeight.Bold
+        )
+        RichTextView(body, style = MaterialTheme.typography.bodyMedium, color = colors.fg)
     }
 }
 
@@ -243,11 +314,10 @@ private fun PeopleRow(label: String, people: List<ProfilePerson>) {
     if (people.isEmpty()) return
     val text = people.joinToString(", ") { person ->
         person.name + when (person.role) {
-            "botanist" -> " (Verified Botanist)"
             "admin" -> " (Administrator)"
             "superadmin" -> " (Superadministrator)"
             else -> ""
         }
     }
     Text("$label: $text", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
+}

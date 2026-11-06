@@ -1,0 +1,12 @@
+Plantellect bundled fonts. Put the TTF files here (lowercase names, only the weights you have):
+
+  open_sans_regular.ttf      open_sans_medium.ttf      open_sans_semibold.ttf      open_sans_bold.ttf
+  montserrat_regular.ttf     montserrat_medium.ttf     montserrat_semibold.ttf     montserrat_bold.ttf
+  roboto_regular.ttf         roboto_medium.ttf                                     roboto_bold.ttf
+  roboto_slab_regular.ttf    roboto_slab_medium.ttf    roboto_slab_semibold.ttf    roboto_slab_bold.ttf
+  lato_regular.ttf                                                                 lato_bold.ttf
+  playfair_display_regular.ttf  playfair_display_medium.ttf  playfair_display_semibold.ttf  playfair_display_bold.ttf
+
+Run tools/install_fonts.py to copy and rename them from the zips downloaded from fonts.google.com
+(all of these are open source, free to bundle). A missing file is fine: that font then draws as the
+phone's own font. Add a new font: see ui/theme/AppFonts.kt.

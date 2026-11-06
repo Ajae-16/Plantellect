@@ -20,6 +20,13 @@ interface PlantApi {
     @GET("${ApiConfig.PLANTS}/{plantId}")
     suspend fun detail(@Path("plantId") plantId: String): Response<PlantDetailDto>
 
+    /**
+     * The same route as detail(), unparsed: PlantProfileRepository reads the JSON tree itself so a field
+     * the server adds or reshapes cannot break the profile screen.
+     */
+    @GET("${ApiConfig.PLANTS}/{plantId}")
+    suspend fun detailRaw(@Path("plantId") plantId: String): Response<ResponseBody>
+
     @GET("${ApiConfig.PLANTS}/{plantId}/images/{imageId}")
     @Streaming
     suspend fun plantImage(

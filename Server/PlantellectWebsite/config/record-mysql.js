@@ -1,4 +1,4 @@
-// Botanist submissions.
+// Contributor submissions.
 // Split out of mysql.js; see mysql.js for the combined export list.
 
 const path = require('path');
@@ -82,10 +82,17 @@ async function validatePlantDraft(body) {
     return { errors, warnings, clean };
 }
 
-function validateContribution(body, imageCount) {
+function validateContribution(body, imageCount, options = {}) {
     const errors = [];
     const hasText = body.uses || body.benefits || body.harmful;
     const hasParts = body.parts && Object.values(body.parts).some((v) => v !== null && v !== undefined && v !== '');
+    if (options.fromScan) {
+        // Recording from a scan: the photo is already the scan's, so what is wanted is what the photo cannot say.
+        if (!hasText && !hasParts) {
+            errors.push('A contribution from a scan needs a description or some measurements. A photo alone is not enough');
+        }
+        return errors;
+    }
     if (!hasText && !hasParts && imageCount === 0) {
         errors.push('A contribution needs at least a description, some measurements, or one photo');
     }
@@ -113,7 +120,7 @@ function userError(message, code) {
 }
 
 /**
- * Resolves the discovery-report photos a botanist chose to attach to a record.
+ * Resolves the discovery-report photos a contributor chose to attach to a record.
  * Attaching is a COPY; every id must belong to the claimed report.
  */
 async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
@@ -125,7 +132,7 @@ async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
     // FOR UPDATE: two submissions that pick the same report photo queue up here, so the
     // second one runs its "already attached" check after the first has committed.
     const [rows] = await conn.query(
-        `SELECT imageId, accountId, originalFilename, storedPath, mimeType, size, contentHash, perceptualHash
+        `SELECT imageId, accountId, originalFilename, storedPath, mimeType, size, contentHash, perceptualHash, allowContribution
          FROM discovery_images
          WHERE requestId = ? AND imageId IN (${unique.map(() => '?').join(',')})
          FOR UPDATE`,
@@ -133,6 +140,10 @@ async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
     );
     if (rows.length !== unique.length) {
         throw userError('One of the chosen report photos does not belong to that report', 400);
+    }
+    // The reporter decides whether their scan becomes a library / dataset photo.
+    if (rows.some((r) => !r.allowContribution)) {
+        throw userError('The reporter did not allow one of these photos to be used as a contribution image', 400);
     }
     return rows;
 }
@@ -152,18 +163,18 @@ async function loadDiscoveryPhotos(conn, discoveryRequestId, ids) {
  * A chosen REPORT photo is a CLAIM : the reporter's master is copied into the
  * plant's masters, plants/masters/<plantId or requestId>/<new imageId>.webp, under a new
  * image id, and never moves again either. The new row stores
- *   accountId               the botanist recording the plant (the record's author)
+ *   accountId               the contributor recording the plant (the record's author)
  *   creditAccountId         the reporter who took the photo
  *   sourceDiscoveryImageId  the report photo it was copied from
  * The report keeps its own photo, so retention and denial stay independent. The same
  * report photo cannot be attached twice while an earlier attachment is pending or
  * approved. A report photo that is not a master (stored before the ingest pipeline) is
- * refused: it may still carry the metadata the plan says is never kept.
+ * refused: it may still carry the metadata the is never kept.
  *
  * COPY, verify, then delete the source (see image-files.js). The temp file is
  * deleted by plan.finalize() after the commit; a report photo is copied and its
  * original stays with the report. If a photo cannot be copied cleanly after the
- * retry limit the whole submission fails with a message the botanist can act on:
+ * retry limit the whole submission fails with a message the contributor can act on:
  * nothing has been approved yet, so there is no admin to tell.
  */
 async function stageImages(conn, { accountId, plantId, requestId, files, photos, plan }) {
@@ -549,7 +560,7 @@ async function createPlantTaxonomyRequest(accountId, plantId, body) {
 
 /**
  * One plant as the record form needs it, found by plantId or by scientific name.
- * Botanist-only at the route. (This query never touched archivedAt.)
+ * Contributor-only at the route. (This query never touched archivedAt.)
  */
 async function getRecordingPlant({ plantId, scientificName }) {
     const where = plantId ? 'p.plantId = ?' : 'p.scientificName = ?';

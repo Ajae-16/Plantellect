@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .audit import run_audit
 from .config import atomic_write
+from .fingerprint import parse_kind
 from .groups import assign_groups, read_manual
 from .pipeline import prepare
 from .snapshot import SnapshotError, check_against_index, describe, load_snapshot, manual_groups, resolve_snapshot_dir
@@ -193,7 +194,8 @@ def main(argv=None):
     def common(p):
         p.add_argument("--root", action="append", default=[], help="dataset folder (repeat for several)")
         p.add_argument("--index-dir", help="where index.sqlite, config.json and splits.json live (default: next to the first root)")
-        p.add_argument("--embedder", choices=["auto", "mobilenet", "thumb"], default="auto")
+        p.add_argument("--embedder", type=parse_kind, default="auto", metavar="KIND",
+                       help="auto, mobilenet, thumb, saved (the default saved model) or model:<id> (a folder under MODEL_ROOT)")
         p.add_argument("--weights", default="imagenet", help="'imagenet' or a weights file path (offline use)")
         p.add_argument("--workers", type=int, default=4)
 

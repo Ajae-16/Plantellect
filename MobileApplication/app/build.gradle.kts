@@ -69,7 +69,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     // Google Fonts (Fraunces / Nunito in Type.kt). Version comes from the Compose BOM.
-    implementation("androidx.compose.ui:ui-text-google-fonts")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     // Navigation/Drawer

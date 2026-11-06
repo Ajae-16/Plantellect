@@ -1,9 +1,6 @@
-// Registration / consent: certificates, role requests and consent records written at sign-up.
+// Registration / consent: the consent records written at sign-up.
 // Split out of mysql.js; see mysql.js for the combined export list.
 
-const path = require('path');
-const crypto = require('crypto');
-const fs = require('fs');
 const settings = require('./settings');
 const { insertRow } = require('./ids.js');
 const { mysqlPool } = require('./pool-mysql');
@@ -11,36 +8,6 @@ const { mysqlPool } = require('./pool-mysql');
 // ---------------------------------------------------------------------------
 // Registration / consent
 // ---------------------------------------------------------------------------
-
-async function insertCertificate(conn, accountId, fileMeta) {
-    const accountDir = path.join(settings.certificates.storageDir, String(accountId));
-    if (!fs.existsSync(accountDir)) {
-        fs.mkdirSync(accountDir, { recursive: true });
-    }
-    const ext = path.extname(fileMeta.originalname).toLowerCase();
-    const storedFilename = `${crypto.randomUUID()}${ext}`;
-    const relativePath = path.join(String(accountId), storedFilename);
-    const fullPath = path.join(settings.certificates.storageDir, relativePath);
-
-    fs.renameSync(fileMeta.path, fullPath);
-
-    const certificateId = await insertRow(
-        conn,
-        'certificates',
-        ['accountId', 'originalFilename', 'storedFilename', 'storedPath', 'mimeType', 'size'],
-        [accountId, fileMeta.originalname, storedFilename, relativePath, fileMeta.mimetype, fileMeta.size]
-    );
-    return { certificateId, storedPath: relativePath };
-}
-
-async function insertRoleRequest(conn, accountId, requestedRole) {
-    return insertRow(
-        conn,
-        'approval_requests',
-        ['accountId', 'requestType', 'requestedRole', 'status'],
-        [accountId, 'role_permission', requestedRole, 'pending']
-    );
-}
 
 async function recordConsent(conn, accountId, consentTypes, version) {
     const written = [];
@@ -81,8 +48,6 @@ async function getConsentState(accountId) {
 }
 
 module.exports = {
-    insertCertificate,
-    insertRoleRequest,
     recordConsent,
     getConsentState
 };

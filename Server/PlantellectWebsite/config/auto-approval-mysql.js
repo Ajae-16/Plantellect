@@ -4,7 +4,7 @@
 const approvalMode = require('./approval-mode.js');
 const { mysqlPool } = require('./pool-mysql');
 const { DISCOVERY_TYPE } = require('./shared-mysql');
-const { claimPendingRequest, decideRoleRequest } = require('./request-mysql');
+const { claimPendingRequest } = require('./request-mysql');
 const { approvePlantRequest } = require('./approval-mysql');
 
 // ---------------------------------------------------------------------------
@@ -154,9 +154,7 @@ async function processNewRequest(requestId, { triggeredBy = 'submission' } = {})
             return { autoDecided: false, reason: decision.reason, rail: decision.rail };
         }
 
-        const result = request.requestType === 'role_permission'
-            ? await decideRoleRequest(requestId, decision.reviewerId, { approve: true })
-            : await approvePlantRequest(requestId, decision.reviewerId);
+        const result = await approvePlantRequest(requestId, decision.reviewerId);
 
         if (result.error) {
             return { autoDecided: false, reason: result.error, code: result.code };

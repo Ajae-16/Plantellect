@@ -9,14 +9,14 @@ const rememberTimeout = 720 // hours
 
 const tzOffset = process.env.TZ_OFFSET || '+08:00';      //timezone of Asia/Manila Philippines
 const tzName = process.env.TZ || 'Asia/Manila'; 
-// File directory for storing botanist certificates.
-const certificateDir = path.join(__dirname, '..', 'administration', 'botanist', 'certificates'); 
-// File size to accept for thr certificares.
-const maxCertificatesSize = 20 // start with MB
-// File directory for community-uploaded plant photos. These are NOT served
+// File directory for community-uploaded plant photos (the plant inventory). These are NOT served
 // statically; routes/plants.js streams approved ones on request.
-const plantImageDir = path.join(__dirname, '..', 'administration', 'botanist', 'plant-images');
+const plantImageDir = path.join(__dirname, '..', 'administration', 'inventory', 'plant-images');
 const maxPlantImageSize = 10 // MB
+// Profile photos of the users themselves (mobile app). Same private-storage idea as the plant
+// photos: NOT served statically; routes/profile.js streams them on request.
+const userImageDir = path.join(__dirname, '..', 'administration', 'inventory', 'user-images');
+const maxUserImageSize = 10 // MB
 
 function numberSetting(name, fallback) {
     const raw = process.env[name];
@@ -45,14 +45,6 @@ module.exports = {
         // Exposing this in config lets you easily check the active timezone across entire project
         timezone: tzOffset,          
         timezoneName: tzName
-    },
-    certificates: {
-        storageDir: certificateDir,
-        maxSizeBytes: maxCertificatesSize * 1024 * 1024, // KB, B
-        allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'],
-        allowedExtensions: ['.pdf', '.jpg', '.jpeg', '.png'],
-        maxFilenameLength: 255,
-        filenameStrategy: 'uuid'
     },
     plantImages: {
         storageDir: plantImageDir,
@@ -108,6 +100,11 @@ module.exports = {
         // ceiling the admin form will accept, so a typo cannot lift the cap off.
         maxFilesPerRequest: Math.max(1, numberSetting('MAX_PLANT_IMAGES_PER_REQUEST', 20)),
         hardMaxFilesPerRequest: 100,
+        // The admin plant editor loads its photo panel one page at a time. This is the FALLBACK page
+        // size; the live value is plantImages.adminPhotosPerPage in system_settings (Settings > Plant
+        // Photo Limit), clamped to 1..adminPhotosPerPageMax so a typo cannot ask for every photo at once.
+        adminPhotosPerPage: 12,
+        adminPhotosPerPageMax: 50,
         // A report is evidence, not a photo album: three is enough to identify a
         // plant and few enough that the per-account open-report cap bounds disk.
         maxDiscoveryFiles: 3,
@@ -126,6 +123,26 @@ module.exports = {
         masterSubdir: 'masters',
         filenameStrategy: 'uuid'
     },
+    // A user's own profile photo. One photo per account, stored as
+    //   user-images/<accountId>.webp      (e.g. acc_000007.webp: found from the user id alone)
+    // and recorded in profiles.imagePath (the file name). The upload goes through the same
+    // ingest pipeline as plant photos (real type check, HEIC conversion, re-encode to a metadata-free WebP),
+    // so what is stored is always a clean master, never the raw upload.
+    userImages: {
+        storageDir: userImageDir,
+        // Temporary landing zone for the raw upload; emptied as soon as the request ends.
+        incomingSubdir: '_incoming',
+        maxSizeBytes: maxUserImageSize * 1024 * 1024, // per file: 10 MB
+        maxFilesPerRequest: 1,
+        // Multipart field name the mobile app sends the photo under.
+        fieldName: 'image',
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
+        allowedExtensions: ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'],
+        genericMimeExtensions: ['.heic', '.heif'],
+        // A profile photo is shown small; the master of a plant photo (2048) is more than it needs.
+        masterLongEdge: Math.max(256, numberSetting('USER_IMAGE_LONG_EDGE', 1024)),
+        bioMaxLength: 500
+    },
     // The upload pipeline (config/image-ingest.js): type check, HEIC conversion,
     // re-encode to the master WebP, hashing.
     ingest: {
@@ -140,7 +157,7 @@ module.exports = {
     },
     // "Looks like photo X" hints shown to the reviewer at approval (config/lookalike.js).
     // A hint never blocks an approval. The two thresholds are STARTING values from the
-    // plan (section 7.6) and must be calibrated on real photos before anyone relies on
+    //  must be calibrated on real photos before anyone relies on
     // them; the hash distance  note that a resized copy differed by
     // 6 to 9 of 64 bits.
     lookalike: {
@@ -173,20 +190,75 @@ module.exports = {
             .split(',').map((p) => p.trim()).filter(Boolean),
         // Most photos one training-status change may touch at once.
         maxBulk: Math.max(1, numberSetting('DATASET_MAX_BULK', 200)),
+        // Most Other plant photos ONE bulk move may assign to a plant (Dataset page > Other plant inbox). Bigger than
+        // maxBulk on purpose: moving 300 photos of one species is one decision, not 300.
+        maxBulkMove: Math.max(1, numberSetting('DATASET_MAX_BULK_MOVE', 500)),
+        // "Run audit now" asks first when the last audit ended less than this many minutes ago (config/dataset-audit.js).
+        auditRecentMinutes: Math.max(1, numberSetting('DATASET_AUDIT_RECENT_MINUTES', 10)),
         groupKeyMaxLength: 100,
         reasonMaxLength: 255,
-        // Most Other plant photos ONE species adds to a snapshot (plan section 7.8: "capped per species"), so a few
+        // Most Other plant photos ONE species adds to a snapshot ("capped per species"), so a few
         // species with hundreds of photos cannot make up most of the one Other plant class. 0 means no cap.
-        otherPlantCap: Math.max(0, numberSetting('DATASET_OTHER_PLANT_CAP', 100))
+        otherPlantCap: Math.max(0, numberSetting('DATASET_OTHER_PLANT_CAP', 100)),
+        // Keeping several admins' views of the dataset in step (config/dataset-sync.js, routes/admin-dataset.js).
+        sync: {
+            // How often an open Dataset page asks "did anything change?". The server hands this number to the page, so
+            // going from "slow" to "nearly live" is ONE setting, no page change: 10-15 now, 2-3 later
+            // (DATASET_SYNC_POLL_SECONDS=3). An unchanged answer is a bodyless 304, so a short interval is cheap.
+            pollSeconds: Math.min(60, Math.max(2, numberSetting('DATASET_SYNC_POLL_SECONDS', 12))),
+            // How many of the newest change-log rows an answer carries (a page that was away longer is told to refresh).
+            tail: 40,
+            // Change-log rows older than this many days are deleted by the housekeeping job.
+            retentionDays: Math.max(1, numberSetting('DATASET_SYNC_RETENTION_DAYS', 30)),
+            // How long a lock survives without being renewed. An operation lock only lives for one request, so its lease is
+            // just a safety net for a crash; a claim ("Ben is working on this") is renewed by the open page every third of it.
+            opLockSeconds: 60,
+            claimLockSeconds: 90,
+            snapshotLockSeconds: 900,
+            // A SPECIES LOCK is an admin's explicit "this species is mine for now": nobody else may move, remove or group
+            // its photos (in train, val and test alike) or move photos into it. The open page renews it every third of the
+            // lease, so a closed tab or a crashed browser frees it within speciesLockSeconds. A page that has seen no mouse
+            // or keyboard for speciesIdleMinutes stops renewing, so a tab left open overnight cannot hold a species forever.
+            // speciesLockMax keeps one admin from locking the whole dataset.
+            speciesLockSeconds: Math.max(60, numberSetting('DATASET_SPECIES_LOCK_SECONDS', 300)),
+            speciesIdleMinutes: Math.max(1, numberSetting('DATASET_SPECIES_IDLE_MINUTES', 20)),
+            speciesLockMax: Math.max(1, numberSetting('DATASET_SPECIES_LOCK_MAX', 5)),
+            // Most photos one claim may mark. A claim is a courtesy marker, so it is capped lower than a bulk move.
+            claimMaxKeys: 200,
+            // Expired locks are swept (and the lock counter bumped, so a stale "Ben is working" marker goes away) this often.
+            sweepSeconds: 20
+        }
     },
     // Species promotion (config/species-promotion.js): moving a species from Other plant to a
-    // supported species. The minimum is the plan's proposed starting value (section 7.8).
+    // supported species. The minimum is the plan's proposed starting value.
     // classesPath is an OPTIONAL override (SPECIES_CLASSES_PATH). Left empty, the class list is the active model's
     // ml/model/<model>/classes.json, the same file the admin coverage route and the database snapshot read
     // (config/active-classes.js). Either way it is re-read whenever the file changes.
     speciesPromotion: {
         minUniquePhotos: Math.max(1, numberSetting('SPECIES_PROMOTE_MIN_PHOTOS', 50)),
         classesPath: process.env.SPECIES_CLASSES_PATH || ''
+    },
+    // Other plant inbox (config/other-plant.js): suggesting which existing plant an unassigned scan contribution looks like,
+    // using the embedder chosen on the dataset page (a saved model, or MobileNet) in the ML service.
+    otherPlant: {
+        // How many photos of each existing plant a photo is compared with (the plant's primary first, then by id).
+        refsPerPlant: Math.max(1, Math.min(30, numberSetting('OTHER_PLANT_REFS_PER_PLANT', 6))),
+        // Most photos sent to the ML service to be embedded in ONE request of the page. What is left is reported
+        // ("still learning") and the admin presses the button again; the vectors are kept, so nothing is sent twice.
+        embedBudget: Math.max(1, numberSetting('OTHER_PLANT_EMBED_BUDGET', 80)),
+        uploadBatch: Math.max(1, Math.min(40, numberSetting('OTHER_PLANT_UPLOAD_BATCH', 16))),
+        // Photos are shrunk to this long edge before they go to the ML service (the model resizes to its own input).
+        sendLongEdge: Math.max(128, numberSetting('OTHER_PLANT_SEND_LONG_EDGE', 320)),
+        // Embedding a batch on a CPU container can take a while; this is longer than settings.ml.timeoutMs on purpose.
+        timeoutMs: Math.max(5000, numberSetting('OTHER_PLANT_TIMEOUT_MS', 120000)),
+        // Most photos one suggestion / grouping request covers (the ML service refuses more than 300).
+        maxPhotos: Math.max(1, Math.min(300, numberSetting('OTHER_PLANT_MAX_PHOTOS', 200))),
+        // Cosine similarity from which two Other plant photos are put in one group. A STARTING value: it depends on the
+        // embedder, so the page lets the admin change it.
+        groupThreshold: (() => {
+            const n = Number.parseFloat(process.env.OTHER_PLANT_GROUP_THRESHOLD);
+            return Number.isFinite(n) ? Math.min(0.99, Math.max(0.5, n)) : 0.8;
+        })()
     },
     // Nightly housekeeping (config/maintenance.js): the public-copy reconcile job and the
     // denied-photo retention job. Local time of the server process.
@@ -211,10 +283,10 @@ module.exports = {
         // the same transaction as the write they guard — a bare count-then-insert
         // lets two rapid requests both read 9 and both succeed at 10.
         //
-        // Twenty claims is deliberately generous: it still stops one botanist
+        // Twenty claims is deliberately generous: it still stops one contributor
         // draining a large queue and leaving nothing for anyone else, while never
         // being the reason a capable one cannot work in parallel with others.
-        maxClaimsPerBotanist: numberSetting('DISCOVERIES_MAX_CLAIMS', 20),
+        maxClaimPerUsers: numberSetting('DISCOVERIES_MAX_CLAIMS', 20),
         maxOpenReportsPerAccount: numberSetting('DISCOVERIES_MAX_OPEN_REPORTS', 10),
         // Cancel is bounded by a grace window and filing by a cooldown, on two
         // different paths: together they let a legitimate user fix a mistake
@@ -226,9 +298,9 @@ module.exports = {
         // months on one record.
         claimStaleDays: numberSetting('DISCOVERIES_CLAIM_STALE_DAYS', 90),
         // A CEILING, not the quorum itself: the effective threshold is
-        // max(2, min(this, ceil(activeBotanists / 2))). Five with five
-        // botanists is unanimity, and unanimity means one holdout can never save
-        // one. The floor of 2 is what stops a single botanist closing a report
+        // max(2, min(this, ceil(activeContributors / 2))). Five with five
+        // contributors is unanimity, and unanimity means one holdout can never save
+        // one. The floor of 2 is what stops a single contributor closing a report
         // alone. Zero disables the quorum entirely — the
         // effectiveNotAPlantThreshold floor of 2 still applies, so it cannot
         // become a single-person decision.
@@ -238,6 +310,29 @@ module.exports = {
         // The image is the most intrusive artefact; the row plus the ballot is the
         // audit. Cancel differs only in timing: it deletes at once.
         discoveryClosedPhotoDays: parseInt(process.env.DISCOVERY_CLOSED_PHOTO_DAYS, 10) || 90
+    },
+    // Community feedback on a contributor's plant description (the thumbs up / down
+    // on the plant profile). Counted per description, one ballot per account.
+    descriptionVotes: {
+        // This many UP votes (since an admin last cleared the item) raise a "worth
+        // making the primary description" notice on the admin dashboard.
+        upvoteAlert: Math.max(1, numberSetting('DESCRIPTION_UPVOTE_ALERT', 5)),
+        // This many DOWN votes hide the description from the public page at once and
+        // notify the admin, who then restores it or takes it out. At least 2, so a
+        // single account can never hide someone else's work alone.
+        downvoteHide: Math.max(2, numberSetting('DESCRIPTION_DOWNVOTE_HIDE', 5)),
+        // The premade reasons shown in the downvote dropdown. 'other' is the only
+        // one that takes the voter's own note. Codes are stored; labels are display.
+        reasons: [
+            { code: 'inaccurate', label: 'Information is inaccurate' },
+            { code: 'unsafe', label: 'Unsafe or misleading advice' },
+            { code: 'unclear', label: 'Unclear or poorly written' },
+            { code: 'off_topic', label: 'Not about this plant' },
+            { code: 'duplicate', label: 'Duplicate of another description' },
+            { code: 'spam', label: 'Spam or inappropriate' },
+            { code: 'other', label: 'Other (write your own note)' }
+        ],
+        noteMaxLength: 300
     },
     // Every plant OWNS exactly one plant_types row. The name is free text and may
     // repeat across plants; only typeId is unique. Editing one plant's type can
@@ -254,7 +349,7 @@ module.exports = {
         timeoutMs: parseInt(process.env.ML_TIMEOUT_MS, 10) || 30000,
         defaultModel: process.env.ML_DEFAULT_MODEL || 'efficientnetv2b1',
         // Route code must never hardcode any of these, same rule as
-        // settings.plantImages / settings.certificates.
+        // settings.plantImages.
         // The uploader had no limits at all and buffered the whole multipart
         // body in RAM, so any signed-in account could OOM the process.
         maxUploadBytes: (parseInt(process.env.ML_MAX_UPLOAD_MB, 10) || 10) * 1024 * 1024,

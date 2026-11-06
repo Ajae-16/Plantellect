@@ -40,6 +40,8 @@
                 </div>
                 <!-- Filled by plant-profile.js: whose description the cards below show. -->
                 <p class="primary-byline" id="primaryByline" hidden></p>
+                <!-- Thumbs up / down for the primary description. Filled by plant-profile.js. -->
+                <div class="desc-vote" id="primaryVote" hidden></div>
             </div>
 
             <div class="info-grid">
@@ -64,15 +66,15 @@
                 </section>
             </div>
 
-            <!-- Every other approved description, one colour-coded box per botanist.
+            <!-- Every other approved description, one colour-coded box per contributor.
                  Filled by plant-profile.js; hidden when the plant has only one description. -->
             <section class="more-details" id="moreDetails" hidden>
-                <h4><span class="material-symbols-outlined" aria-hidden="true">groups</span> More details from other botanists</h4>
-                <p class="more-details-intro">Each box is one botanist&rsquo;s own findings, in their own colour.</p>
+                <h4><span class="material-symbols-outlined" aria-hidden="true">groups</span> More details from other contributors</h4>
+                <p class="more-details-intro">Each box is one contributor&rsquo;s own findings, in their own colour.</p>
                 <div class="contrib-list" id="contribList"></div>
             </section>
 
-            <div class="botanist-meta">
+            <div class="contributor-meta">
                 <span id="datasetSource"></span>
 
                 <!-- Revealed by plant-profile.js only for a session holding record_plant. -->
@@ -83,7 +85,7 @@
                 <!-- Three separate claims, three rows, each filled by renderPeople() with
                      its OWN link rule (see profileHref in plant-profile.js) and hidden
                      when nobody is named for it.
-                       - Recorded by: botanist -> link for everyone;
+                       - Recorded by: contributor -> link for everyone;
                                       admin / superadmin -> link for administrators only
                        - Reviewed by: admin / superadmin -> link for administrators only
                        - Reported by: display only, never a link, for any viewer

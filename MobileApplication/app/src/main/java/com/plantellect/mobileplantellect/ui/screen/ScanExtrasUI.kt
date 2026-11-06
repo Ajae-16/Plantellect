@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,6 +28,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -52,9 +54,14 @@ fun ContributionCard(
     modifier: Modifier = Modifier,
     ui: ContributionUi,
     onHelp: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    /** True while "Help improve" is off in Settings and the person has not hidden the hint. */
+    showSettingsHint: Boolean = false,
+    /** The person confirmed "Don't show this again" on the hint. */
+    onHideHint: () -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
+    var confirmHide by remember { mutableStateOf(false) }
     val asking = ui.phase == ContributePhase.OFFER || ui.phase == ContributePhase.SENDING
     val sending = ui.phase == ContributePhase.SENDING
 
@@ -110,10 +117,36 @@ fun ContributionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant
                 )
+                if (showSettingsHint) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Tired of tapping this? Turn on \"Help improve\" in Settings to always contribute.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { confirmHide = true }, enabled = !sending) { Text("Don't show this again") }
+                    }
+                }
             } else {
                 OutlinedButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Close") }
             }
         }
+    }
+
+    if (confirmHide) {
+        AlertDialog(
+            onDismissRequest = { confirmHide = false },
+            title = { Text("Always help improve") },
+            text = { Text("You can always turn on \"Help improve\" in Settings under Privacy, so your scans are contributed without asking.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmHide = false
+                    onHideHint()
+                }) { Text("Got it") }
+            },
+            dismissButton = { TextButton(onClick = { confirmHide = false }) { Text("Cancel") } }
+        )
     }
 }
 

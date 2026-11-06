@@ -5,6 +5,9 @@ const { requirePermission } = require('../middleware/authMiddleware');
 const settings = require('../config/settings');
 const {
     listUsers,
+    getUserDetail,
+    createUser,
+    updateUser,
     setAccountStatus,
     changeAccountRole,
     listPlantRequests,
@@ -12,7 +15,6 @@ const {
     approvePlantRequest,
     denyPlantRequest,
     listPlants,
-    listPendingRoleRequests,
     getImageForReview,
     getMlCoverage,
     listDiscoveryReports,
@@ -28,6 +30,7 @@ const { listImageIssues, retryImageIssue } = require('../config/image-relocation
 const { logAuthEvent, Authlog } = require('../mongoose-schemas/Authlog');
 const plantEdit = require('../config/admin-plant-edit-mysql');
 const photoVisibility = require('../config/photo-visibility');
+const datasetSync = require('../config/dataset-sync');
 const { loadActiveClasses } = require('../config/active-classes');
 const lookalike = require('../config/lookalike');
 
@@ -35,7 +38,11 @@ const router = express.Router();
 
 // The admin-editable plant-photo cap. The fallback is settings.js (env-seeded);
 // declared here because the settings handlers below shadow `settings` locally.
-const PLANT_IMAGES_DEFAULT = { maxFilesPerRequest: settings.plantImages.maxFilesPerRequest };
+const PLANT_IMAGES_DEFAULT = {
+    maxFilesPerRequest: settings.plantImages.maxFilesPerRequest,
+    adminPhotosPerPage: settings.plantImages.adminPhotosPerPage
+};
+const ADMIN_PHOTOS_PER_PAGE_MAX = settings.plantImages.adminPhotosPerPageMax || 50;
 const PLANT_IMAGES_CEILING = settings.plantImages.hardMaxFilesPerRequest || 100;
 
 // ---------------------------------------------------------------------------
@@ -80,6 +87,58 @@ router.get('/api/users', requirePermission('access_admin'), async (req, res) => 
     }
 });
 
+router.get('/api/users/:accountId', requirePermission('access_admin'), async (req, res) => {
+    try {
+        const user = await getUserDetail(req.params.accountId);
+        if (!user) return res.status(404).json({ error: 'Account not found' });
+        res.json(user);
+    } catch (err) {
+        console.error('Get user error:', err.message);
+        res.status(500).json({ error: 'Failed to load the account' });
+    }
+});
+
+router.post('/api/users', requirePermission('create_user'), async (req, res) => {
+    try {
+        const result = await createUser(req.body || {}, req.session.permissions);
+        if (result.error) return res.status(result.code).json({ error: result.error });
+        await logAuthEvent({
+            accountId: req.session.accountId,
+            action: 'user_created',
+            ip: req.ip,
+            userAgent: req.get('User-Agent') || '',
+            metadata: { targetAccountId: result.accountId, role: result.role }
+        });
+        res.status(201).json(await getUserDetail(result.accountId));
+    } catch (err) {
+        console.error('Create user error:', err.message);
+        res.status(500).json({ error: 'Failed to create the account' });
+    }
+});
+
+router.patch('/api/users/:accountId', requirePermission('edit_user'), async (req, res) => {
+    try {
+        const result = await updateUser(
+            req.params.accountId,
+            req.body || {},
+            req.session.permissions,
+            req.session.accountId
+        );
+        if (result.error) return res.status(result.code).json({ error: result.error });
+        await logAuthEvent({
+            accountId: req.session.accountId,
+            action: 'user_updated',
+            ip: req.ip,
+            userAgent: req.get('User-Agent') || '',
+            metadata: { targetAccountId: result.accountId, fields: result.fields }
+        });
+        res.json(await getUserDetail(result.accountId));
+    } catch (err) {
+        console.error('Update user error:', err.message);
+        res.status(500).json({ error: 'Failed to update the account' });
+    }
+});
+
 router.patch('/api/users/:accountId/status', requirePermission('access_admin'), async (req, res) => {
     const { status } = req.body;
     if (!['active', 'inactive'].includes(status)) {
@@ -110,16 +169,6 @@ router.post('/api/users/:accountId/role', requirePermission('access_admin'), asy
     } catch (err) {
         console.error('Change account role error:', err.message);
         res.status(500).json({ error: 'Failed to change role' });
-    }
-});
-
-router.get('/api/role-requests', requirePermission('access_admin'), async (req, res) => {
-    try {
-        const requests = await listPendingRoleRequests();
-        res.json({ requests });
-    } catch (err) {
-        console.error('List role requests error:', err.message);
-        res.status(500).json({ error: 'Failed to load role requests' });
     }
 });
 
@@ -300,9 +349,9 @@ router.get('/api/discovery-reports/:requestId/votes', requirePermission('access_
 
 /**
  * The admin override, and the only closure path for a team with fewer than two
- * active botanists (the vote endpoint is 409 below that floor).
+ * active contributors (the vote endpoint is 409 below that floor).
  *
- * Its own write on purpose: the botanist disqualify route requires holding the
+ * Its own write on purpose: the contributor disqualify route requires holding the
  * claim, and an admin never does, so reusing it would make the one path that
  * makes the quorum survivable for a small team the one path that never works.
  */
@@ -369,7 +418,7 @@ router.get('/api/plants', requirePermission('access_admin'), async (req, res) =>
 });
 
 // ---------------------------------------------------------------------------
-// Admin plant editing. The base record and each botanist's description are saved
+// Admin plant editing. The base record and each contributor's description are saved
 // separately, so editing one can never overwrite the other.
 // ---------------------------------------------------------------------------
 
@@ -400,7 +449,7 @@ router.patch('/api/plants/:plantId', requirePermission('access_admin'), async (r
     }
 });
 
-/** One botanist's description (text + measurements); body.makePrimary may promote it. */
+/** One contributor's description (text + measurements); body.makePrimary may promote it. */
 router.patch('/api/plants/:plantId/descriptions/:descriptionId', requirePermission('access_admin'), async (req, res) => {
     try {
         sendEditResult(res, await plantEdit.updateDescription(req.params.plantId, req.params.descriptionId, req.body));
@@ -422,8 +471,9 @@ router.post('/api/plants/:plantId/descriptions/:descriptionId/primary', requireP
 
 // ---------------------------------------------------------------------------
 // Public photo controls : show or hide each approved photo, set the primary
-// photo. Hiding deletes the public files first; a failed delete is a 500 with a message
-// and the photo stays visible. Every change is written to the audit log.
+// photo, archive or unarchive a photo. Hiding and archiving delete the public files first;
+// a failed delete is a 500 with a message and the photo stays visible. Every change is
+// written to the audit log.
 // ---------------------------------------------------------------------------
 
 function sendPhotoResult(res, result) {
@@ -438,13 +488,24 @@ const logPhotoChange = (req, action, result) => logAuthEvent({
     action: 'photo_visibility_changed',
     ip: req.ip,
     userAgent: req.get('User-Agent') || '',
-    metadata: { action, plantId: result.plantId, imageId: result.imageId }
+    metadata: {
+        action, plantId: result.plantId, imageId: result.imageId,
+        // Only an archive carries a reason (null when the admin gave none).
+        ...(action === 'archive' ? { archiveReason: result.archiveReason || null } : {})
+    }
 });
 
 /** The approved photos of one plant with their public state, for the edit dialog's side panel. */
 router.get('/api/plants/:plantId/photos', requirePermission('access_admin'), async (req, res) => {
     try {
-        sendPhotoResult(res, await photoVisibility.listPlantPhotos(req.params.plantId));
+        // ?group=...&page=N returns one page of one photo group (recorded photos, or the private contributions) (the size is the admin's setting
+        // plantImages.adminPhotosPerPage, never the caller's). Without them: every photo.
+        const paged = req.query.group !== undefined || req.query.page !== undefined;
+        const options = paged
+            ? { group: req.query.group, page: req.query.page, pageSize: await require('../config/setting-mysql').getAdminPhotoPageSize() }
+            : {};
+        res.setHeader('Cache-Control', 'no-store');
+        sendPhotoResult(res, await photoVisibility.listPlantPhotos(req.params.plantId, undefined, options));
     } catch (err) {
         console.error('List plant photos error:', err.message);
         res.status(500).json({ error: 'Failed to load the photos' });
@@ -454,12 +515,27 @@ router.get('/api/plants/:plantId/photos', requirePermission('access_admin'), asy
 [
     ['hide', (p, i) => photoVisibility.hidePhoto(p, i), 'Failed to hide the photo'],
     ['show', (p, i) => photoVisibility.restorePhoto(p, i), 'Failed to show the photo'],
-    ['primary', (p, i) => photoVisibility.setPrimaryPhoto(p, i), 'Failed to set the primary photo']
+    ['primary', (p, i) => photoVisibility.setPrimaryPhoto(p, i), 'Failed to set the primary photo'],
+    // Archive takes an optional { reason } body and records which admin did it.
+    ['archive', (p, i, req) => photoVisibility.archivePhoto(p, i, {
+        reason: req.body ? req.body.reason : undefined,
+        accountId: req.session.accountId
+    }), 'Failed to archive the photo'],
+    ['unarchive', (p, i) => photoVisibility.unarchivePhoto(p, i), 'Failed to unarchive the photo']
 ].forEach(([action, run, failure]) => {
     router.post(`/api/plants/:plantId/photos/:imageId/${action}`, requirePermission('access_admin'), async (req, res) => {
         try {
-            const result = await run(req.params.plantId, req.params.imageId);
+            const result = await run(req.params.plantId, req.params.imageId, req);
             if (!result.error) await logPhotoChange(req, action, result);
+            // Archiving takes a photo out of the dataset's counts and lists, and unarchiving brings it back, so the
+            // Dataset page of another admin is told (config/dataset-sync.js). Hide / show / primary do not touch the dataset.
+            if (!result.error && (action === 'archive' || action === 'unarchive')) {
+                await datasetSync.track({
+                    accountId: req.session.accountId, scopes: ['training', 'species'], action: `photo_${action}d`, entityType: 'photo',
+                    entityIds: result.imageId ? [result.imageId] : [], count: 1,
+                    summary: `${action}d a photo of ${req.params.plantId}`
+                });
+            }
             sendPhotoResult(res, result);
         } catch (err) {
             console.error(`Photo ${action} error:`, err.message);
@@ -726,7 +802,7 @@ router.get('/api/settings', requirePermission('admin_settings'), async (req, res
             };
             if (!settings.discoveries) settings.discoveries = {
                 value: {
-                    maxClaimsPerBotanist: 20,
+                    maxClaimPerUsers: 20,
                     maxOpenReportsPerAccount: 10,
                     cancelGraceHours: 24,
                     reportCooldownMinutes: 10,
@@ -738,6 +814,8 @@ router.get('/api/settings', requirePermission('admin_settings'), async (req, res
             };
             if (!settings.mlRequest) settings.mlRequest = { value: { maxTopK: 10 }, version: 0 };
             if (!settings.plantImages) settings.plantImages = { value: { ...PLANT_IMAGES_DEFAULT }, version: 0 };
+            // A row saved before adminPhotosPerPage existed still reports it (the default).
+            settings.plantImages.value = { ...PLANT_IMAGES_DEFAULT, ...(settings.plantImages.value || {}) };
 
             // Return settings with versions as separate top-level keys
             const response = {};
@@ -824,7 +902,7 @@ router.post('/api/settings', requirePermission('admin_settings'), async (req, re
                     convnexttiny: { mode: 'off', acceptThreshold: 0.70, uncertainThreshold: 0.35, marginThreshold: 0.15 }
                 };
                 else if (key === 'discoveries') defaultValue = {
-                    maxClaimsPerBotanist: 20,
+                    maxClaimPerUsers: 20,
                     maxOpenReportsPerAccount: 10,
                     cancelGraceHours: 24,
                     reportCooldownMinutes: 10,
@@ -871,7 +949,8 @@ router.post('/api/settings', requirePermission('admin_settings'), async (req, re
                     }
                     // Merge with saved config first (so partial updates keep mode), then coerce numeric strings
                     const merged = { ...(existingValue[modelId] || {}), ...config };
-                    const NUMERIC = ['acceptThreshold', 'uncertainThreshold', 'marginThreshold'];
+                    const NUMERIC = ['acceptThreshold', 'uncertainThreshold', 'marginThreshold',
+                        'contributeThreshold', 'contributeUpperThreshold', 'contributeDailyCap', 'contributeSpeciesCap'];
                     for (const k of NUMERIC) {
                         if (typeof merged[k] === 'string' && merged[k].trim() !== '') {
                             merged[k] = Number(merged[k]);
@@ -887,11 +966,11 @@ router.post('/api/settings', requirePermission('admin_settings'), async (req, re
                 validatedValue = { ...existingValue, ...value };
             } else if (key === 'discoveries') {
                 const disc = value;
-                if (disc.maxClaimsPerBotanist !== undefined) {
-                    const v = parseInt(disc.maxClaimsPerBotanist, 10);
+                if (disc.maxClaimPerUsers !== undefined) {
+                    const v = parseInt(disc.maxClaimPerUsers, 10);
                     if (!Number.isFinite(v) || v < 1 || v > 1000) {
                         await conn.rollback();
-                        return res.status(400).json({ error: 'maxClaimsPerBotanist must be 1-1000' });
+                        return res.status(400).json({ error: 'maxClaimPerUsers must be 1-1000' });
                     }
                 }
                 if (disc.maxOpenReportsPerAccount !== undefined) {
@@ -957,6 +1036,13 @@ router.post('/api/settings', requirePermission('admin_settings'), async (req, re
                     if (!Number.isInteger(v) || v < 1 || v > PLANT_IMAGES_CEILING) {
                         await conn.rollback();
                         return res.status(400).json({ error: `maxFilesPerRequest must be a whole number from 1 to ${PLANT_IMAGES_CEILING}` });
+                    }
+                }
+                if (value.adminPhotosPerPage !== undefined) {
+                    const v = Number(value.adminPhotosPerPage);
+                    if (!Number.isInteger(v) || v < 1 || v > ADMIN_PHOTOS_PER_PAGE_MAX) {
+                        await conn.rollback();
+                        return res.status(400).json({ error: `adminPhotosPerPage must be a whole number from 1 to ${ADMIN_PHOTOS_PER_PAGE_MAX}` });
                     }
                 }
                 validatedValue = { ...existingValue, ...value };
@@ -1032,11 +1118,11 @@ router.post('/api/discoveries', requirePermission('admin_settings'), async (req,
 
         // Validate
         const disc = settings;
-        if (disc.maxClaimsPerBotanist !== undefined) {
-            const v = parseInt(disc.maxClaimsPerBotanist, 10);
+        if (disc.maxClaimPerUsers !== undefined) {
+            const v = parseInt(disc.maxClaimPerUsers, 10);
             if (!Number.isFinite(v) || v < 1 || v > 1000) {
                 await conn.rollback();
-                return res.status(400).json({ error: 'maxClaimsPerBotanist must be 1-1000' });
+                return res.status(400).json({ error: 'maxClaimPerUsers must be 1-1000' });
             }
         }
         if (disc.maxOpenReportsPerAccount !== undefined) {
@@ -1212,7 +1298,7 @@ router.get('/api/role-limits', requirePermission('admin_settings'), async (req, 
 /**
  * POST /admin/api/role-limits
  * Update per-role spam quotas.
- * Body: { roleLimits: [{ roleName, maxClaimsPerBotanist, maxOpenReportsPerAccount, maxScan, rateLimitWindowMin }] }
+ * Body: { roleLimits: [{ roleName, maxClaimPerUsers, maxOpenReportsPerAccount, maxScan, rateLimitWindowMin }] }
  */
 router.post('/api/role-limits', requirePermission('admin_settings'), async (req, res) => {
     const { roleLimits } = req.body || {};
@@ -1225,7 +1311,7 @@ router.post('/api/role-limits', requirePermission('admin_settings'), async (req,
         await conn.beginTransaction();
 
         for (const limit of roleLimits) {
-            const { roleName, maxClaimsPerBotanist, maxOpenReportsPerAccount, maxScan, rateLimitWindowMin } = limit;
+            const { roleName, maxClaimPerUsers, maxOpenReportsPerAccount, maxScan, rateLimitWindowMin } = limit;
             if (!roleName) {
                 await conn.rollback();
                 return res.status(400).json({ error: 'roleName is required for each limit' });
@@ -1241,13 +1327,13 @@ router.post('/api/role-limits', requirePermission('admin_settings'), async (req,
 
             // Validate and update each limit
             const updates = [];
-            if (maxClaimsPerBotanist !== undefined) {
-                const v = parseInt(maxClaimsPerBotanist, 10);
+            if (maxClaimPerUsers !== undefined) {
+                const v = parseInt(maxClaimPerUsers, 10);
                 if (!Number.isFinite(v) || v < 1 || v > 1000) {
                     await conn.rollback();
-                    return res.status(400).json({ error: 'maxClaimsPerBotanist must be 1-1000' });
+                    return res.status(400).json({ error: 'maxClaimPerUsers must be 1-1000' });
                 }
-                updates.push({ limitKey: 'maxClaimsPerBotanist', limitValue: v });
+                updates.push({ limitKey: 'maxClaimPerUsers', limitValue: v });
             }
             if (maxOpenReportsPerAccount !== undefined) {
                 const v = parseInt(maxOpenReportsPerAccount, 10);
@@ -1318,16 +1404,14 @@ router.post('/api/role-limits', requirePermission('admin_settings'), async (req,
  */
 router.get('/api/reporting/stats', requirePermission('access_admin'), async (req, res) => {
     try {
-        const [[users], [botanists], [plants], [pending]] = await Promise.all([
+        const [[users], [plants], [pending]] = await Promise.all([
             mysqlPool.query('SELECT COUNT(*) AS count FROM vw_active_users'),
-            mysqlPool.query('SELECT COUNT(*) AS count FROM vw_active_botanists'),
             mysqlPool.query('SELECT totalPlants AS count FROM vw_total_plants'),
             mysqlPool.query('SELECT COUNT(*) AS count FROM vw_pending_requests')
         ]);
 
         res.json({
             users: users[0].count,
-            botanists: botanists[0].count,
             plants: plants[0].count,
             pending: pending[0].count
         });
@@ -1384,6 +1468,67 @@ router.get('/api/reporting/signins', requirePermission('access_admin'), async (r
     } catch (err) {
         console.error('Sign-ins per day error:', err.message);
         res.json({ degraded: true, error: err.message, days, series: [] });
+    }
+});
+
+/**
+ * GET /admin/api/reporting/contributions?days=14
+ * Scan contributions per day (scan-contribution plan, stage 9), for the dashboard card. There is no counting here:
+ * the numbers come from the SQL view vw_contributions_per_day (config/migrate.cjs, config/seed.cjs), which has one row
+ * for every day with at least one contribution. This route only picks the window, fills the empty days with zero
+ * (oldest first, the last entry is today) and turns the view's text numbers into numbers. Days are the site's days
+ * (settings.system.timezone), the same offset the view was built with.
+ * `degraded: true` instead of a wrong zero when the view cannot be read, for example before `npm run db:migrate`.
+ */
+router.get('/api/reporting/contributions', requirePermission('access_admin'), async (req, res) => {
+    const parsed = parseInt(req.query.days, 10);
+    const days = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 90) : 14;
+    const tz = settings.system.timezone;
+    try {
+        const sign = tz.startsWith('-') ? -1 : 1;
+        const [oh, om] = tz.replace(/^[+-]/, '').split(':').map(Number);
+        const offsetMs = sign * ((oh * 60) + (om || 0)) * 60 * 1000;
+        const keyOf = (ms) => new Date(ms + offsetMs).toISOString().slice(0, 10);
+        const dayMs = 24 * 60 * 60 * 1000;
+        const keys = [];
+        for (let i = days - 1; i >= 0; i--) keys.push(keyOf(Date.now() - i * dayMs));
+
+        const [rows] = await mysqlPool.query(
+            `SELECT contributionDay AS day, contributions, accounts, species, archived, avgConfidence
+             FROM vw_contributions_per_day
+             WHERE contributionDay >= ?
+             ORDER BY contributionDay`,
+            [keys[0]]
+        );
+        const byDay = new Map(rows.map((r) => [String(r.day), r]));
+        const series = keys.map((day) => {
+            const r = byDay.get(day);
+            return {
+                day,
+                contributions: r ? Number(r.contributions) || 0 : 0,
+                accounts: r ? Number(r.accounts) || 0 : 0,
+                species: r ? Number(r.species) || 0 : 0,
+                archived: r ? Number(r.archived) || 0 : 0,
+                avgConfidence: r && r.avgConfidence != null ? Number(r.avgConfidence) : null
+            };
+        });
+        const today = series[series.length - 1];
+        res.json({
+            days,
+            timezone: tz,
+            today: today.contributions,
+            yesterday: series.length > 1 ? series[series.length - 2].contributions : 0,
+            total: series.reduce((sum, d) => sum + d.contributions, 0),
+            series
+        });
+    } catch (err) {
+        console.error('Contributions per day error:', err.message);
+        const missing = err && (err.code === 'ER_NO_SUCH_TABLE' || err.code === 'ER_VIEW_INVALID');
+        res.json({
+            degraded: true,
+            error: missing ? 'The reporting view vw_contributions_per_day is missing. Run npm run db:migrate.' : err.message,
+            days, series: []
+        });
     }
 });
 

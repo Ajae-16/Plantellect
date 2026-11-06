@@ -186,7 +186,7 @@ router.get('/top', requirePermission('view_logs'), async (req, res) => {
 
 /**
  * Species people scan that the library genuinely does not have — the feed that
- * tells a botanist what to record next.
+ * tells a contributor what to record next.
  *
  * linksResolved: true is required. When the plants lookup failed, every
  * prediction in that event has a null plantId for a reason that has nothing to

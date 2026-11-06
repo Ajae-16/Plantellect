@@ -1,14 +1,11 @@
 package com.plantellect.mobileplantellect.data.logic
 
-enum class AccountRole(val wire: String) { USER("user"), BOTANIST("botanist") }
-
 data class RegisterForm(
     val email: String,
     val username: String,
     val password: String,
     val firstName: String = "",
     val lastName: String = "",
-    val role: AccountRole = AccountRole.USER,
     val agreeTerms: Boolean = false,
     val agreeInfo: Boolean = false
 )
@@ -33,11 +30,11 @@ object AuthValidator {
     )
 
     /**
-     * Keys: firstName, lastName, email, username, password, confirm, terms, certificate.
+     * Keys: firstName, lastName, email, username, password, confirm, terms.
      * The name, password-strength and confirm rules mirror public/javascript/auth-script.js (the server
      * only enforces the length rules, but the website asks for more, so the app does too).
      */
-    fun register(form: RegisterForm, hasCertificate: Boolean, confirmPassword: String = form.password): Map<String, String> = buildMap {
+    fun register(form: RegisterForm, confirmPassword: String = form.password): Map<String, String> = buildMap {
         if (form.firstName.isBlank()) put("firstName", "Enter your first name")
         if (form.lastName.isBlank()) put("lastName", "Enter your last name")
         if (form.email.isBlank() || !form.email.contains('@')) put("email", "Enter a valid email")
@@ -49,6 +46,5 @@ object AuthValidator {
         }
         if (confirmPassword != form.password) put("confirm", "Passwords do not match")
         if (!form.agreeTerms || !form.agreeInfo) put("terms", "You must agree to the terms and the use of your information")
-        if (form.role == AccountRole.BOTANIST && !hasCertificate) put("certificate", "A certificate is required for Botanist registration")
     }
 }

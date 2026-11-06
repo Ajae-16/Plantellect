@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.plantellect.mobileplantellect.data.logic.RichText
+import com.plantellect.mobileplantellect.ui.theme.extraColors
 import com.plantellect.mobileplantellect.PlantellectApp
 import com.plantellect.mobileplantellect.data.remote.dto.*
 import com.plantellect.mobileplantellect.viewmodel.RecordDone
@@ -104,7 +106,8 @@ private val CHANGE_LABELS = mapOf(
 )
 
 private fun norm(s: String?) = (s ?: "").trim().replace(Regex("\\s+"), " ")
-private fun plain(s: String) = s.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim()
+/** Short one-line text for snippets and change summaries: the typed marks are removed. */
+private fun plain(s: String) = RichText.plain(s)
 private fun plantLabel(name: String?, sci: String?) = if (sci.isNullOrBlank()) name.orEmpty() else "$name ($sci)"
 
 private fun requestTypeLabel(t: String) = when (t) {
@@ -463,6 +466,26 @@ private fun Field(
     )
 }
 
+/**
+ * A description box with the formatting toolbar (bold, highlight, bullets ...). Same shape as [Field]; the
+ * text it hands back is what the server stores and the plant page shows formatted.
+ */
+@Composable
+private fun RichField(
+    label: String, value: String, key: String, errors: SnapshotStateMap<String, String>,
+    minLines: Int = 3, onChange: (String) -> Unit
+) {
+    RichTextField(
+        label = label,
+        value = value,
+        onValueChange = { onChange(it); errors.remove(key) },
+        modifier = Modifier.fillMaxWidth().errorTarget(key),
+        minLines = minLines,
+        isError = key in errors,
+        supportingText = errors[key]
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Dropdown(
@@ -624,7 +647,7 @@ private fun RemoteImage(url: String, maxPx: Int, modifier: Modifier, scale: Cont
 @Composable
 private fun PreviewDialog(src: RecordPreview, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = Color.Black.copy(alpha = 0.92f)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.extraColors.overlay.copy(alpha = 0.92f)) {
             Box(Modifier.fillMaxSize().clickable(onClick = onClose)) {
                 val fill = Modifier.fillMaxSize().padding(16.dp)
                 when (src) {
@@ -632,7 +655,7 @@ private fun PreviewDialog(src: RecordPreview, onClose: () -> Unit) {
                     is RecordPreview.Remote -> RemoteImage(src.url, 2048, fill, ContentScale.Fit)
                 }
                 TextButton(onClose, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
-                    Text("Close", color = Color.White)
+                    Text("Close", color = MaterialTheme.extraColors.onOverlay)
                 }
             }
         }
@@ -663,9 +686,9 @@ private fun PhotoSection(photos: SnapshotStateList<Uri>, max: Int, onPreview: (U
                 Box(Modifier.size(96.dp)) {
                     LocalImage(u, 256, Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).clickable { onPreview(u) }, ContentScale.Crop)
                     Surface(
-                        shape = CircleShape, color = Color.Black.copy(alpha = 0.6f),
+                        shape = CircleShape, color = MaterialTheme.extraColors.overlay.copy(alpha = 0.6f),
                         modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp).clickable { photos.remove(u) }
-                    ) { Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White) } }
+                    ) { Box(contentAlignment = Alignment.Center) { Text("×", color = MaterialTheme.extraColors.onOverlay) } }
                 }
             }
         }
@@ -760,8 +783,8 @@ private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordFo
         }
         if (s.desc.isHarmful) {
             ToxicityPicker(s.toxicity, s.errors["tox"], "tox") { s.toxicity = it; s.errors.remove("tox") }
-            Field("Caution note", s.caution, "caution", s.errors, minLines = 2) { s.caution = it }
-            Field("Things to watch out for *", s.desc.harmful, "harmful", s.errors, minLines = 3) { s.desc.harmful = it }
+            RichField("Caution note", s.caution, "caution", s.errors, minLines = 2) { s.caution = it }
+            RichField("Things to watch out for *", s.desc.harmful, "harmful", s.errors, minLines = 3) { s.desc.harmful = it }
         }
 
         TextButton({ taxOpen = !taxOpen }) { Text(if (taxOpen) "Hide taxonomy" else "Taxonomy (optional)") }
@@ -771,8 +794,8 @@ private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordFo
             "uses" in s.errors,
             "Required: fill in at least one of Uses, Benefits or Measurements. Names and photos alone are never published."
         )
-        Field("Uses", s.desc.uses, "uses", s.errors, minLines = 3) { s.desc.uses = it }
-        Field("Benefits", s.desc.benefits, "benefits", s.errors, minLines = 3) { s.desc.benefits = it }
+        RichField("Uses", s.desc.uses, "uses", s.errors, minLines = 3) { s.desc.uses = it }
+        RichField("Benefits", s.desc.benefits, "benefits", s.errors, minLines = 3) { s.desc.benefits = it }
         RecordSectionTitle("Measurements")
         PartsEditor(s.desc, s.errors)
         PhotoSection(s.desc.photos, ui.maxPhotos, { f.preview = RecordPreview.Local(it) }) { f.problem = it }
@@ -869,10 +892,10 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
                 c.desc.isHarmful = it
                 if (!it) c.desc.harmful = ""
             }
-            if (c.desc.isHarmful) Field("Things to watch out for *", c.desc.harmful, "harmful", c.errors, minLines = 3) { c.desc.harmful = it }
+            if (c.desc.isHarmful) RichField("Things to watch out for *", c.desc.harmful, "harmful", c.errors, minLines = 3) { c.desc.harmful = it }
         }
-        Field("Uses", c.desc.uses, "uses", c.errors, minLines = 3) { c.desc.uses = it }
-        Field("Benefits", c.desc.benefits, "benefits", c.errors, minLines = 3) { c.desc.benefits = it }
+        RichField("Uses", c.desc.uses, "uses", c.errors, minLines = 3) { c.desc.uses = it }
+        RichField("Benefits", c.desc.benefits, "benefits", c.errors, minLines = 3) { c.desc.benefits = it }
         RecordSectionTitle("Measurements")
         PartsEditor(c.desc, c.errors)
         PhotoSection(c.desc.photos, ui.maxPhotos, { f.preview = RecordPreview.Local(it) }) { f.problem = it }
@@ -927,7 +950,7 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
             CheckRow("Medicinal plant", s.medicinal) { s.medicinal = it }
             CheckRow("Harmful plant", s.harmful) { s.harmful = it; if (!it) s.toxicity = "" }
             if (s.harmful) ToxicityPicker(s.toxicity, s.errors["c.tox"], "c.tox") { s.toxicity = it; s.errors.remove("c.tox") }
-            Field("Caution note", s.caution, "c.caution", s.errors, minLines = 2) { s.caution = it }
+            RichField("Caution note", s.caution, "c.caution", s.errors, minLines = 2) { s.caution = it }
             RecordSectionTitle("Taxonomy")
             TAX.forEach { t ->
                 Field(t.label, s.tax[t.key].orEmpty(), "c.tax.${t.key}", s.errors,
@@ -963,9 +986,15 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
                 }
             }
             descFields(d).forEach { fld ->
-                Field(fld.label, s.desc[fld.key].orEmpty(), "cd.${fld.key}", s.errors,
-                    numeric = fld.numeric, minLines = if (fld.area) 3 else 1
-                ) { s.desc[fld.key] = it; s.errors.remove("c.desc") }
+                if (fld.area) {
+                    RichField(fld.label, s.desc[fld.key].orEmpty(), "cd.${fld.key}", s.errors, minLines = 3) {
+                        s.desc[fld.key] = it; s.errors.remove("c.desc")
+                    }
+                } else {
+                    Field(fld.label, s.desc[fld.key].orEmpty(), "cd.${fld.key}", s.errors, numeric = fld.numeric) {
+                        s.desc[fld.key] = it; s.errors.remove("c.desc")
+                    }
+                }
             }
             ErrorText(s.errors["c.desc"], "c.desc")
             Field("Why does your description need changing? *", s.descReason, "c.descReason", s.errors, minLines = 2) { s.descReason = it }

@@ -24,7 +24,25 @@ data class AccountDto(
     val email: String = "",
     val username: String = "",
     val roles: List<String> = emptyList(),
-    val permissions: List<String> = emptyList()
+    val permissions: List<String> = emptyList(),
+    // Added with the profile API. /me sends them; an older cached account simply has the defaults.
+    val firstName: String? = null,
+    val lastName: String? = null,
+    val bio: String? = null,
+    /** Relative to the server, ends in ?v=<timestamp>. Use ProfileRepository.photoUrl() to get a loadable URL. */
+    val photoUrl: String? = null
+)
+
+/** Body of POST /api/auth/register. Every sign-up is a plain user; there is no role or certificate to send. */
+@Serializable
+data class RegisterRequest(
+    val email: String,
+    val username: String,
+    val password: String,
+    val firstName: String? = null,
+    val lastName: String? = null,
+    val agreeTerms: Boolean,
+    val agreeInfo: Boolean
 )
 
 @Serializable
@@ -43,6 +61,35 @@ data class RegisterResponse(
 }
 
 @Serializable data class MessageDto(val message: String = "")
+
+// ---------------------------------------------------------------- own profile (routes/profile.js)
+
+/** GET /api/profile. */
+@Serializable
+data class ProfileDto(
+    val accountId: String = "",
+    val username: String = "",
+    val email: String = "",
+    val firstName: String? = null,
+    val lastName: String? = null,
+    val bio: String? = null,
+    val photoUrl: String? = null
+)
+
+/**
+ * PUT /api/profile/bio. "" clears the bio. Never null: NetworkModule.json has explicitNulls = false, which would
+ * drop the field, and the server answers 400 "bio is required" when it is missing.
+ */
+@Serializable data class BioRequest(val bio: String)
+
+/** 200 { bio, message }. bio is null once cleared. */
+@Serializable data class BioResponse(val bio: String? = null, val message: String = "")
+
+/** POST /api/profile/password. */
+@Serializable data class PasswordChangeRequest(val currentPassword: String, val newPassword: String)
+
+/** 201 { photoUrl, message } for POST, 200 { photoUrl: null, message } for DELETE. */
+@Serializable data class PhotoResponse(val photoUrl: String? = null, val message: String = "")
 
 /** Every server error: { error }, plus { retryAfter, limit, windowMs } on a 429 scan. */
 @Serializable

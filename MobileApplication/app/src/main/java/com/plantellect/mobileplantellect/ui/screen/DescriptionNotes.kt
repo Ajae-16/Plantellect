@@ -21,134 +21,29 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.plantellect.mobileplantellect.data.remote.dto.DescriptionVoteState
+import com.plantellect.mobileplantellect.data.remote.dto.VoteReason
+import com.plantellect.mobileplantellect.data.remote.dto.VoteResult
+import com.plantellect.mobileplantellect.data.remote.dto.VoteSummary
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.put
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 
 // ---------------------------------------------------------------------------
 // Community votes on descriptions (server: routes/description-votes.js)
 //
-//   GET    /api/plants/:plantId/description-votes
-//   POST   /api/plants/:plantId/descriptions/:descriptionId/vote   { value, reasonCode?, reasonNote? }
-//   DELETE /api/plants/:plantId/descriptions/:descriptionId/vote
-//
-// The server enforces every rule (own description, hidden description, reasons, note length).
-// The app only draws the state and shows the server's error text. Voting needs the signed-in
-// session cookie, so the OkHttpClient passed in must be the one that carries it.
+// The calls, the wire shapes and the error text live in the data layer:
+//   data/remote/VotesApi.kt, data/repository/DescriptionVoteRepository.kt, models in dto/PublicDtos.kt,
+// reached through LibraryViewModel.voteSummary / voteUp / voteDown / voteRetract. Only the state the
+// screen draws is kept here. The server enforces every rule (own description, hidden description,
+// reasons, note length); the app shows the server's error text.
 // ---------------------------------------------------------------------------
-
-data class VoteReason(val code: String, val label: String, val count: Int = 0)
-
-data class DescriptionVoteState(
-    val up: Int,
-    val down: Int,
-    val myVote: String?,       // "up", "down" or null
-    val own: Boolean,
-    val reasons: List<VoteReason>,
-    val notes: List<String>
-)
-
-data class VoteSummary(
-    val signedIn: Boolean,
-    val reasons: List<VoteReason>,      // premade down-vote reasons
-    val noteMaxLength: Int,
-    val byId: Map<String, DescriptionVoteState>
-)
-
-sealed interface VoteResult {
-    data class Ok(val up: Int, val myVote: String?, val hidden: Boolean) : VoteResult
-    data class Err(val message: String) : VoteResult
-}
-
-private fun JsonElement?.s(): String? = (this as? JsonPrimitive)?.contentOrNull
-private fun JsonElement?.i(): Int = (this as? JsonPrimitive)?.intOrNull ?: 0
-
-private fun parseReasons(e: JsonElement?): List<VoteReason> =
-    (e as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.mapNotNull { o ->
-        val code = o["code"].s() ?: return@mapNotNull null
-        VoteReason(code, o["label"].s() ?: code, o["count"].i())
-    }
-
-suspend fun fetchVoteSummary(client: OkHttpClient, vm: LibraryViewModel, plantId: String): VoteSummary? {
-    val url = vm.absoluteUrl("/api/plants/$plantId/description-votes") ?: return null
-    return withContext(Dispatchers.IO) {
-        runCatching {
-            client.newCall(Request.Builder().url(url).build()).execute().use { r ->
-                if (!r.isSuccessful) return@use null
-                val root = Json.parseToJsonElement(r.body?.string().orEmpty()) as? JsonObject ?: return@use null
-                val map = (root["descriptions"] as? JsonObject).orEmpty().mapNotNull { (id, v) ->
-                    val o = v as? JsonObject ?: return@mapNotNull null
-                    id to DescriptionVoteState(
-                        up = o["up"].i(),
-                        down = o["down"].i(),
-                        myVote = o["myVote"].s(),
-                        own = (o["own"] as? JsonPrimitive)?.booleanOrNull == true,
-                        reasons = parseReasons(o["reasons"]),
-                        notes = (o["notes"] as? JsonArray).orEmpty().mapNotNull { it.s() }
-                    )
-                }.toMap()
-                VoteSummary(
-                    signedIn = (root["signedIn"] as? JsonPrimitive)?.booleanOrNull == true,
-                    reasons = parseReasons(root["reasons"]),
-                    noteMaxLength = root["noteMaxLength"].i().takeIf { it > 0 } ?: 200,
-                    byId = map
-                )
-            }
-        }.getOrNull()
-    }
-}
-
-private suspend fun sendVote(
-    client: OkHttpClient, vm: LibraryViewModel, plantId: String, descriptionId: String,
-    body: JsonObject?   // null = retract
-): VoteResult {
-    val url = vm.absoluteUrl("/api/plants/$plantId/descriptions/$descriptionId/vote")
-        ?: return VoteResult.Err("Could not reach the server.")
-    return withContext(Dispatchers.IO) {
-        runCatching {
-            val builder = Request.Builder().url(url)
-            if (body == null) builder.delete()
-            else builder.post(body.toString().toRequestBody("application/json".toMediaType()))
-            client.newCall(builder.build()).execute().use { r ->
-                val root = runCatching { Json.parseToJsonElement(r.body?.string().orEmpty()) as? JsonObject }.getOrNull()
-                if (r.isSuccessful && root != null) {
-                    VoteResult.Ok(
-                        up = root["up"].i(),
-                        myVote = root["myVote"].s(),
-                        hidden = (root["hidden"] as? JsonPrimitive)?.booleanOrNull == true
-                    )
-                } else {
-                    val fallback = when (r.code) {
-                        401 -> "Sign in to vote."
-                        else -> "Could not save your vote."
-                    }
-                    VoteResult.Err(root?.get("error").s() ?: fallback)
-                }
-            }
-        }.getOrElse { VoteResult.Err("Check your connection and try again.") }
-    }
-}
 
 /** Holds the vote state for ONE plant's profile and sends votes. Create with [rememberVotes]. */
 @Stable
 class VotesController(
-    private val client: OkHttpClient,
+    @Suppress("unused") private val client: OkHttpClient,   // no longer used: the view-model does the calls
     private val vm: LibraryViewModel,
     private val plantId: String,
     private val scope: CoroutineScope
@@ -161,14 +56,14 @@ class VotesController(
         private set
 
     fun refresh() {
-        scope.launch { fetchVoteSummary(client, vm, plantId)?.let { summary = it } }
+        scope.launch { vm.voteSummary(plantId)?.let { summary = it } }
     }
 
-    private fun submit(descriptionId: String, body: JsonObject?, onDone: (VoteResult) -> Unit) {
+    private fun submit(descriptionId: String, onDone: (VoteResult) -> Unit, send: suspend () -> VoteResult) {
         if (busyId != null) return
         busyId = descriptionId
         scope.launch {
-            val result = sendVote(client, vm, plantId, descriptionId, body)
+            val result = send()
             busyId = null
             // Down counts, reasons and notes change for everyone, so re-read instead of patching.
             if (result is VoteResult.Ok && !result.hidden) refresh()
@@ -177,16 +72,13 @@ class VotesController(
     }
 
     fun up(descriptionId: String, onDone: (VoteResult) -> Unit) =
-        submit(descriptionId, buildJsonObject { put("value", "up") }, onDone)
+        submit(descriptionId, onDone) { vm.voteUp(plantId, descriptionId) }
 
     fun down(descriptionId: String, reasonCode: String, note: String?, onDone: (VoteResult) -> Unit) =
-        submit(descriptionId, buildJsonObject {
-            put("value", "down")
-            put("reasonCode", reasonCode)
-            if (reasonCode == "other" && note != null) put("reasonNote", note)
-        }, onDone)
+        submit(descriptionId, onDone) { vm.voteDown(plantId, descriptionId, reasonCode, note) }
 
-    fun retract(descriptionId: String, onDone: (VoteResult) -> Unit) = submit(descriptionId, null, onDone)
+    fun retract(descriptionId: String, onDone: (VoteResult) -> Unit) =
+        submit(descriptionId, onDone) { vm.voteRetract(plantId, descriptionId) }
 }
 
 @Composable

@@ -1,5 +1,7 @@
 package com.plantellect.mobileplantellect.ui.screen
 
+import com.plantellect.mobileplantellect.ui.theme.ExtraColors
+import com.plantellect.mobileplantellect.ui.theme.extraColors
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -224,10 +226,10 @@ private fun typeSlug(type: String): String =
     type.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
 /** --ph-a / --ph-b per plant type (home.css). */
-private fun placeholderColors(slug: String): Pair<Color, Color> = when (slug) {
-    "flower" -> Color(0xFFF7A8C4) to Color(0xFFB0476F)
-    "non-herbal-flower" -> Color(0xFF6FCFC0) to Color(0xFF1F6B6A)
-    else -> Color(0xFF8FD16A) to Color(0xFF2E7D32)
+private fun placeholderColors(slug: String, x: ExtraColors): Pair<Color, Color> = when (slug) {
+    "flower" -> x.flowerTint.a to x.flowerTint.b
+    "non-herbal-flower" -> x.nonHerbalFlowerTint.a to x.nonHerbalFlowerTint.b
+    else -> x.defaultTint.a to x.defaultTint.b
 }
 
 private fun typeArt(slug: String): ImageVector = when (slug) {
@@ -249,6 +251,7 @@ private val bits = listOf(
 /** The artwork shown behind (and until) the photo: gradient, glow, swaying plant, drifting leaves. */
 @Composable
 private fun PlaceholderArt(slug: String, phA: Color, phB: Color) {
+    val extra = MaterialTheme.extraColors
     val inf = rememberInfiniteTransition(label = "ph")
     val sway = inf.animateFloat(
         -3f, 3f, infiniteRepeatable(tween(4500, easing = EaseInOut), RepeatMode.Reverse), label = "sway"
@@ -285,14 +288,14 @@ private fun PlaceholderArt(slug: String, phA: Color, phB: Color) {
                     scaleY = s
                 }
                 .drawBehind {
-                    drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.42f), Color.Transparent)))
+                    drawCircle(Brush.radialGradient(listOf(extra.onOverlay.copy(alpha = 0.42f), Color.Transparent)))
                 }
         )
 
         // the plant
         Icon(
             typeArt(slug), contentDescription = null,
-            tint = Color.White.copy(alpha = 0.92f),
+            tint = extra.onOverlay.copy(alpha = 0.92f),
             modifier = Modifier.align(Alignment.TopCenter).offset(y = h * 0.08f)
                 .size(h * 0.50f)
                 .graphicsLayer { rotationZ = sway.value; transformOrigin = TransformOrigin(0.5f, 0.94f) }
@@ -316,7 +319,7 @@ private fun PlaceholderArt(slug: String, phA: Color, phB: Color) {
                         }
                     }
                     .background(
-                        Color.White.copy(alpha = 0.55f),
+                        extra.onOverlay.copy(alpha = 0.55f),
                         RoundedCornerShape(topStartPercent = 0, topEndPercent = 100, bottomEndPercent = 0, bottomStartPercent = 100)
                     )
             )
@@ -350,7 +353,8 @@ fun PlantCard(
 ) {
     val info = rememberCardInfo(plantId, vm, description, toxicityLevel)
     val slug = typeSlug(info.type)
-    val (phA, phB) = placeholderColors(slug)
+    val extra = MaterialTheme.extraColors
+    val (phA, phB) = placeholderColors(slug, extra)
     val added = formatAdded(addedAt ?: info.addedIso)
 
     // pcIn: fade + rise 24 + scale .96 -> 1, 70 ms stagger, played once per card
@@ -407,7 +411,7 @@ fun PlantCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (info.type.isNotBlank()) {
-                    Surface(shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.88f)) {
+                    Surface(shape = RoundedCornerShape(50), color = extra.onOverlay.copy(alpha = 0.88f)) {
                         Text(
                             info.type.replaceFirstChar { it.uppercase() },
                             Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
@@ -424,28 +428,28 @@ fun PlantCard(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                     .background(
                         Brush.verticalGradient(
-                            0f to Color(0x00081608),
-                            0.55f to Color(0xC7081608),
-                            1f to Color(0xF0081608)
+                            0f to extra.photoShade.copy(alpha = 0f),
+                            0.55f to extra.photoShade.copy(alpha = 0.78f),
+                            1f to extra.photoShade.copy(alpha = 0.94f)
                         )
                     )
                     .padding(start = 16.dp, end = 16.dp, top = 64.dp, bottom = 16.dp)
             ) {
                 Text(
                     name.uppercase(),
-                    color = Color.White, fontSize = 17.sp, lineHeight = 21.sp,
+                    color = extra.onOverlay, fontSize = 17.sp, lineHeight = 21.sp,
                     fontWeight = FontWeight.Bold, letterSpacing = 0.06.em,
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.4f), Offset(0f, 2f), 3f))
+                    style = TextStyle(shadow = Shadow(extra.overlay.copy(alpha = 0.4f), Offset(0f, 2f), 3f))
                 )
                 Box(
                     Modifier.padding(top = 8.dp, bottom = 6.dp)
                         .size(width = 28.dp, height = 3.dp)
-                        .background(Color(0xFFC6E78F), RoundedCornerShape(3.dp))
+                        .background(extra.photoAccent, RoundedCornerShape(3.dp))
                 )
                 if (!scientificName.isNullOrBlank()) {
                     Text(
-                        scientificName, color = Color.White.copy(alpha = 0.78f),
+                        scientificName, color = extra.onOverlay.copy(alpha = 0.78f),
                         fontSize = 13.sp, fontStyle = FontStyle.Italic,
                         maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
@@ -454,17 +458,17 @@ fun PlantCard(
                     Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Filled.CalendarToday, null, Modifier.size(14.dp),
-                            tint = Color.White.copy(alpha = 0.72f)
+                            tint = extra.onOverlay.copy(alpha = 0.72f)
                         )
                         Spacer(Modifier.width(5.dp))
-                        Text(added, color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
+                        Text(added, color = extra.onOverlay.copy(alpha = 0.72f), fontSize = 12.sp)
                     }
                 }
                 if (!info.description.isNullOrBlank()) {
                     Text(
                         info.description,
                         Modifier.padding(top = 8.dp),
-                        color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp, lineHeight = 19.5.sp,
+                        color = extra.onOverlay.copy(alpha = 0.9f), fontSize = 13.sp, lineHeight = 19.5.sp,
                         maxLines = 2, overflow = TextOverflow.Ellipsis
                     )
                 }

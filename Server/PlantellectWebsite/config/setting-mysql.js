@@ -50,7 +50,30 @@ async function getPlantImageLimits() {
     };
 }
 
+/**
+ * How many photos the admin plant editor loads per page (system_settings key 'plantImages',
+ * field adminPhotosPerPage). Re-read on every call, like getPlantImageLimits. Falls back to the
+ * default on a missing key, a malformed value or a DB error, and is clamped to 1..max.
+ */
+async function getAdminPhotoPageSize() {
+    const cfg = require('./settings').plantImages;
+    const max = cfg.adminPhotosPerPageMax || 50;
+    let size = cfg.adminPhotosPerPage || 12;
+    try {
+        let value = await getSystemSetting('plantImages');
+        if (typeof value === 'string') {
+            try { value = JSON.parse(value); } catch (err) { value = null; }
+        }
+        const parsed = value ? parseInt(value.adminPhotosPerPage, 10) : NaN;
+        if (Number.isFinite(parsed) && parsed >= 1) size = Math.min(parsed, max);
+    } catch (err) {
+        console.error('Could not read the admin photo page size:', err.message);
+    }
+    return size;
+}
+
 module.exports = {
     getSystemSetting,
-    getPlantImageLimits
+    getPlantImageLimits,
+    getAdminPhotoPageSize
 };

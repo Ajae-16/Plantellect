@@ -4,6 +4,8 @@
 const { mysqlPool } = require('./pool-mysql');
 const { parsePaging, escapeLike } = require('./shared-mysql');
 const { getPrivilegedRoleIds, countActiveSuperadmins, bumpPermissionsVersion } = require('./auth-mysql');
+const { insertRow } = require('./ids.js');
+const bcrypt = require('bcrypt');
 
 // ---------------------------------------------------------------------------
 // Admin: users
@@ -77,7 +79,7 @@ async function listUsers({ search, role, status, page, pageSize }) {
          GROUP BY r.roleId, r.roleName`
     );
     const privilegedIds = await getPrivilegedRoleIds();
-    const counts = { admin: 0, botanist: 0, user: 0, active: 0 };
+    const counts = { admin: 0, user: 0, active: 0 };
     for (const row of cardRows) {
         if (privilegedIds.has(row.roleId)) {
             // Matches the Administrators card filter, so the card and the table agree.
@@ -173,7 +175,8 @@ async function setAccountStatus(accountId, status, actorAccountId) {
 
 /**
  * Changes an account's role. Assigning or stripping a privileged role requires
- * admin_promote; otherwise change_role covers user <-> botanist only.
+ * admin_promote. Between ordinary roles there is nothing left to change: the
+ * botanist role is retired, so `user` is the only non-privileged role.
  *
  * The `system` role is outside that range in both directions and is refused here
  * rather than hidden in the UI. The dropdown already omits it, but the endpoint is
@@ -260,8 +263,223 @@ async function changeAccountRole(accountId, newRoleName, actorPermissions, actor
     }
 }
 
+// ---------------------------------------------------------------------------
+// Admin: read one, create, update
+// ---------------------------------------------------------------------------
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Validates whichever identity fields were supplied and returns the cleaned values.
+ * The limits match self-registration (routes/auth.js) so an admin cannot create an
+ * account the sign-up form would have refused. With `requireAll`, email and username
+ * must be present (create); without it, only supplied fields are checked (update).
+ */
+function cleanIdentity(input, requireAll) {
+    const out = {};
+    const has = (k) => input[k] !== undefined && input[k] !== null;
+
+    if (requireAll || has('email')) {
+        const email = typeof input.email === 'string' ? input.email.trim() : '';
+        if (!email) return { error: 'Email is required' };
+        if (email.length > 255 || !EMAIL_PATTERN.test(email)) return { error: 'Enter a valid email address' };
+        out.email = email;
+    }
+    if (requireAll || has('username')) {
+        const username = typeof input.username === 'string' ? input.username.trim() : '';
+        if (!username) return { error: 'Username is required' };
+        if (username.length < 6) return { error: 'Username must be at least 6 characters' };
+        if (username.length > 100) return { error: 'Username must be 100 characters or fewer' };
+        out.username = username;
+    }
+    for (const key of ['firstName', 'lastName']) {
+        if (has(key)) {
+            const value = typeof input[key] === 'string' ? input[key].trim() : '';
+            if (value.length > 100) return { error: `${key === 'firstName' ? 'First' : 'Last'} name must be 100 characters or fewer` };
+            out[key] = value || null;
+        }
+    }
+    return { values: out };
+}
+
+/** Everything the Users page shows for one account. Null when it does not exist. */
+async function getUserDetail(accountId) {
+    const [rows] = await mysqlPool.query(
+        `SELECT a.accountId AS id, a.username, a.email, a.status, a.createdAt, a.updatedAt, a.lastLoginAt,
+                r.roleName AS role, pr.firstName, pr.lastName
+         FROM accounts a
+         JOIN roles r ON a.roleId = r.roleId
+         LEFT JOIN profiles pr ON pr.accountId = a.accountId
+         WHERE a.accountId = ?`,
+        [accountId]
+    );
+    return rows[0] || null;
+}
+
+/**
+ * Creates an account on an admin's behalf.
+ *
+ * Role defaults to `user`. A privileged role needs admin_promote, the same rule
+ * changeAccountRole applies, so an admin cannot mint another admin through this door.
+ * `system` is never assignable. No consent rows are written: the person has not
+ * accepted anything yet, and recording a fake acceptance would be false.
+ */
+async function createUser(input, actorPermissions) {
+    const identity = cleanIdentity(input, true);
+    if (identity.error) return { error: identity.error, code: 400 };
+
+    const password = typeof input.password === 'string' ? input.password : '';
+    if (password.length < 6) return { error: 'Password must be at least 6 characters', code: 400 };
+    if (password.length > 72) return { error: 'Password must be 72 characters or fewer', code: 400 };
+
+    const roleName = input.role || 'user';
+    if (roleName === 'system') {
+        return { error: 'The system role is a machine actor and is not assignable', code: 400 };
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const conn = await mysqlPool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const [roleRows] = await conn.query('SELECT roleId FROM roles WHERE roleName = ?', [roleName]);
+        if (roleRows.length === 0) {
+            await conn.rollback();
+            return { error: 'Unknown role', code: 400 };
+        }
+        const privileged = await getPrivilegedRoleIds(conn);
+        if (privileged.has(roleRows[0].roleId) && !(actorPermissions || []).includes('admin_promote')) {
+            await conn.rollback();
+            return { error: 'admin_promote permission is required to create a privileged account', code: 403 };
+        }
+
+        const [existing] = await conn.query(
+            'SELECT accountId FROM accounts WHERE email = ? OR username = ?',
+            [identity.values.email, identity.values.username]
+        );
+        if (existing.length > 0) {
+            await conn.rollback();
+            return { error: 'Email or username already exists', code: 409 };
+        }
+
+        const accountId = await insertRow(
+            conn,
+            'accounts',
+            ['email', 'username', 'passwordHash', 'roleId', 'status'],
+            [identity.values.email, identity.values.username, passwordHash, roleRows[0].roleId, 'active']
+        );
+        await conn.query(
+            'INSERT INTO profiles (accountId, firstName, lastName) VALUES (?, ?, ?)',
+            [accountId, identity.values.firstName || null, identity.values.lastName || null]
+        );
+        await conn.commit();
+        return { accountId, role: roleName };
+    } catch (err) {
+        await conn.rollback();
+        if (err && err.code === 'ER_DUP_ENTRY') {
+            return { error: 'Email or username already exists', code: 409 };
+        }
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
+/**
+ * Edits an account's email, username and name. Only the fields supplied change.
+ *
+ * Guards:
+ *  - The system actor is never editable.
+ *  - Another person's privileged account needs admin_promote. Sign-in recovery is by
+ *    email, so letting any admin rewrite a superadmin's email would be an account takeover.
+ *  - Email and username stay unique.
+ * Role and status keep their own endpoints, with their own rules.
+ */
+async function updateUser(accountId, input, actorPermissions, actorAccountId) {
+    const identity = cleanIdentity(input, false);
+    if (identity.error) return { error: identity.error, code: 400 };
+    const values = identity.values;
+    if (Object.keys(values).length === 0) {
+        return { error: 'Nothing to update', code: 400 };
+    }
+
+    const conn = await mysqlPool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const [rows] = await conn.query(
+            `SELECT a.roleId, a.email, a.username, r.roleName
+             FROM accounts a JOIN roles r ON r.roleId = a.roleId
+             WHERE a.accountId = ? FOR UPDATE`,
+            [accountId]
+        );
+        if (rows.length === 0) {
+            await conn.rollback();
+            return { error: 'Account not found', code: 404 };
+        }
+        const target = rows[0];
+
+        if (target.roleName === 'system') {
+            await conn.rollback();
+            return { error: 'The system account is a machine actor and cannot be edited', code: 400 };
+        }
+
+        const isSelf = actorAccountId && actorAccountId === accountId;
+        const privileged = await getPrivilegedRoleIds(conn);
+        if (!isSelf && privileged.has(target.roleId) && !(actorPermissions || []).includes('admin_promote')) {
+            await conn.rollback();
+            return { error: 'admin_promote permission is required to edit another administrator', code: 403 };
+        }
+
+        if (values.email !== undefined || values.username !== undefined) {
+            const [clash] = await conn.query(
+                'SELECT accountId FROM accounts WHERE (email = ? OR username = ?) AND accountId <> ?',
+                [values.email !== undefined ? values.email : target.email,
+                 values.username !== undefined ? values.username : target.username,
+                 accountId]
+            );
+            if (clash.length > 0) {
+                await conn.rollback();
+                return { error: 'Email or username already exists', code: 409 };
+            }
+        }
+
+        const sets = [];
+        const params = [];
+        if (values.email !== undefined) { sets.push('email = ?'); params.push(values.email); }
+        if (values.username !== undefined) { sets.push('username = ?'); params.push(values.username); }
+        if (sets.length) {
+            await conn.query(`UPDATE accounts SET ${sets.join(', ')} WHERE accountId = ?`, [...params, accountId]);
+        }
+
+        if (values.firstName !== undefined || values.lastName !== undefined) {
+            // Accounts older than the profiles table may have no row yet.
+            await conn.query('INSERT IGNORE INTO profiles (accountId) VALUES (?)', [accountId]);
+            const pSets = [];
+            const pParams = [];
+            if (values.firstName !== undefined) { pSets.push('firstName = ?'); pParams.push(values.firstName); }
+            if (values.lastName !== undefined) { pSets.push('lastName = ?'); pParams.push(values.lastName); }
+            await conn.query(`UPDATE profiles SET ${pSets.join(', ')} WHERE accountId = ?`, [...pParams, accountId]);
+        }
+
+        await conn.commit();
+        return { accountId, fields: Object.keys(values) };
+    } catch (err) {
+        await conn.rollback();
+        if (err && err.code === 'ER_DUP_ENTRY') {
+            return { error: 'Email or username already exists', code: 409 };
+        }
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
 module.exports = {
     listUsers,
     setAccountStatus,
-    changeAccountRole
+    changeAccountRole,
+    getUserDetail,
+    createUser,
+    updateUser
 };

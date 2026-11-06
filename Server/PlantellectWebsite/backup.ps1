@@ -14,8 +14,8 @@ docker cp mysql_plantellectdb:/tmp/mysql.sql "$dir\mysql.sql"
 docker exec mongo_plantellectdb mongodump --uri="mongodb://superadmin:plantpassword@localhost:27017/plantellectmongodb?authSource=admin" --archive=/tmp/mongo.gz --gzip
 docker cp mongo_plantellectdb:/tmp/mongo.gz "$dir\mongo.gz"
 
-# Photos + certificates
-Compress-Archive administration\botanist\plant-images, administration\botanist\certificates "$dir\files.zip"
+# Photos
+Compress-Archive administration\inventory\plant-images "$dir\files.zip"
 
 # Dataset state (splits.json is the important one; index.sqlite and reports/ are rebuildable)
 $state = "config.json","splits.json","groups_manual.csv" |

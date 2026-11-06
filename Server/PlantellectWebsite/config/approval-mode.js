@@ -24,18 +24,18 @@ const { resolveSetting } = require('./limits.js');
 // ---------------------------------------------------------------------------
 
 /**
- * THREE keys, not four, and the absence of `approval_auto_plant_discovery` is
- * deliberate.
+ * TWO keys, and the absence of `approval_auto_plant_discovery` is deliberate.
+ * (There is no switch for role requests either: the role system has no request
+ * step any more, because every user can contribute.)
  *
  * A discovery report carries no species of its own; its approval IS the approval
  * of the record it produced, so the decision auto mode would make is already made
- * on a `plant_addition`, which is covered here. A fourth key would imply the
+ * on a `plant_addition`, which is covered here. A third key would imply the
  * queue can clear itself for reports that produced nothing — exactly the noise
  * the rails exist to prevent — and would be inert anyway, because
  * approvePlantRequest rejects a plant_discovery outright.
  */
 const APPROVAL_AUTO_KEYS = {
-    role_permission: 'approval_auto_role_permission',
     plant_addition: 'approval_auto_plant_addition',
     plant_contribution: 'approval_auto_plant_contribution'
 };
@@ -46,7 +46,7 @@ const APPROVAL_REQUEST_TYPES = Object.keys(APPROVAL_AUTO_KEYS);
 /**
  * Copy for the settings block, kept next to the keys so the UI cannot describe a
  * switch that does not exist, and so the two switches that publish content carry
- * the warning the plan insists on.
+ * the warning insists on.
  *
  * The plant_addition copy is deliberately broader than "fewer approval clicks".
  * Enabling it also covers records made FROM a discovery report, so a report filed
@@ -58,35 +58,6 @@ const APPROVAL_REQUEST_TYPES = Object.keys(APPROVAL_AUTO_KEYS);
  * what they read as a queue tweak and does not know training data is involved.
  */
 const APPROVAL_MODE_LABELS = {
-    role_permission: {
-        label: 'Botanist role requests',
-        detail: 'Grants record_plant to an account whose role request is approved.',
-        publishesContent: false,
-        warning: null,
-        /**
-         * Said plainly because the switch CANNOT currently approve anything, and a
-         * switch labelled "Automatic" that silently never fires is worse than no
-         * switch at all.
-         *
-         * The only source of a role request is registration, and every
-         * registration is its submitter's first submission of that type — which
-         * the permanent first-submission rail always holds for review. So with the
-         * rail in place this key is readable and writable but cannot approve a role
-         * request. It is kept rather than dropped for two reasons: the rails are
-         * permanent and something must be able to record their intent, and the key
-         * is what a future rule that has actually seen a human approve a role
-         * request would be switched through.
-         *
-         * The alternative — exempting role requests from the rail so the switch
-         * does something — means the first botanist credentials anybody ever sees
-         * are accepted by a rule that has never watched a human accept one. A
-         * privilege grant is the highest-stakes decision in the system; it is not
-         * the right place to trade a safety rail for a green light.
-         */
-        note: 'Currently cannot approve anything: every role request is a first submission, ' +
-            'and first submissions are always reviewed by hand. Kept as the switch a future ' +
-            'role rule would use.'
-    },
     plant_addition: {
         label: 'New plant submissions',
         detail: 'Approves a request to add a species to the library.',
@@ -119,7 +90,7 @@ const SYSTEM_ROLE_NAME = 'system';
  *
  * Hard-coding it and trusting it is a trap this project actually hit: api-test.cjs
  * registers a throwaway account per run, so on a database that had run it thirty
- * times, acc_000010 was already an ordinary test botanist. `INSERT IGNORE` then
+ * times, acc_000010 was already an ordinary test contributor. `INSERT IGNORE` then
  * did nothing, no system account existed, and `getSystemReviewerId` would have
  * thrown on the first automatic approval with nothing to show for it.
  *

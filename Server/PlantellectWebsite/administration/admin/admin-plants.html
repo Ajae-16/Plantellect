@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/css/admin/admin-style.css">
     <link rel="stylesheet" href="/css/admin/admin-topbar.css">
     <link rel="stylesheet" href="/css/admin/admin-plants.css">
+    <link rel="stylesheet" href="/css/admin/admin-description-feedback.css">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="/css/admin/admin-theme.css">
     <!-- Inventory actions, edit dialog, tidied toolbar (has its own dark rules) -->
@@ -229,7 +230,6 @@
                 <a href="/admin/dashboard" title="Dashboard">
                     <span class="material-symbols-outlined">home</span>
                     <span class="nav-link-text">Dashboard</span>
-                    <span class="nav-badge" id="navBadgeDashboard" hidden>0</span>
                 </a>
 
                 <a href="/admin/users" data-perm="create_user" title="Users">
@@ -275,6 +275,14 @@
                     <span class="admin-tab-badge" id="plantsTabBadgePending" hidden>0</span>
                 </a>
                 <a href="#inventorySection" class="admin-tab" data-target="inventorySection">Inventory</a>
+                <a href="#contributionsSection" class="admin-tab" data-target="contributionsSection">
+                    Scan Contributions
+                    <span class="admin-tab-badge" id="contribCount" hidden>0</span>
+                </a>
+                <a href="#plantReportQueue" class="admin-tab" data-target="plantReportQueue">
+                    Plant Reports
+                    <span class="admin-tab-badge" id="plantsTabBadgeReports" hidden>0</span>
+                </a>
                 <a href="#discoveryQueue" class="admin-tab" data-target="discoveryQueue">
                     Discoveries
                     <span class="admin-tab-badge" id="plantsTabBadgeDiscoveries" hidden>0</span>
@@ -386,6 +394,87 @@
                     </details>
                 </section>
 
+                <!-- Scan contributions, grouped by the plant they are assigned to. A wrong prediction files a
+                     photo under the wrong plant (a leak): move it to the right plant here, and when a page is
+                     all correct, include it in the dataset. Nothing loads until this section is opened
+                     (javascript/admin/admin-contributions.js). -->
+                <section class="admin-section plants-inventory-section" id="contributionsSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Scan Contributions</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">Photos users offered from a scan, private and for training only, grouped by the plant they are assigned to. Open a plant to look at its photos. A wrong photo can be moved to the right plant, and when every photo on a page is correct the whole page can be included in the dataset.</p>
+                            <p class="contrib-totals" id="contribTotals"></p>
+                            <div class="plants-filters">
+                                <label class="contrib-inline" for="contribFilter">Show
+                                    <select id="contribFilter" class="plants-filter-select">
+                                        <option value="1" selected>Plants with photos waiting</option>
+                                        <option value="0">All plants</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <p id="contribNotice" class="admin-notice" hidden></p>
+                            <div class="plants-table-wrapper">
+                                <table class="plants-table contrib-table">
+                                    <thead>
+                                        <tr>
+                                            <th></th>
+                                            <th>Plant</th>
+                                            <th>Photos</th>
+                                            <th>Waiting</th>
+                                            <th>Included</th>
+                                            <th>Excluded</th>
+                                            <th>Avg confidence</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="contribBody">
+                                        <tr><td colspan="7" class="request-detail-muted">Open this section to load the contributions.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="pagination-container">
+                                <div class="pagination-info" id="contribPageInfo"></div>
+                                <div class="pagination-controls" id="contribPageControls"></div>
+                            </div>
+                        </div>
+                    </details>
+                </section>
+
+                <!-- PLANT REPORTS: community thumbs up / down on contributor descriptions. Hidden-by-votes,
+                     downvoted (with the reasons and notes), and popular ones worth making primary.
+                     The dashboard only shows a notification that links here. -->
+                <section class="feedback-card" id="plantReportQueue">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Plant reports
+                                <span class="section-badge" id="plantReportQueueBadge" hidden>0</span>
+                            </h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle" id="plantReportNote">
+                                Votes from the plant profile page on each contributor&rsquo;s description.
+                            </p>
+                            <div class="feedback-tools">
+                                <label for="plantReportFilter">Show</label>
+                                <select id="plantReportFilter">
+                                    <option value="attention" selected>Needs attention</option>
+                                    <option value="hidden">Hidden by downvotes</option>
+                                    <option value="downvoted">Has downvotes</option>
+                                    <option value="upvoted">Popular: consider as primary</option>
+                                </select>
+                            </div>
+                            <p id="plantReportNotice" class="admin-notice" hidden></p>
+                            <div class="feedback-list" id="plantReportList">
+                                <p class="feedback-loading">Loading plant reports&hellip;</p>
+                            </div>
+                            <div class="feedback-pager" id="plantReportPager"></div>
+                        </div>
+                    </details>
+                </section>
+
                 <!-- DISCOVERY REPORTS : its own section and endpoint. A report is
                      NOT a plant request, so it must never be mixed into the pending list. -->
                 <section class="discovery-queue" id="discoveryQueue">
@@ -429,37 +518,66 @@
         </main>
     </div>
 
-    <!-- Edit a plant directly (admin). Two independent halves, each with its own Save:
-         "Plant info" (names, type, taxonomy) and "Descriptions" (one botanist's description at
-         a time, with the option to make it the primary one). Built by openPlantEdit() below. -->
-    <dialog id="plantEditDialog" class="plant-dialog plant-dialog-wide plant-dialog-with-photos" aria-labelledby="plantEditTitle">
+    <!-- Edit a plant directly (admin). A centred panel beside the sidebar (the sidebar stays usable; only
+         the page content is dimmed). It slides sideways between two panes, like the sign-in / sign-up
+         card: the edit form, and the photos. The photos are fetched only when you open that pane, one
+         page at a time. Save / Close sit in a footer that is always in view.
+         Two independent halves in the edit pane, each with its own Save: "Plant info" (names, type,
+         taxonomy) and "Descriptions" (one contributor's description at a time, with the option to make
+         it the primary one). Built by openPlantEdit() below. -->
+    <div class="plant-edit-scrim" id="plantEditScrim" hidden></div>
+    <dialog id="plantEditDialog" class="plant-dialog plant-dialog-wide plant-edit-dialog" aria-labelledby="plantEditTitle">
         <form id="plantEditForm" novalidate>
-            <h2 id="plantEditTitle">Edit plant</h2>
-            <div class="plant-edit-layout">
-                <div class="plant-edit-main">
-                    <div class="plant-tabs" role="tablist">
-                        <button type="button" role="tab" class="plant-tab active" data-tab="base" aria-selected="true">Plant info</button>
-                        <button type="button" role="tab" class="plant-tab" data-tab="description" aria-selected="false">Descriptions</button>
-                    </div>
-                    <p class="plant-dialog-hint" id="plantEditHint"></p>
-                    <p class="plant-dialog-error" id="plantEditError" role="alert" hidden></p>
-                    <p class="plant-dialog-ok" id="plantEditOk" role="status" hidden></p>
-                    <div id="plantEditBody"></div>
+            <div class="plant-edit-head">
+                <h2 id="plantEditTitle">Edit plant</h2>
+                <button type="button" class="plant-edit-x" id="plantEditX" aria-label="Close">&times;</button>
+            </div>
+            <div class="plant-edit-slider" id="plantEditSlider">
+                <div class="plant-edit-track">
+                    <section class="plant-edit-pane" id="plantPaneEdit" aria-label="Plant details">
+                        <div class="plant-tabs" role="tablist">
+                            <button type="button" role="tab" class="plant-tab active" data-tab="base" aria-selected="true">Plant info</button>
+                            <button type="button" role="tab" class="plant-tab" data-tab="description" aria-selected="false">Descriptions</button>
+                        </div>
+                        <p class="plant-dialog-hint" id="plantEditHint"></p>
+                        <p class="plant-dialog-error" id="plantEditError" role="alert" hidden></p>
+                        <p class="plant-dialog-ok" id="plantEditOk" role="status" hidden></p>
+                        <div id="plantEditBody"></div>
+                    </section>
+
+                    <!-- Photo controls. Each button acts at once and has nothing to do with the Save
+                         button below: hiding a photo deletes its public files immediately. -->
+                    <section class="plant-edit-pane plant-photo-pane" id="plantPanePhotos" aria-label="Plant photos" inert>
+                        <h3>Photos</h3>
+                        <details class="plant-photo-help">
+                            <summary>How photos work</summary>
+                            <p class="plant-photo-hint">Recorded photos are what the public can see. Hiding removes the public file at once; the photo stays in the dataset. Archiving takes a photo out of use: it is hidden, it no longer counts as a training candidate, and Unarchive brings it back hidden. A scan contribution is a private training photo that a user offered from a scan: it is never public, so it can only be archived or unarchived. Training settings decide which photos go into a training snapshot, and are separate from hiding.</p>
+                        </details>
+                        <p class="plant-dialog-error" id="plantPhotoError" role="alert" hidden></p>
+                        <p class="plant-dialog-ok" id="plantPhotoOk" role="status" hidden></p>
+                        <div class="plant-photo-groups" role="tablist" aria-label="Photo group">
+                            <button type="button" role="tab" class="plant-photo-group active" data-group="record" aria-selected="true">Recorded photos <span class="plant-photo-count" id="plantCountRecord"></span></button>
+                            <button type="button" role="tab" class="plant-photo-group" data-group="scan_contribution" aria-selected="false">Scan contributions <span class="plant-photo-count" id="plantCountScan"></span></button>
+                        </div>
+                        <div id="plantPhotoList" class="plant-photo-list"></div>
+                        <div class="plant-photo-pager" id="plantPhotoPager" hidden>
+                            <button type="button" class="plant-photo-btn" id="plantPhotoPrev">&lsaquo; Prev</button>
+                            <span id="plantPhotoPageInfo"></span>
+                            <button type="button" class="plant-photo-btn" id="plantPhotoNext">Next &rsaquo;</button>
+                        </div>
+                        <div class="plant-photo-archive">
+                            <button type="button" class="btn-deny" id="plantArchiveBtn" disabled
+                                    title="Archiving from this dialog is not available yet">Archive plant</button>
+                            <small>Archiving from here is not available yet.</small>
+                        </div>
+                    </section>
                 </div>
-                <!-- Public photo controls. Each button acts at once and has nothing to do with the
-                     Save buttons below: hiding a photo deletes its public files immediately. -->
-                <aside class="plant-photo-panel" aria-label="Public photos">
-                    <h3>Photos</h3>
-                    <p class="plant-photo-hint">What the public can see. Hiding removes the public file at once; the photo stays in the dataset. Training settings decide which photos go into a training snapshot, and are separate from hiding.</p>
-                    <p class="plant-dialog-error" id="plantPhotoError" role="alert" hidden></p>
-                    <p class="plant-dialog-ok" id="plantPhotoOk" role="status" hidden></p>
-                    <div id="plantPhotoList" class="plant-photo-list"></div>
-                    <div class="plant-photo-archive">
-                        <button type="button" class="btn-deny" id="plantArchiveBtn" disabled
-                                title="Archiving from this dialog is not available yet">Archive plant</button>
-                        <small>Archiving from here is not available yet.</small>
-                    </div>
-                </aside>
+                <!-- The side arrow: slides to the photos (and loads them the first time), and back. -->
+                <button type="button" class="plant-edge-btn" id="plantPhotosToggle" aria-expanded="false" aria-controls="plantPanePhotos"
+                        title="Show this plant's photos">
+                    <span class="plant-edge-arrow" aria-hidden="true">&lsaquo;</span>
+                    <span class="plant-edge-label">Photos</span>
+                </button>
             </div>
             <div class="plant-dialog-actions">
                 <button type="button" class="btn-deny" id="plantEditCancel">Close</button>
@@ -472,6 +590,7 @@
     <script src="/javascript/logout.js"></script>
     <script src="/javascript/badges.js"></script>
     <script src="/javascript/richtext.js"></script>
+    <script src="/javascript/admin/admin-contributions.js"></script>
     <!-- home.js calls checkAuth(), which lives in auth.js, so auth.js loads first -->
     <script src="/javascript/auth.js"></script>
     <script src="/javascript/home.js"></script>
@@ -516,7 +635,7 @@
         }
 
         // -----------------------------------------------------------------
-        // Pending plant requests (uploaded by botanists, awaiting review)
+        // Pending plant requests (uploaded by contributors, awaiting review)
         // -----------------------------------------------------------------
         // Per-photo verdicts, kept across re-renders: { [requestId]: { [imageId]: 'approve' | 'reject' } }.
         // Deliberately NOT defaulted. Each photo goes into the training set, so a
@@ -554,7 +673,7 @@
         };
 
         // A change request covers ONE half of a plant: its shared info, or one
-        // botanist's own description. Requests filed before the split have no scope.
+        // contributor's own description. Requests filed before the split have no scope.
         function changeScopeLabel(r) {
             if (r && r.changeScope === 'base') return 'Change request · plant info';
             if (r && r.changeScope === 'description') return 'Change request · description';
@@ -612,7 +731,7 @@
          * Approve / Reject control and opens full size in a new tab, so the
          * admin judges the actual image before deciding it. A taxonomy update
          * or a change request has no photos: it shows the fields it changes,
-         * before and after, with the reason the botanist gave.
+         * before and after, with the reason the contributor gave.
          */
         function renderRequestPreview(r) {
             const parts = [];
@@ -773,7 +892,7 @@
         };
 
         /**
-         * EVERYTHING the botanist sent, in one expandable block, so an admin does not
+         * EVERYTHING the contributor sent, in one expandable block, so an admin does not
          * have to approve a plant they have only half read. The queue list already
          * carries the whole payload; the card used to show only a line of it.
          */
@@ -786,7 +905,7 @@
                 rows.push(`<div class="request-detail-row"><dt>${escapeHtml(label)}</dt><dd>${html}</dd></div>`);
             };
             const text = value => (value === null || value === undefined || value === '') ? '' : escapeHtml(value);
-            // Botanist-written free text: paragraphs, bullets and emphasis exactly as the public page shows them.
+            // Contributor-written free text: paragraphs, bullets and emphasis exactly as the public page shows them.
             const rich = value => (value === null || value === undefined || value === '') ? '' : '<div class="rt">' + RichText.html(value) + '</div>';
 
             row('Submitted by',
@@ -931,7 +1050,7 @@
                 question = request.changeScope === 'base'
                     ? 'Apply these changes to the plant info? They go live immediately. No description is changed.'
                     : request.changeScope === 'description'
-                        ? 'Apply these changes to this botanist\u2019s description? They go live immediately. The plant info is not changed.'
+                        ? 'Apply these changes to this contributor\u2019s description? They go live immediately. The plant info is not changed.'
                         : 'Apply these changes to the plant? They go live immediately.';
             } else if (decision === 'approve' && request && request.requestType !== 'plant_taxonomy' &&
                 (request.images || []).length > 0) {
@@ -1233,7 +1352,7 @@
             const b = editData.base;
             const t = b.type;
             document.getElementById('plantEditHint').textContent =
-                'The names, type and taxonomy of the plant itself. Saving this never changes any botanist\u2019s description. A blank taxonomy box is left as it is.';
+                'The names, type and taxonomy of the plant itself. Saving this never changes any contributor\u2019s description. A blank taxonomy box is left as it is.';
             const level = ['mild', 'moderate', 'severe'].map(l =>
                 `<option value="${l}" ${t.toxicityLevel === l ? 'selected' : ''}>${l.charAt(0).toUpperCase() + l.slice(1)}</option>`).join('');
             document.getElementById('plantEditBody').innerHTML =
@@ -1283,7 +1402,7 @@
             if (!list.some(d => d.descriptionId === editDescriptionId)) editDescriptionId = list[0].descriptionId;
             const d = list.find(x => x.descriptionId === editDescriptionId);
             hint.textContent =
-                'Each botanist\u2019s description is separate. Saving changes only the one chosen below. ' +
+                'Each contributor\u2019s description is separate. Saving changes only the one chosen below. ' +
                 'Press Enter for a new line; use the toolbar for bold, bullets and highlights.';
             body.innerHTML =
                 '<div class="plant-form-grid">' +
@@ -1330,9 +1449,14 @@
         // once through its own request; none of it is part of Save. After each action the
         // list is re-read from the server, so what is shown is what the public gets.
         // -----------------------------------------------------------------
-        let photoData = null;       // GET /admin/api/plants/:id/photos
-        let trainingData = null;    // GET /admin/api/plants/:id/training 
+        let photoData = null;       // the page last fetched: GET /admin/api/plants/:id/photos?group=&page=
+        let trainingData = null;    // plant-wide training counts + part / status lists: GET .../training?counts=1
         let photoBusy = false;
+        // Photos are NOT fetched when the editor opens. The first time the photos pane is opened for a
+        // plant they load, one page of one group; after that only a page or group change (or an action) fetches.
+        let photosLoadedFor = null;
+        let photoGroup = 'record';                       // 'record' | 'scan_contribution'
+        const photoPage = { record: 1, scan_contribution: 1 };
 
         function photoMessage(kind, text) {
             const err = document.getElementById('plantPhotoError');
@@ -1344,48 +1468,91 @@
 
         function renderPhotoPanel() {
             const host = document.getElementById('plantPhotoList');
+            const pager = document.getElementById('plantPhotoPager');
+            pager.hidden = true;
             if (!photoData) {
-                host.innerHTML = '<p class="request-detail-muted">Loading…</p>';
+                host.innerHTML = photosLoadedFor === null
+                    ? '<p class="request-detail-muted">Open the photos with the arrow to load them.</p>'
+                    : '<p class="request-detail-muted">Loading…</p>';
                 return;
             }
+            // Counts of both groups come with every page, so the labels are right without loading the other one.
+            const counts = photoData.counts || {};
+            document.getElementById('plantCountRecord').textContent = counts.record != null ? '(' + counts.record + ')' : '';
+            document.getElementById('plantCountScan').textContent = counts.scan_contribution != null ? '(' + counts.scan_contribution + ')' : '';
+            document.querySelectorAll('.plant-photo-group').forEach(btn => {
+                const on = btn.dataset.group === photoGroup;
+                btn.classList.toggle('active', on);
+                btn.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+
             const photos = photoData.photos || [];
-            if (photos.length === 0) {
-                host.innerHTML = '<p class="request-detail-muted">This plant has no approved photos.</p>';
-                return;
-            }
-            const training = trainingData ? new Map((trainingData.photos || []).map(t => [t.imageId, t])) : null;
             const archivedNote = photoData.plantArchived
                 ? '<p class="request-detail-muted">This plant is archived, so no photo is public. Restore the plant to show photos.</p>'
                 : '';
-            host.innerHTML = archivedNote + trainingSummaryHtml() + photos.map(ph => {
+            if (photos.length === 0) {
+                host.innerHTML = archivedNote + trainingSummaryHtml() + '<p class="request-detail-muted">' +
+                    (photoGroup === 'scan_contribution'
+                        ? 'No scan contributions for this plant.'
+                        : 'This plant has no approved photos.') + '</p>';
+                return;
+            }
+            pager.hidden = (photoData.pages || 1) <= 1;
+            document.getElementById('plantPhotoPageInfo').textContent =
+                'Page ' + photoData.page + ' of ' + photoData.pages + ' · ' + photoData.total + ' photo' + (photoData.total === 1 ? '' : 's');
+            document.getElementById('plantPhotoPrev').disabled = photoData.page <= 1;
+            document.getElementById('plantPhotoNext').disabled = photoData.page >= photoData.pages;
+            host.innerHTML = archivedNote + trainingSummaryHtml() + '<div class="plant-photo-grid">' + photos.map(ph => {
                 const hidden = !ph.publicVisible;
                 const missing = ph.publicVisible && !ph.publicNow && !photoData.plantArchived;
+                const archived = Boolean(ph.archived);
+                const archivedTitle = ph.archiveReason ? 'Archived: ' + ph.archiveReason : 'Archived';
+                // A scan contribution is private and training-only: the badge says so and the only
+                // buttons are Archive / Unarchive (no Show, Hide or Primary). The server refuses
+                // Show and Primary for it as well, so this is not the only guard.
+                const scan = Boolean(ph.scanContribution);
+                const scanConfidence = (typeof ph.contributionConfidence === 'number' && Number.isFinite(ph.contributionConfidence))
+                    ? ' ' + (ph.contributionConfidence * 100).toFixed(1) + '%' : '';
+                const scanTitle = 'Offered from a scan' +
+                    (scanConfidence ? ' at ' + scanConfidence.trim() + ' confidence' : '') +
+                    (ph.contributionModelId ? ' by model ' + ph.contributionModelId : '') +
+                    '. Private training photo: it is never public and can only be archived.';
                 const badges = [
                     ph.isPrimary ? '<span class="plant-photo-badge primary">Primary</span>' : '',
-                    hidden ? '<span class="plant-photo-badge hidden-badge">Hidden</span>'
+                    scan ? `<span class="plant-photo-badge scan-badge" title="${escapeHtml(scanTitle)}">Scan contribution${escapeHtml(scanConfidence)}</span>` : '',
+                    archived ? `<span class="plant-photo-badge archived-badge" title="${escapeHtml(archivedTitle)}">Archived</span>`
+                             : hidden && !scan ? '<span class="plant-photo-badge hidden-badge">Hidden</span>'
                            : (ph.publicNow ? '<span class="plant-photo-badge public">Public</span>' : ''),
                     missing ? '<span class="plant-photo-badge warn" title="Visible, but its public copy is not made yet">Copy pending</span>' : ''
                 ].join('');
                 const id = escapeHtml(ph.imageId);
                 const canPrimary = !ph.isPrimary && !hidden && !ph.archived;
                 return `
-                <figure class="plant-photo ${hidden ? 'is-hidden' : ''}" data-image="${id}">
+                <figure class="plant-photo ${hidden ? 'is-hidden' : ''} ${archived ? 'is-archived' : ''}" data-image="${id}">
                     <a href="${escapeHtml(ph.previewUrl)}" target="_blank" rel="noopener" title="Open the photo in a new tab">
                         <img src="${escapeHtml(ph.previewUrl)}" alt="Plant photo" loading="lazy">
                     </a>
                     <figcaption>
                         <div class="plant-photo-badges">${badges}</div>
                         <div class="plant-photo-by">${escapeHtml(ph.uploadedByName || '')} · ${formatDate(ph.uploadedAt)}</div>
+                        ${scan ? '<div class="plant-photo-by">Private training photo. Only Archive is available.</div>' : ''}
                         <div class="plant-photo-actions">
+                            ${archived ? `
+                            <button type="button" class="plant-photo-btn" data-photo-act="unarchive" data-image="${id}"
+                                    title="${scan ? 'Bring the photo back. It stays hidden: a scan contribution is never public.' : 'Bring the photo back. It stays hidden until you press Show.'}">Unarchive</button>` : scan ? `
+                            <button type="button" class="plant-photo-btn" data-photo-act="archive" data-image="${id}"
+                                    title="Take the photo out of use: it is no longer a training candidate">Archive</button>` : `
                             <button type="button" class="plant-photo-btn" data-photo-act="${hidden ? 'show' : 'hide'}" data-image="${id}"
                                     ${hidden && photoData.plantArchived ? 'disabled' : ''}>${hidden ? 'Show' : 'Hide'}</button>
                             <button type="button" class="plant-photo-btn" data-photo-act="primary" data-image="${id}"
                                     ${canPrimary ? '' : 'disabled'}>${ph.isPrimary ? 'Primary' : 'Set primary'}</button>
+                            <button type="button" class="plant-photo-btn" data-photo-act="archive" data-image="${id}"
+                                    title="Take the photo out of use: hidden, and not a training candidate">Archive</button>`}
                         </div>
-                        ${trainingControlsHtml(training && training.get(ph.imageId))}
+                        ${trainingControlsHtml(ph.training)}
                     </figcaption>
                 </figure>`;
-            }).join('');
+            }).join('') + '</div>';
         }
 
         // ---- Training which approved photos feed a training snapshot. Separate from the
@@ -1415,7 +1582,7 @@
         }
 
         function trainingControlsHtml(t) {
-            if (!t) return '';
+            if (!t || !trainingData) return '';
             const id = escapeHtml(t.imageId);
             const options = trainingData.statuses.map(st =>
                 `<option value="${st}" ${st === t.trainingStatus ? 'selected' : ''}>${TRAIN_LABEL[st] || st}</option>`).join('');
@@ -1431,18 +1598,23 @@
             </div>`;
         }
 
+        // Fetches the current group's current page (and the plant-wide training counts). Called when the
+        // photos pane is first opened, on a page or group change, and after every photo action.
         async function loadPhotoPanel() {
             const plantId = editingPlantId;
+            photosLoadedFor = plantId;
+            const group = photoGroup;
             try {
                 const base = '/admin/api/plants/' + encodeURIComponent(plantId);
                 const [res, trainRes] = await Promise.all([
-                    fetch(base + '/photos', { credentials: 'include' }),
-                    fetch(base + '/training', { credentials: 'include' })
+                    fetch(base + '/photos?group=' + encodeURIComponent(group) + '&page=' + photoPage[group], { credentials: 'include' }),
+                    fetch(base + '/training?counts=1', { credentials: 'include' })
                 ]);
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || 'Could not load the photos');
                 const train = await trainRes.json().catch(() => ({}));
-                if (plantId !== editingPlantId) return;       // the dialog moved on to another plant
+                if (plantId !== editingPlantId || group !== photoGroup) return;   // the dialog or the group moved on
+                photoPage[group] = data.page;          // the server moves a page past the end back to the last one
                 photoData = data;
                 trainingData = trainRes.ok ? train : null;    // the photos still work without the training controls
                 renderPhotoPanel();
@@ -1451,10 +1623,88 @@
             }
         }
 
+        function setPhotoGroup(group) {
+            if (group === photoGroup) return;
+            photoGroup = group;
+            photoData = null;
+            photoMessage('none');
+            renderPhotoPanel();
+            loadPhotoPanel();
+        }
+
+        document.querySelectorAll('.plant-photo-group').forEach(btn => {
+            btn.addEventListener('click', () => { if (!photoBusy) setPhotoGroup(btn.dataset.group); });
+        });
+        document.getElementById('plantPhotoPrev').addEventListener('click', () => {
+            if (photoBusy || !photoData || photoData.page <= 1) return;
+            photoPage[photoGroup] = photoData.page - 1;
+            photoData = null; renderPhotoPanel(); loadPhotoPanel();
+        });
+        document.getElementById('plantPhotoNext').addEventListener('click', () => {
+            if (photoBusy || !photoData || photoData.page >= photoData.pages) return;
+            photoPage[photoGroup] = photoData.page + 1;
+            photoData = null; renderPhotoPanel(); loadPhotoPanel();
+        });
+
+        // ---- The panel: centred beside the sidebar (never over it), sliding between two panes.
+        const editDialog = document.getElementById('plantEditDialog');
+        const editScrim = document.getElementById('plantEditScrim');
+        const editSlider = document.getElementById('plantEditSlider');
+        const sidebarEl = document.getElementById('adminSidebar');
+
+        // The left edge of the page content = the right edge of the sidebar (0 on a phone, where the
+        // sidebar is a drawer). Kept current while the sidebar collapses or the window resizes.
+        function placeEditDialog() {
+            const desktop = window.matchMedia('(min-width: 768px)').matches;
+            const left = desktop && sidebarEl ? Math.max(0, Math.round(sidebarEl.getBoundingClientRect().right)) : 0;
+            document.documentElement.style.setProperty('--plant-edit-left', left + 'px');
+        }
+        window.addEventListener('resize', () => { if (editDialog.open) placeEditDialog(); });
+        if (window.ResizeObserver && sidebarEl) {
+            new ResizeObserver(() => { if (editDialog.open) placeEditDialog(); }).observe(sidebarEl);
+        }
+
+        function showEditPane(name) {
+            const photos = name === 'photos';
+            editSlider.classList.toggle('show-photos', photos);
+            document.getElementById('plantPaneEdit').inert = photos;
+            document.getElementById('plantPanePhotos').inert = !photos;
+            const toggle = document.getElementById('plantPhotosToggle');
+            toggle.setAttribute('aria-expanded', photos ? 'true' : 'false');
+            toggle.title = photos ? 'Back to the plant details' : "Show this plant's photos";
+            toggle.querySelector('.plant-edge-label').textContent = photos ? 'Details' : 'Photos';
+            toggle.querySelector('.plant-edge-arrow').innerHTML = photos ? '&rsaquo;' : '&lsaquo;';
+            if (photos && photosLoadedFor !== editingPlantId) { renderPhotoPanel(); loadPhotoPanel(); }
+        }
+
+        document.getElementById('plantPhotosToggle').addEventListener('click', () => {
+            showEditPane(editSlider.classList.contains('show-photos') ? 'edit' : 'photos');
+        });
+
+        function openEditDialog() {
+            placeEditDialog();
+            editScrim.hidden = false;
+            const main = document.querySelector('.admin-main');
+            if (main) main.inert = true;          // the page behind is dimmed and unreachable; the sidebar is not
+            editDialog.show();
+        }
+        editDialog.addEventListener('close', () => {
+            editScrim.hidden = true;
+            const main = document.querySelector('.admin-main');
+            if (main) main.inert = false;
+        });
+        // A non-modal dialog does not close on Escape by itself.
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && editDialog.open) editDialog.close();
+        });
+        document.getElementById('plantEditX').addEventListener('click', () => editDialog.close());
+
         const PHOTO_DONE = {
             hide: 'Photo hidden. Its public file is gone.',
             show: 'Photo is public again.',
-            primary: 'Primary photo changed.'
+            primary: 'Primary photo changed.',
+            archive: 'Photo archived. It is hidden and no longer a training candidate.',
+            unarchive: 'Photo unarchived. It is hidden; press Show to make it public.'
         };
 
         // Training changes: one photo's fields, or every candidate at once. Not the Hide/Show buttons.
@@ -1503,13 +1753,24 @@
             const btn = e.target.closest('[data-photo-act]');
             if (!btn || btn.disabled || photoBusy || !editingPlantId) return;
             const act = btn.dataset.photoAct;
+            // Archive asks for an optional reason. Cancel (null) stops everything; an empty answer is fine.
+            let archiveReason = '';
+            if (act === 'archive') {
+                const answer = window.prompt('Archive this photo? It is hidden and stops counting as a training candidate.\n\nReason (optional):', '');
+                if (answer === null) return;
+                archiveReason = answer.trim().slice(0, 255);
+            }
             photoBusy = true;
             document.querySelectorAll('#plantPhotoList .plant-photo-btn').forEach(b => { b.disabled = true; });
             photoMessage('none');
             try {
                 const res = await fetch('/admin/api/plants/' + encodeURIComponent(editingPlantId) +
                     '/photos/' + encodeURIComponent(btn.dataset.image) + '/' + encodeURIComponent(act), {
-                    method: 'POST', credentials: 'include'
+                    method: 'POST', credentials: 'include',
+                    ...(act === 'archive' ? {
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reason: archiveReason })
+                    } : {})
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) {
@@ -1533,15 +1794,21 @@
             editData = null;
             photoData = null;
             trainingData = null;
+            photosLoadedFor = null;           // nothing is fetched until the photos pane is opened
+            photoGroup = 'record';
+            photoPage.record = 1;
+            photoPage.scan_contribution = 1;
             photoMessage('none');
+            document.getElementById('plantCountRecord').textContent = '';
+            document.getElementById('plantCountScan').textContent = '';
             renderPhotoPanel();
-            loadPhotoPanel();
+            showEditPane('edit');
             document.getElementById('plantEditTitle').textContent = 'Edit ' + p.name;
             editMessage('none');
             document.getElementById('plantEditHint').textContent = '';
             document.getElementById('plantEditBody').innerHTML = '<p class="request-detail-muted">Loading…</p>';
             setSaveDisabled(true);
-            document.getElementById('plantEditDialog').showModal();
+            openEditDialog();
             try {
                 await reloadEditData();
                 renderEditTab();
@@ -1716,7 +1983,7 @@
                 ? 'Every plant has a full taxonomy record.'
                 : `<strong>${total}</strong> plant${total === 1 ? '' : 's'} ${total === 1 ? 'is' : 'are'} missing ` +
                   'a taxonomy level (class, order, family, genus or species). ' +
-                  'Those levels are recorded as <code>Unspecified</code> when a botanist leaves them blank, ' +
+                  'Those levels are recorded as <code>Unspecified</code> when a contributor leaves them blank, ' +
                   'rather than guessed. ' +
                   '<em>There is no way to correct them from here:</em> a plant record is written once at ' +
                   'approval and a submission cannot be edited afterwards, so this list is a to-do with no tool. ' +
@@ -1811,6 +2078,7 @@
     <!-- Discovery reports : its own module, because the discovery row
          shape has no requestType field and sharing a renderer would mean one
          queue rendering the other's half-truths. -->
+    <script src="/javascript/admin/admin-description-feedback.js"></script>
     <script src="/javascript/admin/admin-discoveries.js"></script>
 
     <!-- "Image file problems": photos that could not be copied into their folder -->

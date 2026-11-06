@@ -47,6 +47,8 @@ services:
       - TF_CPP_MIN_LOG_LEVEL=2
       - DATASET_ROOTS=/data/datasets/plantellect training 
       - DATASET_INDEX_DIR=/data/datasets/index
+      # Default embedder until one is chosen on the Dataset page (Other plant tab): mobilenet | thumb | saved | model:<id>,
+      # for example model:convnexttiny to use the trained model in ./ml/model/convnexttiny.
       - DATASET_EMBEDDER=mobilenet 
     deploy:
       resources:

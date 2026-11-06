@@ -5,6 +5,7 @@ const { requirePermission } = require('../middleware/authMiddleware');
 const settings = require('../config/settings');
 const { plantImageUpload, handleUploadError } = require('../config/upload');
 const { ingestUploads } = require('../config/image-ingest');
+const { describeHeldPhoto } = require('../config/scan-contribution');
 const { publicUrl, visibleImageSql } = require('../config/public-images');
 const { mysqlPool } = require('../config/pool-mysql');
 const { withdrawMyRequest } = require('../config/withdraw-mysql');
@@ -94,7 +95,7 @@ function discardFiles(files) {
 const ADMIN_ROLES = ['admin', 'superadmin'];
 
 /**
- * ASSUMPTION (same as routes/botanists.js): roles are on the session. If
+ * ASSUMPTION (same as routes/contributors.js): roles are on the session. If
  * /api/auth/me gets them another way, change this one function. It fails closed.
  */
 function viewerIsAdmin(req) {
@@ -108,7 +109,7 @@ const isAdminAccount = (p) =>
     p && typeof p === 'object' &&
     (p.profileType === 'admin' || ADMIN_ROLES.includes(p.role));
 
-const ROLE_PRIORITY = ['superadmin', 'admin', 'botanist'];
+const ROLE_PRIORITY = ['superadmin', 'admin', 'user'];
 
 /**
  * Fills in `role` for any named person who has an accountId but no role, using
@@ -184,10 +185,38 @@ router.get('/types', async (req, res) => {
     }
 });
 
+// The values already used at each taxonomy level, for the autocomplete lists on
+// the Record page: { values: { kingdom: [...], phylum: [...], ... } }. Distinct,
+// A-Z, active plants only, and never the 'Unspecified' placeholder. Declared
+// before '/:plantId' so that path is not read as a plant id.
+const TAXONOMY_SUGGESTION_LEVELS = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species'];
+
+router.get('/taxonomy-suggestions', async (req, res) => {
+    try {
+        const values = {};
+        for (const level of TAXONOMY_SUGGESTION_LEVELS) {
+            // `level` comes from the fixed list above, never from the request.
+            const [rows] = await mysqlPool.query(
+                `SELECT DISTINCT tx.\`${level}\` AS value
+                 FROM taxonomy tx
+                 JOIN plants p ON p.taxonomyId = tx.taxonomyId
+                 WHERE p.archivedAt IS NULL
+                   AND tx.\`${level}\` <> '' AND tx.\`${level}\` <> 'Unspecified'
+                 ORDER BY value ASC`
+            );
+            values[level] = rows.map((r) => r.value);
+        }
+        res.json({ values });
+    } catch (err) {
+        console.error('List taxonomy suggestions error:', err);
+        res.status(500).json({ error: 'Failed to load taxonomy suggestions' });
+    }
+});
+
 /**
  * The photo limits the record form should show and enforce client-side. The
  * count is the live admin setting; the client's copy is a courtesy and the upload
- * middleware is the authority. Botanist-only, like the forms that use it.
+ * middleware is the authority. Contributor-only, like the forms that use it.
  */
 router.get('/limits', requirePermission('record_plant'), async (req, res) => {
     try {
@@ -202,7 +231,7 @@ router.get('/limits', requirePermission('record_plant'), async (req, res) => {
 /**
  * Does this species already exist, and what does the record form need to know
  * about it? By ?scientificName= or ?plantId=. Registered before /:plantId, which
- * would otherwise swallow "lookup". Botanist-only: unlike the public detail read
+ * would otherwise swallow "lookup". Contributor-only: unlike the public detail read
  * it also finds plants that have no approved description yet, so it must never be
  * reachable by anyone who cannot record.
  */
@@ -252,7 +281,7 @@ router.get('/mine', requirePermission('record_plant'), async (req, res) => {
 });
 
 /**
- * A botanist withdraws their OWN submission while it is still pending. The row stays, as
+ * A contributor withdraws their OWN submission while it is still pending. The row stays, as
  * 'cancelled'; its photos are rejected and filed away. Someone else's id answers 404.
  */
 router.post('/requests/:requestId/withdraw', requirePermission('record_plant'), async (req, res) => {
@@ -344,7 +373,7 @@ router.get('/:plantId', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Botanist submissions
+// Contributor submissions
 // ---------------------------------------------------------------------------
 
 /**
@@ -352,7 +381,7 @@ router.get('/:plantId', async (req, res) => {
  * checked against existing species: a duplicate is accepted here and converted
  * into a contribution at approval time.
  */
-router.post('/requests', requirePermission('record_plant'), plantImageUpload(getPlantImageLimits), ingestUploads({ executor: mysqlPool }), async (req, res) => {
+router.post('/requests', requirePermission('record_plant'), plantImageUpload(getPlantImageLimits), ingestUploads({ executor: mysqlPool, options: { describeDuplicate: describeHeldPhoto(mysqlPool) } }), async (req, res) => {
     const files = req.files || [];
     const submitted = {
         commonName: req.body.commonName,
@@ -373,7 +402,7 @@ router.post('/requests', requirePermission('record_plant'), plantImageUpload(get
         uses: req.body.uses,
         benefits: req.body.benefits,
         harmful: req.body.harmful,
-        // Set when the botanist arrived from a claimed discovery report. It is
+        // Set when the contributor arrived from a claimed discovery report. It is
         // carried in the payload (provenance: an admin can see from the plant side
         // where a record came from) and it makes the server verify the CLAIM in the
         // same transaction as the insert — the client's "view only" card is not an
@@ -414,7 +443,7 @@ router.post('/requests', requirePermission('record_plant'), plantImageUpload(get
             warnings: result.strippedHarmful
                 ? [...warnings, 'The caution text was left out because this plant type is marked safe.']
                 : warnings,
-            // Surfaced, not swallowed: a botanist who sees "Approved automatically"
+            // Surfaced, not swallowed: a contributor who sees "Approved automatically"
             // learns that no human read their text, and one who sees the rail's
             // reason learns that somebody will.
             autoApproved: auto.autoDecided === true,
@@ -436,7 +465,7 @@ router.post('/requests', requirePermission('record_plant'), plantImageUpload(get
  */
 router.post('/:plantId/contributions', requirePermission('record_plant'),
     plantImageUpload(getPlantImageLimits),
-    ingestUploads({ executor: mysqlPool }),
+    ingestUploads({ executor: mysqlPool, options: { describeDuplicate: describeHeldPhoto(mysqlPool) } }),
     async (req, res) => {
         const files = req.files || [];
         const discoveryImageIds = readIdList(req.body.discoveryImageIds);
@@ -451,7 +480,10 @@ router.post('/:plantId/contributions', requirePermission('record_plant'),
             discoveryRequestId: req.body.discoveryRequestId || null
         };
 
-        const errors = validateContribution(draft, files.length + discoveryImageIds.length);
+        // Opened from a scan: a photo alone is not a contribution there. The page sends fromScan=1;
+        // it only makes the rule stricter, so trusting it costs nothing.
+        const fromScan = req.body.fromScan === '1';
+        const errors = validateContribution(draft, files.length + discoveryImageIds.length, { fromScan });
         if (files.length + discoveryImageIds.length > req.uploadMaxFiles) {
             errors.push(`At most ${req.uploadMaxFiles} photos per submission, counting report photos`);
         }

@@ -12,7 +12,7 @@ const router = express.Router();
 
 /**
  * The plant's current editable values for the "Request change" form: the shared
- * plant info, plus ONLY the descriptions the signed-in botanist wrote.
+ * plant info, plus ONLY the descriptions the signed-in contributor wrote.
  */
 router.get('/:plantId/editable', requirePermission('record_plant'), async (req, res) => {
     try {

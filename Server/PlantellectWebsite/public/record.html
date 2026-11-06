@@ -49,16 +49,24 @@
             <a href="record.html?tab=new">Record a new plant instead</a>
         </p>
 
+        <!-- Shown by record-script.js only when the page was opened with ?from=scan (the scan page's
+             "Record it"). A photo alone is not enough on the NEW PLANT and ADD TO EXISTING tabs then:
+             the scan already has the photo, so what is wanted is a description. -->
+        <p id="scanHandoffNote" class="record-hint" hidden>
+            Recording from your scan: a <strong>description is required</strong>. Say what the plant looks
+            like, its size, or where it grows. A photo alone is not enough here.
+        </p>
+
         <!-- Shown instead of every form when the session has no record_plant. There
-             is no self-service upgrade: botanist status is granted at
-             registration with a certificate. -->
+             is no upgrade to request: every signed-in account holds record_plant,
+             so only a signed-out visitor sees this. -->
         <p id="recordGate" class="record-notice" hidden></p>
 
         <!--  ?from=<requestId> is how discoveries.html hands a report to
-             a botanist. It is a BANNER, not a redirect: the record form is the
+             a contributor. It is a BANNER, not a redirect: the record form is the
              page's own subject, and a bare ?from= with no ?tab= must land on
              "new plant" because that is what recording one means. The id is
-             echoed into the photo list so the botanist can see what the reporter
+             echoed into the photo list so the contributor can see what the reporter
              sent without a second trip back to the queue. -->
         <div id="discoveryBanner" class="record-discovery-banner" hidden>
             <div>
@@ -98,7 +106,7 @@
                     </p>
 
                     <!-- A scan -> record handoff shows the prediction as a HINT only.
-                         The prediction is the reason the botanist is being asked, so
+                         The prediction is the reason the contributor is being asked, so
                          it is not trustworthy input and must not fill the form. -->
                     <p id="newPlantHint" class="record-hint" hidden></p>
 
@@ -222,7 +230,7 @@
                     </details>
 
                     <!-- Photos travel with the new species. The scan photo and the report's
-                         photos are offered here; neither is sent unless the botanist adds it. -->
+                         photos are offered here; neither is sent unless the contributor adds it. -->
                     <div id="newCarriedPhoto" class="record-carried" hidden>
                         <img id="newCarriedImg" alt="The photo you scanned">
                         <div>
@@ -313,7 +321,7 @@
                     </div>
 
                     <!-- The photo carried across from capture-plant.html. Without
-                         this the botanist holds the photo, cannot attach it, and can
+                         this the contributor holds the photo, cannot attach it, and can
                          only upload it days later after approval. -->
                     <div id="contributeCarriedPhoto" class="record-carried" hidden>
                         <img id="contributeCarriedImg" alt="The photo you scanned">
@@ -442,7 +450,7 @@
                                 <label><input type="checkbox" id="changeDescToggle"> Change my description</label>
                             </legend>
                             <p class="record-muted" id="changeDescHint">
-                                Uses, benefits, things to watch out for and measurements. Each botanist&rsquo;s description is separate,
+                                Uses, benefits, things to watch out for and measurements. Each contributor&rsquo;s description is separate,
                                 so this only changes one you wrote.
                             </p>
                             <div id="changeDescBody" hidden>

@@ -1,4 +1,4 @@
-"""Plantellect dataset tools (plan stages 1 and 2).
+"""Plantellect dataset tools.
 
 Stage 1: scan + index + audit a dataset folder (read-only).
 Stage 2: group photos and build a leak-free train/val/test snapshot.

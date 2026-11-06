@@ -91,7 +91,6 @@
                 <a href="/admin/dashboard" title="Dashboard">
                     <span class="material-symbols-outlined">home</span>
                     <span class="nav-link-text">Dashboard</span>
-                    <span class="nav-badge" id="navBadgeDashboard" hidden>0</span>
                 </a>
 
                 <a href="/admin/users" data-perm="create_user" title="Users">
@@ -129,6 +128,11 @@
         <main class="admin-main">
             <h1>Dataset</h1>
             <p class="admin-subtitle">Review duplicates and leaks, see species and parts, and keep the training folder clean. Nothing here deletes a photo.</p>
+            <div class="ds-runchip" id="dsRunChip" role="status" aria-live="polite" data-state="none">
+                <span class="material-symbols-outlined ds-runchip-icon" id="dsRunIcon" aria-hidden="true">help</span>
+                <span class="ds-runchip-text"><strong id="dsRunTitle">Audit</strong> <span id="dsRunDetail">checking the last run...</span></span>
+            </div>
+            <div class="ds-syncbanner" id="dsSyncBanner" role="status" aria-live="polite" hidden></div>
             <div class="ds-viewswitch" id="dsViewSwitch" role="group" aria-label="Dataset view">
                 <button type="button" class="ds-view active" data-view="folder" aria-pressed="true">Folder view</button>
                 <button type="button" class="ds-view" data-view="db" aria-pressed="false">Database view</button>
@@ -140,6 +144,7 @@
                 <a href="#mislabelSection" data-view="folder" class="admin-tab" data-target="mislabelSection">Label suspects</a>
                 <a href="#gridSection" data-view="folder" class="admin-tab" data-target="gridSection">Species</a>
                 <a href="#promotionSection" data-view="db" class="admin-tab" data-target="promotionSection">Promotion</a>
+                <a href="#otherSection" data-view="db" class="admin-tab" data-target="otherSection">Other plant</a>
                 <a href="#browserSection" data-view="folder" class="admin-tab" data-target="browserSection">Folders</a>
                 <a href="#dbSection" data-view="db" class="admin-tab" data-target="dbSection">Database</a>
                 <a href="#removedSection" data-view="folder" class="admin-tab" data-target="removedSection">Removed</a>
@@ -148,11 +153,22 @@
             <div class="plants-container">
                 <p id="dsNotice" class="admin-notice" hidden></p>
                 <section class="admin-section" id="overviewSection" data-view="folder">
-                    <details class="collapse" open>
+                    <details class="collapse">
                         <summary class="collapse-summary"><h2>Overview</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">
                             <div id="dsOverview" class="ds-stats"><p>Loading...</p></div>
                             <p id="dsDegraded" class="admin-notice error" hidden>The audit used the weak thumbnail method (TensorFlow was not available), so visual copies are not reliably found.</p>
+                            <div class="ds-quick" id="dsQuick" role="group" aria-label="Audit quick settings">
+                                <label for="dsQModel">Model</label>
+                                <select id="dsQModel" aria-label="Model that compares the photos"></select>
+                                <label for="dsQSimilar">Similar from</label>
+                                <input type="number" id="dsQSimilar" min="0.5" max="0.999" step="0.01" aria-label="Similarity from which two photos are called similar">
+                                <label for="dsQSame">Same photo from</label>
+                                <input type="number" id="dsQSame" min="0.5" max="0.999" step="0.01" aria-label="Similarity from which two photos are called the same">
+                                <button type="button" class="btn" id="dsQSave" disabled>Save</button>
+                                <span class="ds-muted" id="dsQState"></span>
+                            </div>
+                            <p class="ds-muted" id="dsQHelp">Used by the next audit, and the same as <a href="/admin/settings#datasetAuditSection">Settings &gt; Dataset Audit</a>. Photos at least this alike are flagged as similar, or as the same photo. These numbers depend on the model: a model trained on your plants usually puts photos closer together than MobileNet, so check the nearest-neighbour numbers after the first run.</p>
                             <div class="ds-actions"><button type="button" class="btn btn-primary" id="dsRunAudit">Run audit now</button><span id="dsRunState" class="ds-muted"></span></div>
                             <p class="ds-muted" id="dsAuditInfo"></p>
                             <details class="ds-details"><summary>Scan warnings</summary><ul id="dsWarnings" class="ds-list"></ul></details>
@@ -160,7 +176,7 @@
                     </details>
                 </section>
                 <section class="admin-section" id="clustersSection" data-view="folder">
-                    <details class="collapse" open>
+                    <details class="collapse">
                         <summary class="collapse-summary"><h2>Leaks &amp; duplicates <span class="section-count-badge" id="dsClusterCount" hidden>0</span></h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">
                             <div class="ds-filters" id="dsFilters">
@@ -195,7 +211,7 @@
                     </details>
                 </section>
                 <section class="admin-section" id="promotionSection" data-view="db">
-                    <details class="collapse" open>
+                    <details class="collapse">
                         <summary class="collapse-summary"><h2>Species promotion</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">
                             <p class="ds-muted" id="dsPromoIntro"></p>
@@ -212,14 +228,77 @@
                         </div>
                     </details>
                 </section>
+                <section class="admin-section" id="otherSection" data-view="db">
+                    <details class="collapse">
+                        <summary class="collapse-summary"><h2>Other plant inbox <span class="section-count-badge" id="opCount" hidden>0</span></h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
+                        <div class="collapse-body">
+                            <p class="ds-muted">Scan contributions the model called <strong>Other plant</strong> have no plant yet, so they sit here and not under any plant.
+                                Look at them, let the model suggest which <strong>existing plant</strong> each one resembles, then file a whole batch under that plant in one step.
+                                Once a plant has enough unique photos it can be promoted in <em>Species promotion</em>. Nothing here is public, and a photo only reaches a snapshot after it has a plant and is <em>included</em>.</p>
+                            <p id="opNotice" class="admin-notice" hidden></p>
+
+                            <div class="op-embedder">
+                                <label for="opEmbedder">Model used to compare photos</label>
+                                <select id="opEmbedder" aria-label="Model used to compare photos"></select>
+                                <button type="button" class="btn" id="opEmbedderSave">Use this</button>
+                                <span class="ds-muted" id="opEmbedderState"></span>
+                            </div>
+                            <p class="ds-muted" id="opEmbedderHint">A saved model was trained on your plants, so it usually compares them better than general-purpose MobileNet. Changing it makes the photos be learned again with the new model.</p>
+
+                            <div class="op-filters">
+                                <label>Show <select id="opReview"><option value="1">Waiting only</option><option value="0">All photos</option></select></label>
+                                <label>Sort <select id="opSort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="confidence">Most confident first</option></select></label>
+                                <label>Offered by <select id="opModel"><option value="">Any model</option></select></label>
+                                <label>Confidence from <input type="number" id="opMin" min="0" max="100" step="1" placeholder="%" aria-label="Lowest confidence in percent"> %</label>
+                            </div>
+                            <div class="ds-actions">
+                                <button type="button" class="btn btn-primary" id="opSuggest">Suggest plants for this page</button>
+                                <button type="button" class="btn" id="opGroup">Group look-alikes</button>
+                                <label class="ds-muted">Group when at least <input type="number" id="opThreshold" min="50" max="99" step="1" value="80" aria-label="Similarity in percent"> % alike</label>
+                            </div>
+                            <p class="ds-muted" id="opLearning"></p>
+                            <div id="opGroups"></div>
+
+                            <div class="op-selectbar" id="opSelectBar">
+                                <div class="op-selectrow">
+                                    <strong id="opSelCount">0 selected</strong>
+                                    <button type="button" class="btn" id="opSelPage">Select this page</button>
+                                    <button type="button" class="btn" id="opSelAll">Select all matching</button>
+                                    <button type="button" class="btn" id="opSelClear">Clear</button>
+                                </div>
+                                <div class="op-selectrow">
+                                    <label for="opTargetSearch">File under</label>
+                                    <div class="op-target">
+                                        <input type="text" id="opTargetSearch" placeholder="Search a plant name..." autocomplete="off">
+                                        <ul class="op-results" id="opResults" hidden></ul>
+                                    </div>
+                                    <span id="opTarget" class="op-chosen"></span>
+                                </div>
+                                <div class="op-selectrow">
+                                    <label><input type="checkbox" id="opInclude"> Also include in the dataset</label>
+                                    <label>Part <select id="opPart"><option value="">(none)</option></select></label>
+                                    <button type="button" class="btn btn-primary" id="opMove" disabled>File under plant</button>
+                                    <button type="button" class="btn btn-deny" id="opExclude" disabled>Exclude selected</button>
+                                </div>
+                            </div>
+                            <div id="opGrid" class="op-grid"></div>
+                            <div class="ds-pager" id="opPager"></div>
+                        </div>
+                    </details>
+                </section>
                 <section class="admin-section" id="browserSection" data-view="folder">
-                    <details class="collapse" open>
+                    <details class="collapse">
                         <summary class="collapse-summary"><h2>Folders</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">
                             <div class="ds-explorer-bar">
                                 <button type="button" class="btn" id="exUp">Up</button>
                                 <nav id="exCrumbs" class="ds-crumbs" aria-label="Folder path"></nav>
                                 <input type="search" id="exFind" placeholder="Find a folder" aria-label="Find a folder">
+                            </div>
+                            <div id="exSpeciesBar" class="ds-speciesbar" hidden>
+                                <span class="material-symbols-outlined ds-speciesbar-icon" id="exSpeciesIcon" aria-hidden="true">lock_open</span>
+                                <span id="exSpeciesText" class="ds-speciesbar-text" role="status"></span>
+                                <button type="button" class="btn" id="exLock"></button>
                             </div>
                             <div id="exFolders" class="ds-tiles"></div>
                             <div id="exSelectBar" class="ds-selectbar" hidden>
@@ -244,19 +323,28 @@
                 </section>
 
                 <section class="admin-section" id="dbSection" data-view="db">
-                    <details class="collapse" open>
+                    <details class="collapse">
                         <summary class="collapse-summary"><h2>Database photos and snapshots</h2><span class="collapse-chevron" aria-hidden="true"></span></summary>
                         <div class="collapse-body">
                             <p class="ds-muted">Approved photos that an admin marked <strong>Included</strong> (in the Edit dialog of each plant, under Photos) can be written to a
                                 <em>database snapshot</em>: a new folder with the photos, a manifest and the groups. The split script reads it with
-                                <code>--snapshot &lt;name&gt;</code>. Hiding or archiving a photo does not remove it from a snapshot. Nothing here changes a photo.</p>
+                                <code>--snapshot &lt;name&gt;</code>. Hiding a photo does not remove it from a snapshot; archiving one does. Nothing here changes a photo.</p>
+                            <p class="ds-muted"><strong>Scan contributions</strong> are private training photos that users offered after a very confident scan.
+                                They are never public and start as <strong>Candidate</strong>, like every other photo: they only reach a snapshot once an admin marks them
+                                <strong>Included</strong> (in the Edit dialog of the plant, under Photos), and an admin can archive one there to take it out of use.</p>
                             <p class="ds-muted" id="dbCapNote"></p>
                             <div id="dbStats" class="ds-stats"><p>Loading...</p></div>
                             <div class="ds-actions"><button type="button" class="btn btn-primary" id="dbBuild">Build database snapshot</button><span id="dbBuildState" class="ds-muted"></span></div>
                             <h3>Snapshots</h3>
                             <div id="dbSnapshots"></div>
                             <details class="ds-details"><summary>Photos per species</summary>
-                                <div class="ds-table-wrap"><table class="ds-table" id="dbSpecies"><thead><tr><th>Species</th><th>Included</th><th>Candidate</th><th>Excluded</th><th>Included, no part</th></tr></thead><tbody></tbody></table></div>
+                                <div class="ds-filters" id="dbOriginFilters" role="group" aria-label="Show photos by origin">
+                                    <button type="button" class="ds-chip active" data-origin="" aria-pressed="true">All photos</button>
+                                    <button type="button" class="ds-chip" data-origin="record" aria-pressed="false">Recorded</button>
+                                    <button type="button" class="ds-chip" data-origin="scan_contribution" aria-pressed="false">Scan contributions</button>
+                                </div>
+                                <p class="ds-muted" id="dbOriginNote"></p>
+                                <div class="ds-table-wrap"><table class="ds-table" id="dbSpecies"><thead><tr><th>Species</th><th>Included</th><th>Candidate</th><th>Excluded</th><th>Included, no part</th><th>Scan contributions</th><th>Contributions not decided</th></tr></thead><tbody></tbody></table></div>
                             </details>
                         </div>
                     </details>
@@ -278,6 +366,8 @@
     <script src="/javascript/logout.js"></script>
     <script src="/javascript/auth.js"></script>
     <script src="/javascript/admin/admin-topbar.js"></script>
+    <script src="/javascript/admin/dataset-sync.js"></script>
     <script src="/javascript/admin/admin-dataset.js"></script>
+    <script src="/javascript/admin/admin-other-plant.js"></script>
 </body>
 </html>

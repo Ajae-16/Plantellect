@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/css/admin/admin-sidebar.css">
     <link rel="stylesheet" href="/css/admin/admin-style.css">
     <link rel="stylesheet" href="/css/admin/admin-topbar.css">
+    <link rel="stylesheet" href="/css/admin/admin-description-feedback.css">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="/css/admin/admin-theme.css">
 
@@ -254,7 +255,6 @@
                 <a href="/admin/dashboard" class="active" title="Dashboard">
                     <span class="material-symbols-outlined">home</span>
                     <span class="nav-link-text">Dashboard</span>
-                    <span class="nav-badge" id="navBadgeDashboard" hidden>0</span>
                 </a>
                 
                 <!-- cards -->
@@ -303,11 +303,8 @@
             <!-- Topbar: tracks the section you are reading; each tab scrolls to its section (Access also expands) -->
             <nav class="admin-topbar" id="dashboardTopbar" aria-label="Dashboard sections">
                 <a href="#statsSection" class="admin-tab active" data-target="statsSection">Overview</a>
-                <a href="#roleRequestsSection" class="admin-tab" data-target="roleRequestsSection">
-                    Role Requests
-                    <span class="admin-tab-badge" id="dashTabBadgeRequests" hidden>0</span>
-                </a>
                 <a href="#accessCard" class="admin-tab" data-target="accessCard">Access</a>
+                <a href="#plantReportNoticeCard" class="admin-tab" data-target="plantReportNoticeCard">Plant reports</a>
             </nav>
 
             <!-- TOP AREA: statistics on the left, collapsible access on the right -->
@@ -320,12 +317,6 @@
                             <span class="material-symbols-outlined">group</span>
                             <span class="stat-label">Users</span>
                             <span class="stat-value" data-stat="users">—</span>
-                            <span class="stat-hint">No data yet</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="material-symbols-outlined">biotech</span>
-                            <span class="stat-label">Botanists</span>
-                            <span class="stat-value" data-stat="botanists">—</span>
                             <span class="stat-hint">No data yet</span>
                         </div>
                         <div class="stat-card">
@@ -369,14 +360,14 @@
 
             </div>
 
-            <!-- Pending role requests: now full width, under the top area -->
-            <section class="admin-section" id="roleRequestsSection">
-                <h2>
-                    Pending Role Requests
-                    <span class="section-count-badge" id="roleRequestsSectionCount" hidden>0</span>
+            <!-- PLANT REPORTS: notification only. The reports themselves are managed on the
+                 Plants page, in the "Plant reports" section before the discovery reports. -->
+            <section class="admin-section feedback-card" id="plantReportNoticeCard">
+                <h2>Plant Reports
+                    <span class="section-count-badge" id="plantReportCount" hidden>0</span>
                 </h2>
-                <div id="pendingRequestsList" class="pending-requests-list">
-                    <p>Loading...</p>
+                <div class="report-notice" id="plantReportNotice">
+                    <p class="feedback-loading">Checking plant reports&hellip;</p>
                 </div>
             </section>
 
@@ -398,6 +389,30 @@
                 </div>
                 <div class="signin-chart" id="signinChart" role="img" aria-label="Sign-ins per day">
                     <p class="gap-loading">Loading sign-ins&hellip;</p>
+                </div>
+            </section>
+
+            <!-- SCAN CONTRIBUTIONS PER DAY: photos users offered to train the model. A reading panel: the numbers come
+                 from the SQL view vw_contributions_per_day (GET /admin/api/reporting/contributions), nothing is counted here -->
+            <section class="admin-section gaps-card" id="contributionsCard">
+                <h2>Scan Contributions Per Day
+                    <span class="section-count-badge" id="contributionsToday" hidden>0</span>
+                </h2>
+                <p class="admin-subtitle">
+                    Photos users offered to help train the plant model after a confident scan. They are private,
+                    never shown publicly, and each one still needs an admin decision on the Dataset page.
+                    The badge is today&rsquo;s count.
+                </p>
+                <div class="gap-filters">
+                    <label for="contributionDays">Show</label>
+                    <select id="contributionDays">
+                        <option value="7">Last 7 days</option>
+                        <option value="14" selected>Last 14 days</option>
+                        <option value="30">Last 30 days</option>
+                    </select>
+                </div>
+                <div class="signin-chart" id="contributionChart" role="img" aria-label="Scan contributions per day">
+                    <p class="gap-loading">Loading scan contributions&hellip;</p>
                 </div>
             </section>
 
@@ -437,6 +452,9 @@
 
     <!-- Shared topbar: scroll tracking + tab clicks -->
     <script src="/javascript/admin/admin-topbar.js"></script>
+
+    <!-- Plant report notification (self-initialising; needs the markup above, so it loads after it) -->
+    <script src="/javascript/admin/admin-plant-report-notice.js"></script>
 
     <!-- Dashboard logic (sidebar, theme and badges live in admin-sidebar.js) -->
     <script>
@@ -528,7 +546,9 @@
             });
 
             loadDashboardStats();
-            loadPendingRequests();
+            // The sidebar badges (plants, discoveries) are filled here; the
+            // dashboard has no queue of its own any more.
+            if (typeof loadNavBadges === 'function') loadNavBadges();
             initDashboardActivity();
         })();
 
@@ -538,163 +558,10 @@
                 if (!response.ok) throw new Error('Failed to load stats');
                 const stats = await response.json();
                 setStat('users', stats.users);
-                setStat('botanists', stats.botanists);
                 setStat('plants', stats.plants);
                 setStat('pending', stats.pending);
             } catch (err) {
                 console.error('Load dashboard stats error:', err);
-            }
-        }
-
-        async function loadPendingRequests() {
-            try {
-                const response = await fetch('/admin/api/role-requests', { credentials: 'include' });
-                if (response.status === 401) {
-                    window.location.href = '/auth.html';
-                    return;
-                }
-                if (!response.ok) {
-                    throw new Error('Failed to load pending requests');
-                }
-                const data = await response.json();
-                const requests = data.requests || [];
-                renderPendingRequests(requests);
-                loadNavBadges({ dashboard: requests.length });
-            } catch (err) {
-                console.error('Load pending requests error:', err);
-                document.getElementById('pendingRequestsList').innerHTML = '<p>Error loading requests</p>';
-                loadNavBadges();
-            }
-        }
-
-        function renderCertificatePreview(req) {
-            const cert = req.certificate;
-            if (!cert) {
-                return '<p class="request-date">No certificate uploaded.</p>';
-            }
-            const isImage = (cert.mimeType || '').startsWith('image/');
-            const sizeLabel = cert.size ? formatBytes(cert.size) : '';
-
-            const thumb = isImage
-                ? '<img class="cert-preview-img" src="' + escapeHtml(cert.url) +
-                  '" alt="Certificate preview" loading="lazy">'
-                : '<div class="cert-preview-file">' +
-                  '<span class="material-symbols-outlined">description</span>' +
-                  '<span class="cert-preview-filename">' + escapeHtml(cert.filename || 'Certificate') + '</span>' +
-                  '</div>';
-
-            return '<a class="cert-preview" href="' + escapeHtml(cert.url) +
-                '" target="_blank" rel="noopener" title="Open certificate in a new tab">' +
-                thumb +
-                '<span class="cert-preview-caption">' +
-                    '<span class="material-symbols-outlined">open_in_new</span>' +
-                    'View certificate' + (sizeLabel ? ' (' + sizeLabel + ')' : '') +
-                '</span></a>';
-        }
-
-        function formatBytes(bytes) {
-            if (!bytes) return '';
-            if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-        }
-
-        function renderPendingRequests(requests) {
-            const container = document.getElementById('pendingRequestsList');
-            const countBadge = document.getElementById('roleRequestsSectionCount');
-            const tabBadge = document.getElementById('dashTabBadgeRequests');
-            const count = requests ? requests.length : 0;
-
-            [countBadge, tabBadge].forEach(function (badge) {
-                if (!badge) return;
-                if (count > 0) {
-                    badge.textContent = count;
-                    badge.hidden = false;
-                } else {
-                    badge.hidden = true;
-                }
-            });
-
-            if (!requests || requests.length === 0) {
-                container.innerHTML = '<p>No pending requests</p>';
-                return;
-            }
-
-            container.innerHTML = requests.map(req => `
-                <div class="pending-request-card">
-                    <div class="request-info">
-                        <h3>${escapeHtml(req.fullName || req.username)} (${escapeHtml(req.email)})</h3>
-                        <p>Username: ${escapeHtml(req.username)}</p>
-                        <p>Requested role: <strong>${escapeHtml(req.requestedRole)}</strong></p>
-                        <p class="request-date">Requested: ${new Date(req.requestedAt).toLocaleString()}</p>
-                        ${renderCertificatePreview(req)}
-                    </div>
-                    <div class="request-actions">
-                        <button class="btn-approve" data-request-id="${req.requestId}" data-account-id="${req.accountId}">Approve</button>
-                        <button class="btn-deny" data-request-id="${req.requestId}" data-account-id="${req.accountId}">Deny</button>
-                    </div>
-                </div>
-            `).join('');
-
-            container.querySelectorAll('.btn-approve').forEach(btn => {
-                btn.addEventListener('click', handleApprove);
-            });
-            container.querySelectorAll('.btn-deny').forEach(btn => {
-                btn.addEventListener('click', handleDeny);
-            });
-        }
-
-        async function handleApprove(event) {
-            const requestId = event.target.dataset.requestId;
-            const accountId = event.target.dataset.accountId;
-
-            if (!confirm(`Approve botanist role for user ${accountId}?`)) return;
-
-            try {
-                const response = await fetch(`/admin/role-requests/${requestId}/approve`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ note: 'Approved via admin dashboard' })
-                });
-
-                if (response.ok) {
-                    alert('Role request approved');
-                    loadPendingRequests();
-                } else {
-                    const data = await response.json();
-                    alert('Error: ' + (data.error || 'Failed to approve'));
-                }
-            } catch (err) {
-                console.error('Approve error:', err);
-                alert('Error: ' + err.message);
-            }
-        }
-
-        async function handleDeny(event) {
-            const requestId = event.target.dataset.requestId;
-            const accountId = event.target.dataset.accountId;
-
-            const deleteCert = confirm(`Deny botanist role for user ${accountId}?\n\nAlso delete their certificate file? (OK = Yes, Cancel = No)`);
-
-            try {
-                const response = await fetch(`/admin/role-requests/${requestId}/deny`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ note: 'Denied via admin dashboard', deleteCertificate: deleteCert })
-                });
-
-                if (response.ok) {
-                    alert('Role request denied');
-                    loadPendingRequests();
-                } else {
-                    const data = await response.json();
-                    alert('Error: ' + (data.error || 'Failed to deny'));
-                }
-            } catch (err) {
-                console.error('Deny error:', err);
-                alert('Error: ' + err.message);
             }
         }
 
@@ -880,13 +747,87 @@
             }
         }
 
+        // ---------------------------------------------------------
+        // Scan contributions per day (GET /admin/api/reporting/contributions,
+        // which only reads the SQL view vw_contributions_per_day)
+        // ---------------------------------------------------------
+        function renderContributions(payload) {
+            const chart = document.getElementById('contributionChart');
+            const badge = document.getElementById('contributionsToday');
+
+            // `degraded` first: a degraded answer has no series and must not read as "no contributions".
+            if (payload.degraded) {
+                badge.hidden = true;
+                chart.innerHTML = '<p class="gap-error">Scan contributions are unavailable.' +
+                    '<span class="gap-error-note">' + escapeHtml(payload.error || 'The reporting view could not be read.') + '</span></p>';
+                return;
+            }
+
+            const series = payload.series || [];
+            badge.hidden = false;
+            badge.textContent = payload.today;
+
+            if (!payload.total) {
+                chart.innerHTML = '<p class="gap-empty">No scan contributions in the last ' + payload.days + ' days.</p>';
+                return;
+            }
+
+            const max = Math.max(1, ...series.map(d => d.contributions));
+            chart.innerHTML = series.map((d, i) => {
+                const date = new Date(d.day + 'T00:00:00');
+                const label = isNaN(date.getTime()) ? d.day
+                    : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                const height = Math.round((d.contributions / max) * 140);
+                const isToday = i === series.length - 1;
+                const detail = d.contributions + ' contribution' + (d.contributions === 1 ? '' : 's') + ', ' +
+                    d.accounts + ' account' + (d.accounts === 1 ? '' : 's') + ', ' +
+                    d.species + ' plant' + (d.species === 1 ? '' : 's') +
+                    (d.archived ? ', ' + d.archived + ' archived' : '') +
+                    (d.avgConfidence != null ? ', avg confidence ' + formatConfidence(d.avgConfidence) : '');
+                return `<div class="signin-bar ${isToday ? 'is-today' : ''}"
+                             title="${escapeHtml(label + ': ' + detail)}">
+                            <span class="signin-bar-value">${d.contributions}</span>
+                            <span class="signin-bar-fill" style="height:${height}px"></span>
+                            <span class="signin-bar-label">${escapeHtml(label)}</span>
+                        </div>`;
+            }).join('');
+        }
+
+        async function loadContributions() {
+            const chart = document.getElementById('contributionChart');
+            const days = document.getElementById('contributionDays').value;
+            try {
+                const response = await fetch('/admin/api/reporting/contributions?days=' + encodeURIComponent(days), {
+                    credentials: 'include'
+                });
+                if (response.status === 401) {
+                    window.location.href = '/auth.html';
+                    return;
+                }
+                if (response.status === 403) {
+                    // No access_admin: this card is not for this admin.
+                    document.getElementById('contributionsCard').hidden = true;
+                    return;
+                }
+                if (!response.ok) throw new Error('Request failed with ' + response.status);
+                renderContributions(await response.json());
+            } catch (err) {
+                console.error('Load scan contributions error:', err);
+                document.getElementById('contributionsToday').hidden = true;
+                chart.innerHTML = '<p class="gap-error">Scan contributions could not be loaded.' +
+                    '<span class="gap-error-note">' + escapeHtml(err.message) + '</span></p>';
+            }
+        }
+
         function initDashboardActivity() {
             populateGapMonths();
             document.getElementById('gapMonth').addEventListener('change', loadTopScans);
             document.getElementById('gapLimit').addEventListener('change', loadTopScans);
             document.getElementById('signinDays').addEventListener('change', loadSignins);
+            document.getElementById('contributionDays').addEventListener('change', loadContributions);
             loadTopScans();
             loadSignins();
+            loadContributions();
         }
     </script>
 

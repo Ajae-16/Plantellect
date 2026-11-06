@@ -11,6 +11,10 @@
 
 const MODES = Object.freeze(['off', 'log', 'enforce']);
 
+// Scan contributions (training-only photos): per model, off or on. Separate from MODES on
+// purpose: contributing is not a confidence mode, and 'off' here must change nothing.
+const CONTRIBUTE_MODES = Object.freeze(['off', 'on']);
+
 const OUTCOMES = Object.freeze({
     IDENTIFIED: 'identified',
     UNCERTAIN: 'uncertain',
@@ -35,8 +39,22 @@ const DEFAULTS = Object.freeze({
     mode: 'off',
     acceptThreshold: 0.70,    // top-1 at/above this (and a clear margin) => identified
     uncertainThreshold: 0.35, // top-1 at/above this => uncertain, below => unrecognized
-    marginThreshold: 0.15     // top-1 minus top-2 needed to call it identified
+    marginThreshold: 0.15,    // top-1 minus top-2 needed to call it identified
+    // Scan contributions. contributeMode 'off' (the default) means no offer is ever made.
+    contributeMode: 'off',
+    contributeThreshold: 0.95, // LOWER bound: top-1 must be at or above this to offer a photo for training
+    contributeUpperThreshold: 1, // UPPER bound: top-1 must be at or below this. 1 = no ceiling, so a row saved before this key behaves as before
+    contributeDailyCap: 5,     // contributions per user per day
+    contributeSpeciesCap: 20,  // contributions per species per day, all users together
+    // Also offer scans the model calls "Other plant" (a plant it has no class for). Those photos are filed
+    // UNASSIGNED (no plant yet) for an admin to move to the right plant. 'off' keeps the old behaviour.
+    contributeOtherPlants: 'off',
+    contributeOtherPlantCap: 20 // Other plant contributions per day, all users together. Separate from contributeSpeciesCap.
 });
+
+// Whole numbers only, with a ceiling so a typo cannot disable the cap in practice.
+const CAP_MAX = 1000;
+const isCap = (n) => Number.isInteger(n) && n >= 1 && n <= CAP_MAX;
 
 const isUnit = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1;
 
@@ -58,12 +76,25 @@ function validateConfig(input) {
         if (!(key in DEFAULTS)) errors.push(`Unknown key: ${key}`);
     }
     if (!MODES.includes(cfg.mode)) errors.push(`mode must be one of: ${MODES.join(', ')}`);
-    for (const key of ['acceptThreshold', 'uncertainThreshold', 'marginThreshold']) {
+    for (const key of ['acceptThreshold', 'uncertainThreshold', 'marginThreshold', 'contributeThreshold', 'contributeUpperThreshold']) {
         if (!isUnit(cfg[key])) errors.push(`${key} must be a number between 0 and 1`);
+    }
+    if (!CONTRIBUTE_MODES.includes(cfg.contributeMode)) {
+        errors.push(`contributeMode must be one of: ${CONTRIBUTE_MODES.join(', ')}`);
+    }
+    if (!CONTRIBUTE_MODES.includes(cfg.contributeOtherPlants)) {
+        errors.push(`contributeOtherPlants must be one of: ${CONTRIBUTE_MODES.join(', ')}`);
+    }
+    for (const key of ['contributeDailyCap', 'contributeSpeciesCap', 'contributeOtherPlantCap']) {
+        if (!isCap(cfg[key])) errors.push(`${key} must be a whole number between 1 and ${CAP_MAX}`);
     }
     if (isUnit(cfg.acceptThreshold) && isUnit(cfg.uncertainThreshold)
         && cfg.uncertainThreshold >= cfg.acceptThreshold) {
         errors.push('uncertainThreshold must be lower than acceptThreshold');
+    }
+    if (isUnit(cfg.contributeThreshold) && isUnit(cfg.contributeUpperThreshold)
+        && cfg.contributeThreshold > cfg.contributeUpperThreshold) {
+        errors.push('contributeThreshold (lower) must not be higher than contributeUpperThreshold');
     }
     return { ok: errors.length === 0, errors, value: cfg };
 }
@@ -75,6 +106,24 @@ function validateConfig(input) {
 function resolveConfig(stored) {
     const result = validateConfig(stored);
     return result.ok ? result.value : { ...DEFAULTS };
+}
+
+/**
+ * The scan-contribution settings of one model, already merged over the defaults.
+ * `on` is true only for contributeMode 'on'; anything else (missing, corrupt, 'off') is false.
+ */
+function contributeSettings(config) {
+    const cfg = resolveConfig(config);
+    return {
+        on: cfg.contributeMode === 'on',
+        mode: cfg.contributeMode,
+        threshold: cfg.contributeThreshold,
+        upperThreshold: cfg.contributeUpperThreshold,
+        dailyCap: cfg.contributeDailyCap,
+        speciesCap: cfg.contributeSpeciesCap,
+        otherPlants: cfg.contributeOtherPlants === 'on',
+        otherPlantCap: cfg.contributeOtherPlantCap
+    };
 }
 
 /**
@@ -159,6 +208,6 @@ function evaluate(predictions, config) {
 }
 
 module.exports = {
-    MODES, OUTCOMES, REASONS, NON_SPECIES_KINDS, DEFAULTS,
-    validateConfig, resolveConfig, classify, evaluate, isSpecies
+    MODES, CONTRIBUTE_MODES, OUTCOMES, REASONS, NON_SPECIES_KINDS, DEFAULTS,
+    validateConfig, resolveConfig, contributeSettings, classify, evaluate, isSpecies
 };

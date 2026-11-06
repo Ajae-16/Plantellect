@@ -6,8 +6,7 @@
 
    Who sees what:
      - guest              : no sidebar
-     - user               : Discoveries, Plants, Scan, Profile      (no Record)
-     - botanist           : Discoveries, Plants, Scan, Record, Profile
+     - user               : Discoveries, Plants, Scan, Record, Profile
      - admin / superadmin : Discoveries, Plants, Scan, Record, Profile (all items they have permissions for)
 
    Record is decided by the record_plant permission, not the role name. Every
@@ -19,7 +18,7 @@
    desktop icon rail, mobile off-canvas drawer, item badges and the
    "Sign in to unlock" popup.
 
-   Profile pages (plant-profile.html, botanist-profile.html) have no sidebar but
+   Profile pages (plant-profile.html, contributor-profile.html) have no sidebar but
    load this file for the shared theme: any [data-theme-toggle] button controls
    the same <html data-theme> / 'siteTheme' state as every other public page,
    and any [data-profile-back] link goes back only within the site.
@@ -306,7 +305,7 @@
 
     /* The one role worth showing next to the name: highest privilege first. */
     function primaryRole(roles) {
-        var order = ['superadmin', 'admin', 'botanist'];
+        var order = ['superadmin', 'admin', 'user'];
         for (var i = 0; i < order.length; i++) {
             if (roles.indexOf(order[i]) !== -1) return order[i];
         }
@@ -383,14 +382,13 @@
         var ctx = {
             loggedIn: permissions.length > 0 || roles.length > 0,
             isAdmin: isAdmin,
-            isBotanist: roles.indexOf('botanist') !== -1,
             permissions: permissions,
             // Driven by the permission, not the role name: who holds
             // record_plant is the question, and role names are not the source of
             // truth for it. Admins now get RECORD if they hold the permission.
             canRecord: permissions.indexOf('record_plant') !== -1,
-            // Same rule as canRecord: the queue is botanist work, but admins
-            // with record_plant can also see it.
+            // Same rule as canRecord: the queue is contributor work, and
+            // anyone with record_plant can see it.
             canDiscover: permissions.indexOf('record_plant') !== -1
         };
         return SIDEBAR_ITEMS.filter(function (item) { return item.show(ctx); });

@@ -240,6 +240,23 @@ async function loadOne(db, plantId, classes) {
 }
 
 /**
+ * The promotion state of several plants at once, for screens that show "this plant has 41 of 50 photos" next to a
+ * suggestion. Returns a Map plantId -> the same description the promotion table rows have (state, uniquePhotos, minimum,
+ * minimumMet, canPromote ...). A plant that is gone or archived is simply left out. Read-only.
+ */
+async function describePlants(db, plantIds, { classes = readActiveClasses() } = {}) {
+    const out = new Map();
+    for (const id of [...new Set(plantIds || [])]) {
+        try {
+            out.set(id, await loadOne(db, id, classes));
+        } catch (err) {
+            if (!(err instanceof SpeciesError)) throw err;
+        }
+    }
+    return out;
+}
+
+/**
  * Records the decision to promote. Refused when the model's class list cannot be read (the
  * species might already be supported), when the species is already supported, and when it
  * has fewer unique photos than the minimum. Promoting twice is not an error.
@@ -280,6 +297,6 @@ async function undoPromotion(db, { plantId, accountId, note, classes = readActiv
 
 module.exports = {
     SpeciesError, nameKey, readActiveClasses, loadActiveClassSet, countPhotos,
-    listSpecies, promoteSpecies, undoPromotion, defaultExecutor,
+    listSpecies, promoteSpecies, undoPromotion, describePlants, defaultExecutor,
     ELIGIBLE_SQL
 };

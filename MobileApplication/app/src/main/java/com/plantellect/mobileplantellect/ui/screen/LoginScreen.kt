@@ -1,10 +1,5 @@
 package com.plantellect.mobileplantellect.ui.screen
 
-import android.content.ContentResolver
-import android.net.Uri
-import android.provider.OpenableColumns
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -20,21 +15,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.plantellect.mobileplantellect.data.logic.AccountRole
 import com.plantellect.mobileplantellect.data.logic.AuthValidator
 import com.plantellect.mobileplantellect.data.logic.RegisterForm
 
 private const val SLIDE_MS = 420
-private val CERT_TYPES = arrayOf("application/pdf", "image/jpeg", "image/png")
 
 @Stable
 private class SignUpFields {
@@ -44,10 +35,6 @@ private class SignUpFields {
     var username by mutableStateOf("")
     var password by mutableStateOf("")
     var confirm by mutableStateOf("")
-    var role by mutableStateOf(AccountRole.USER)
-    var certificate by mutableStateOf<Uri?>(null)
-    var certificateName by mutableStateOf("")
-    var certificateSize by mutableStateOf<Long?>(null)
     var readTerms by mutableStateOf(false)
     var agreeTerms by mutableStateOf(false)
     var agreeInfo by mutableStateOf(false)
@@ -60,7 +47,7 @@ fun LoginScreen(
     fieldErrors: Map<String, String> = emptyMap(),
     onInputChanged: () -> Unit = {},
     onLogin: (String, String) -> Unit = { _, _ -> },
-    onRegister: (RegisterForm, String, Uri?) -> Unit = { _, _, _ -> }
+    onRegister: (RegisterForm, String) -> Unit = { _, _ -> }
 ) {
     val c = MaterialTheme.colorScheme
     var registering by rememberSaveable { mutableStateOf(false) }
@@ -148,23 +135,13 @@ private fun SignInPanel(
 @Composable
 private fun SignUpPanel(
     f: SignUpFields, busy: Boolean, errorMessage: String?, fieldErrors: Map<String, String>,
-    onInputChanged: () -> Unit, onRegister: (RegisterForm, String, Uri?) -> Unit, onSwitch: () -> Unit
+    onInputChanged: () -> Unit, onRegister: (RegisterForm, String) -> Unit, onSwitch: () -> Unit
 ) {
     val c = MaterialTheme.colorScheme
     val focus = LocalFocusManager.current
-    val resolver = LocalContext.current.contentResolver
     var showTerms by remember { mutableStateOf(false) }
-    val isBotanist = f.role == AccountRole.BOTANIST
     val checks = AuthValidator.passwordChecks(f.password)
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            val (name, size) = describeFile(resolver, uri)
-            f.certificate = uri; f.certificateName = name; f.certificateSize = size
-            onInputChanged()
-        }
-    }
-    fun clearCertificate() { f.certificate = null; f.certificateName = ""; f.certificateSize = null }
     fun edit(set: (String) -> Unit): (String) -> Unit = { set(it); onInputChanged() }
 
     fun submit() {
@@ -174,10 +151,10 @@ private fun SignUpPanel(
         onRegister(
             RegisterForm(
                 email = f.email.trim(), username = f.username.trim(), password = f.password,
-                firstName = f.firstName.trim(), lastName = f.lastName.trim(), role = f.role,
+                firstName = f.firstName.trim(), lastName = f.lastName.trim(),
                 agreeTerms = f.agreeTerms, agreeInfo = f.agreeInfo
             ),
-            f.confirm, f.certificate.takeIf { isBotanist }
+            f.confirm
         )
     }
 
@@ -202,29 +179,6 @@ private fun SignUpPanel(
         }
         AuthField(f.confirm, edit { f.confirm = it }, "Confirm password", enabled = !busy, error = fieldErrors["confirm"], isPassword = true)
         Requirements(f.confirm.isNotEmpty()) { Requirement("Passwords match", f.confirm == f.password) }
-
-        Text("Select your role", style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            RoleButton("USER", !isBotanist, !busy, Modifier.weight(1f)) { f.role = AccountRole.USER; clearCertificate(); onInputChanged() }
-            RoleButton("BOTANIST", isBotanist, !busy, Modifier.weight(1f)) { f.role = AccountRole.BOTANIST; onInputChanged() }
-        }
-
-        AnimatedVisibility(
-            visible = isBotanist,
-            enter = expandVertically(tween(300)) + fadeIn(tween(300)),
-            exit = shrinkVertically(tween(250)) + fadeOut(tween(150))
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Botanists need a certificate (PDF, JPG or PNG, up to 20 MB). An admin reviews it before the role is granted.",
-                    style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
-                if (f.certificate == null) {
-                    OutlinedButton({ picker.launch(CERT_TYPES) }, Modifier.fillMaxWidth().height(50.dp), enabled = !busy) { Text("Upload certificate") }
-                } else {
-                    CertificateChip(f.certificateName, f.certificateSize, !busy, { picker.launch(CERT_TYPES) }, ::clearCertificate)
-                }
-                ErrorText(fieldErrors["certificate"])
-            }
-        }
 
         TextButton({ showTerms = true }, Modifier.fillMaxWidth(), enabled = !busy) {
             Text("View Terms and Conditions & Information Usage", textAlign = TextAlign.Center)
@@ -287,14 +241,6 @@ private fun SwitchPrompt(question: String, action: String, enabled: Boolean, onC
 }
 
 @Composable
-private fun RoleButton(label: String, selected: Boolean, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val m = modifier.height(48.dp)
-    val shape = MaterialTheme.shapes.small
-    if (selected) Button(onClick, m, enabled, shape) { Text(label) }
-    else OutlinedButton(onClick, m, enabled, shape) { Text(label) }
-}
-
-@Composable
 private fun Requirements(visible: Boolean, content: @Composable ColumnScope.() -> Unit) {
     AnimatedVisibility(
         visible,
@@ -323,24 +269,6 @@ private fun ConsentRow(checked: Boolean, enabled: Boolean, text: String, onChang
         Checkbox(checked, onCheckedChange = null, enabled = enabled)
         Spacer(Modifier.width(8.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = if (enabled) c.onSurface else c.onSurface.copy(alpha = .45f))
-    }
-}
-
-@Composable
-private fun CertificateChip(name: String, size: Long?, enabled: Boolean, onChange: () -> Unit, onRemove: () -> Unit) {
-    val c = MaterialTheme.colorScheme
-    val kind = if (name.endsWith(".pdf", ignoreCase = true)) "PDF" else "IMG"
-    PlantSurface(Modifier.fillMaxWidth(), container = c.secondaryContainer) {
-        Row(Modifier.padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(kind, style = MaterialTheme.typography.labelLarge, color = c.primary)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                size?.let { Text(formatSize(it), style = MaterialTheme.typography.bodySmall, color = c.onSecondaryContainer.copy(alpha = .7f)) }
-            }
-            TextButton(onChange, enabled = enabled) { Text("Change") }
-            TextButton(onRemove, enabled = enabled) { Text("Remove", color = c.error) }
-        }
     }
 }
 
@@ -382,21 +310,4 @@ private fun TermsDialog(alreadyRead: Boolean, onReadToEnd: () -> Unit, onClose: 
             }
         }
     }
-}
-
-private fun describeFile(resolver: ContentResolver, uri: Uri): Pair<String, Long?> {
-    var name: String? = null
-    var size: Long? = null
-    runCatching {
-        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
-            if (c.moveToFirst()) { name = c.getString(0); if (!c.isNull(1)) size = c.getLong(1) }
-        }
-    }
-    return (name ?: "certificate") to size
-}
-
-private fun formatSize(bytes: Long): String = when {
-    bytes < 1024 -> "$bytes B"
-    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-    else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
 }

@@ -134,7 +134,7 @@
 /* ---------------------------------------------------------------------------
    Rich text (css/core/richtext.css, javascript/richtext.js) and the colour-coded
    contributor boxes on the plant profile. Eight colours; box number 9 repeats
-   colour 1, so a plant with any number of botanists still gets a colour per box.
+   colour 1, so a plant with any number of contributors still gets a colour per box.
    Each colour is a soft background, a stronger border/accent and a readable text
    colour. Dark values are set under html[data-theme="dark"] in richtext.css.
    --------------------------------------------------------------------------- */

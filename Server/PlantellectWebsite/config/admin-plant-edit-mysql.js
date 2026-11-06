@@ -2,7 +2,7 @@
 //
 // Two independent things, mirroring the change-request split (plant-manage-mysql.js):
 //   base         commonName, scientificName, the plant's own type row and its taxonomy row
-//   description  ONE botanist's description (uses / benefits / harmful) and that botanist's
+//   description  ONE contributor's description (uses / benefits / harmful) and that contributor's
 //                measurements (plant_parts), chosen by descriptionId
 // plus "make this description the primary one": the primary description is the one the plant
 // page shows first and the library card reads from. Exactly one description per plant is primary.
@@ -209,7 +209,7 @@ async function updateDescription(plantId, descriptionId, body) {
         await conn.beginTransaction();
 
         const [rows] = await conn.query(
-            `SELECT d.descriptionId, d.accountId, d.partsId, t.isHarmful, t.toxicityLevel
+            `SELECT d.descriptionId, d.accountId, d.partsId, d.hiddenAt, t.isHarmful, t.toxicityLevel
              FROM plant_description d
              JOIN plants p ON p.plantId = d.plantId
              JOIN plant_types t ON t.typeId = p.typeId
@@ -274,6 +274,10 @@ async function updateDescription(plantId, descriptionId, body) {
         }
 
         if (b.makePrimary === true || b.makePrimary === 'true') {
+            if (desc.hiddenAt) {
+                await conn.rollback();
+                return fail('This description is hidden by community votes. Restore it on the dashboard first.', 409);
+            }
             await conn.query('UPDATE plant_description SET isPrimary = FALSE WHERE plantId = ?', [plantId]);
             await conn.query('UPDATE plant_description SET isPrimary = TRUE WHERE descriptionId = ?', [descriptionId]);
         }
@@ -294,13 +298,17 @@ async function setPrimaryDescription(plantId, descriptionId) {
     try {
         await conn.beginTransaction();
         const [rows] = await conn.query(
-            `SELECT descriptionId FROM plant_description
+            `SELECT descriptionId, hiddenAt FROM plant_description
              WHERE descriptionId = ? AND plantId = ? AND status = 'approved' FOR UPDATE`,
             [descriptionId, plantId]
         );
         if (rows.length === 0) {
             await conn.rollback();
             return fail('Description not found on this plant', 404);
+        }
+        if (rows[0].hiddenAt) {
+            await conn.rollback();
+            return fail('This description is hidden by community votes. Restore it on the dashboard first.', 409);
         }
         await conn.query('UPDATE plant_description SET isPrimary = FALSE WHERE plantId = ?', [plantId]);
         await conn.query('UPDATE plant_description SET isPrimary = TRUE WHERE descriptionId = ?', [descriptionId]);

@@ -250,7 +250,7 @@ html[data-theme="dark"] .profile-page {
 .profile-page .info-card.warning li::marker { color: var(--pf-danger); }
 
 /* ---------- Meta: dataset chip, Contribute button, people rows ---------- */
-.profile-page .botanist-meta {
+.profile-page .contributor-meta {
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
     gap: 12px;
     margin-top: 24px; padding-top: 20px;
@@ -330,7 +330,7 @@ html[data-theme="dark"] .profile-page {
     .profile-page { padding: 12px 12px 28px; }
     .profile-page .profile-content { padding: 0 18px 24px; }
     .profile-page .info-grid { grid-template-columns: 1fr; }
-    .profile-page .botanist-meta { flex-direction: column; align-items: flex-start; }
+    .profile-page .contributor-meta { flex-direction: column; align-items: flex-start; }
     .profile-page .contribute-btn { width: 100%; justify-content: center; }
     .profile-page .contributor-info { flex-direction: column; gap: 2px; }
     .profile-page .people-label { flex-basis: auto; }
@@ -339,3 +339,88 @@ html[data-theme="dark"] .profile-page {
 @media (prefers-reduced-motion: reduce) {
     .profile-page * { transition: none !important; }
 }
+
+/* =========================================================
+   Thumbs up / down on a description (plant-profile.js: DescriptionVotes)
+   ========================================================= */
+.profile-page .desc-vote { margin-top: 10px; }
+.profile-page .desc-vote[hidden] { display: none; }
+.profile-page .plant-titles .desc-vote { margin-top: 6px; }
+
+.profile-page .vote-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.profile-page .vote-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    min-height: 36px; padding: 4px 12px;
+    font: inherit; font-size: 0.9rem; font-weight: 600;
+    color: var(--pf-muted); background: transparent;
+    border: 1px solid var(--pf-border); border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.profile-page .vote-btn .material-symbols-outlined { font-size: 20px; }
+.profile-page .vote-btn:hover:not(:disabled) { background: var(--pf-accent-soft); color: var(--pf-accent); border-color: var(--pf-accent); }
+.profile-page .vote-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.profile-page .vote-up.is-active { background: var(--pf-accent); color: var(--pf-on-accent); border-color: var(--pf-accent); }
+.profile-page .vote-up.is-active .material-symbols-outlined,
+.profile-page .vote-down.is-active .material-symbols-outlined { font-variation-settings: 'FILL' 1; }
+.profile-page .vote-down.is-active { background: var(--pf-danger); color: #fff; border-color: var(--pf-danger); }
+html[data-theme="dark"] .profile-page .vote-down.is-active { color: #2b0b09; }
+
+.profile-page .vote-hint { font-size: 0.85rem; color: var(--pf-muted); }
+.profile-page .vote-hint a { color: var(--pf-accent); font-weight: 600; }
+
+.profile-page .down-panel {
+    margin-top: 10px; padding: 12px;
+    display: grid; gap: 10px; max-width: 460px;
+    background: var(--pf-surface); color: var(--pf-text);
+    border: 1px solid var(--pf-border); border-radius: 12px;
+}
+.profile-page .down-panel[hidden] { display: none; }
+.profile-page .down-label { display: grid; gap: 4px; font-size: 0.85rem; font-weight: 600; color: var(--pf-text); }
+.profile-page .down-label[hidden] { display: none; }
+.profile-page .down-reason, .profile-page .down-note {
+    width: 100%; font: inherit; font-weight: 400; font-size: 0.95rem;
+    color: var(--pf-text); background: var(--pf-surface-2);
+    border: 1px solid var(--pf-border); border-radius: 8px; padding: 8px 10px;
+}
+.profile-page .down-note { resize: vertical; min-height: 72px; }
+.profile-page .down-count { justify-self: end; font-size: 0.75rem; font-weight: 400; color: var(--pf-muted); }
+.profile-page .vote-error { font-size: 0.85rem; color: var(--pf-danger); }
+.profile-page .vote-error[hidden] { display: none; }
+.profile-page .down-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.profile-page .vote-submit, .profile-page .vote-cancel {
+    font: inherit; font-size: 0.9rem; font-weight: 600;
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+}
+.profile-page .vote-submit { background: var(--pf-accent); color: var(--pf-on-accent); border: 1px solid var(--pf-accent); }
+.profile-page .vote-submit:disabled { opacity: 0.6; cursor: wait; }
+.profile-page .vote-cancel { background: transparent; color: var(--pf-muted); border: 1px solid var(--pf-border); }
+
+/* Inside a colour-coded contributor box the pill keeps the box's own ink. */
+.profile-page .contrib-box .desc-vote { margin-top: 12px; padding-top: 10px; border-top: 1px dashed currentColor; border-top-color: color-mix(in srgb, currentColor 30%, transparent); }
+.profile-page .contrib-box .vote-btn { color: inherit; }
+
+/* Votes table: up / down totals, premade reasons counted, voters' own notes (no names). */
+.profile-page .vote-table-btn {
+    font: inherit; font-size: 0.85rem; font-weight: 600;
+    padding: 6px 10px; background: transparent; color: var(--pf-muted);
+    border: none; text-decoration: underline; cursor: pointer;
+}
+.profile-page .vote-table-btn:hover { color: var(--pf-accent); }
+.profile-page .votes-table-wrap { margin-top: 10px; max-width: 520px; overflow-x: auto; }
+.profile-page .votes-table-wrap[hidden] { display: none; }
+.profile-page .votes-table {
+    width: 100%; border-collapse: collapse; font-size: 0.88rem;
+    background: var(--pf-surface); color: var(--pf-text);
+    border: 1px solid var(--pf-border); border-radius: 10px; overflow: hidden;
+}
+.profile-page .votes-table caption { text-align: left; font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; padding: 0 0 6px; color: inherit; }
+.profile-page .votes-table th, .profile-page .votes-table td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--pf-border); overflow-wrap: anywhere; }
+.profile-page .votes-table thead th { background: var(--pf-surface-2); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.4px; }
+.profile-page .votes-table tbody tr:last-child td { border-bottom: none; }
+.profile-page .votes-table .vt-n { width: 64px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.profile-page .votes-table .vt-up td:first-child { color: var(--pf-accent); font-weight: 700; }
+.profile-page .votes-table .vt-down td:first-child { color: var(--pf-danger); font-weight: 700; }
+.profile-page .votes-table .vt-sub td { color: var(--pf-muted); font-size: 0.84rem; }
+

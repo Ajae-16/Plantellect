@@ -14,6 +14,7 @@ from preprocess import preprocess_image, load_config, check_model_input
 from dataset_routes import router as dataset_router
 from convert_routes import router as convert_router
 from lookalike_routes import router as lookalike_router
+from embed_routes import router as embed_router
 
 app = FastAPI(
     title="Plantellect ML Inference Service",
@@ -23,6 +24,7 @@ app = FastAPI(
 app.include_router(dataset_router)   # /dataset/audit, /dataset/status, /dataset/report
 app.include_router(convert_router)   # /convert/heic (the website's upload pipeline)
 app.include_router(lookalike_router) # /lookalike/compare (the admin's approval screen)
+app.include_router(embed_router)     # /embed/* (choose the dataset embedder; Other plant suggestions)
 
 # Layout: one folder per model, each holding the same three files.
 #   /app/model/efficientnetv2b1/{plantellect_model.keras, classes.json, preprocessing.json}

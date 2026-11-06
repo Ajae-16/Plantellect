@@ -17,7 +17,7 @@ const relocation = require('./image-relocation');
 // ---------------------------------------------------------------------------
 // Discovery reports
 //
-// A `user` flags a plant the model could not identify. A botanist claims it,
+// A `user` flags a plant the model could not identify. A contributor claims it,
 // records it, and an admin approves the record — which is what closes the
 // report. Everything below is keyed on requestType = 'plant_discovery'.
 // ---------------------------------------------------------------------------
@@ -79,22 +79,22 @@ function claimIsLive(holderAlias) {
  *
  * Reused by the threshold, the queue card's "N of M", dispatch eligibility and
  * the vote itself. If the card says "3 of 5" while the vote check computes 4,
- * the botanist is shown a number that can never be reached and the report is
+ * the contributor is shown a number that can never be reached and the report is
  * unclosable — same discipline as parsePaging.
  *
- * The plan writes this as "active AND holds record_plant", which on this seed
+ * This as "active AND holds record_plant", which on this seed
  * data also counts superadmin and admin — they hold every permission. That is
- * excluded here, for two reasons that both come from the plan itself:
- *   - the card LABELS these accounts "botanists", and an administrator is not one
+ * excluded here,
+ *   - the card LABELS these accounts "contributors", and an administrator is not one
  *     (sidebar canDiscover is `record_plant && !isAdmin`);
  *   - a quorum exists so "more than one opinion" is needed before the community
  *     disposes of a user's report. Counting admins puts an administrator inside
- *     that electorate, so one admin plus one botanist satisfies a threshold of 2
- *     and the veto is exercised by a single botanist's opinion.
- * With the seeded data (exactly one botanist, acc_000002) this is what makes
+ *     that electorate, so one admin plus one contributor satisfies a threshold of 2
+ *     and the veto is exercised by a single contributor's opinion.
+ * With the seeded data (exactly one contributor, acc_000002) this is what makes
  * /vote refuse with 409 and leaves the admin override as the only closure path.
  */
-async function countActiveBotanists(conn) {
+async function countActiveContributors(conn) {
     const target = conn || mysqlPool;
     const [rows] = await target.query(
         `SELECT COUNT(*) AS n
@@ -115,19 +115,19 @@ async function countActiveBotanists(conn) {
  * The setting is a CEILING, not the quorum.
  *
  * A fixed number against a variable electorate changes meaning as people join or
- * leave: "5" is unanimity with five botanists and a majority with ten. So the
- * effective threshold is max(2, min(ceiling, ceil(activeBotanists / 2))) — always
+ * leave: "5" is unanimity with five contributors and a majority with ten. So the
+ * effective threshold is max(2, min(ceiling, ceil(activeContributors / 2))) — always
  * "more than one opinion" and never "everybody".
  *
- * The floor of 2 is not optional: ceil(n / 2) alone gives 1 for one botanist and
+ * The floor of 2 is not optional: ceil(n / 2) alone gives 1 for one contributor and
  * 1 for two, so a single person could close every report alone.
  */
-function effectiveNotAPlantThreshold(activeBotanists) {
+function effectiveNotAPlantThreshold(activeContributors) {
     const ceiling = settings.discoveries.notAPlantVotes;
-    return Math.max(2, Math.min(ceiling, Math.ceil(activeBotanists / 2)));
+    return Math.max(2, Math.min(ceiling, Math.ceil(activeContributors / 2)));
 }
 
-/** Live claims held by one botanist: the cap count. */
+/** Live claims held by one contributor: the cap count. */
 async function countLiveClaims(conn, accountId) {
     const [rows] = await conn.query(
         `SELECT COUNT(*) AS n
@@ -166,7 +166,7 @@ async function listDiscoveryImagesForRequests(requestIds) {
     const map = new Map();
     if (!requestIds.length) return map;
     const [rows] = await mysqlPool.query(
-        `SELECT requestId, imageId, originalFilename, mimeType, size, uploadedAt
+        `SELECT requestId, imageId, originalFilename, mimeType, size, uploadedAt, allowContribution
          FROM discovery_images
          WHERE requestId IN (${requestIds.map(() => '?').join(',')})
          ORDER BY uploadedAt ASC, imageId ASC`,
@@ -207,7 +207,7 @@ async function isAutoDispatchEnabled() {
 /**
  *  mark the scans a report came from, so an analytical consumer can
  * tell "people scan this and it is missing" from "people scan this, flagged it,
- * and a botanist is on it".
+ * and a contributor is on it".
  *
  * By scientificName plus a recent window, because mlscans lives in Mongo and
  * approval_requests in MySQL — there is no cross-database foreign key to hang
@@ -229,7 +229,7 @@ async function markRecentScansReported(accountId, scientificNames) {
 }
 
 /**
- * assign a new report to the least-loaded active botanist.
+ * assign a new report to the least-loaded active contributor.
  *
  * NOT machine approval: the dispatched report still needs a human claim
  * decision and its closure is still the record's approval. What it fixes is that
@@ -241,8 +241,8 @@ async function markRecentScansReported(accountId, scientificNames) {
 async function dispatchDiscovery(conn, requestId) {
     if (!(await isAutoDispatchEnabled())) return null;
 
-    const botanists = await listEligibleDispatchTargets(conn);
-    if (botanists.length === 0) return null;
+    const contributors = await listEligibleDispatchTargets(conn);
+    if (contributors.length === 0) return null;
 
     const [result] = await conn.query(
         `UPDATE approval_requests ar
@@ -251,9 +251,9 @@ async function dispatchDiscovery(conn, requestId) {
            AND ar.requestType = '${DISCOVERY_TYPE}'
            AND ar.status = 'pending'
            AND ar.claimedBy IS NULL`,
-        [botanists[0].accountId, requestId]
+        [contributors[0].accountId, requestId]
     );
-    return result.affectedRows > 0 ? botanists[0].accountId : null;
+    return result.affectedRows > 0 ? contributors[0].accountId : null;
 }
 
 /**
@@ -263,12 +263,12 @@ async function dispatchDiscovery(conn, requestId) {
  * report unclaimed and letting the sidebar dot count it is the correct outcome)
  * and anyone whose oldest live claim is older than claimStaleDays — without that
  * second rule "least loaded" quietly means "whoever was assigned last", and an
- * absent botanist accumulates claims until the queue is theirs.
+ * absent contributor accumulates claims until the queue is theirs.
  */
 async function listEligibleDispatchTargets(conn) {
-    const max = settings.discoveries.maxClaimsPerBotanist;
+    const max = settings.discoveries.maxClaimPerUsers;
     const cutoff = staleClaimCutoff();
-    // Same electorate as countActiveBotanists: dispatch assigns work, so handing
+    // Same electorate as countActiveContributors: dispatch assigns work, so handing
     // it to an administrator would be "least loaded" only because they never
     // claim anything by hand.
     const [rows] = await conn.query(
@@ -300,7 +300,7 @@ async function listEligibleDispatchTargets(conn) {
     );
     return rows
         .filter((r) => Number(r.liveClaims) < max)
-        // An absent botanist stops being eligible rather than being handed more.
+        // An absent contributor stops being eligible rather than being handed more.
         .filter((r) => !r.oldestClaim || new Date(r.oldestClaim) > cutoff)
         // Fewest live claims, ties broken by lowest accountId so the result is
         // deterministic and testable.
@@ -334,7 +334,7 @@ function formatMinutesAgo(seconds) {
  * plantId. On any failure the moved files are unlinked and the now-empty folder
  * removed, so a rolled-back report leaves no orphan bytes and no stray directory.
  */
-async function createDiscoveryReport({ accountId, note, location, predictions, files }) {
+async function createDiscoveryReport({ accountId, note, location, predictions, files, allowContribution = false }) {
     const cleanNote = normalizeName(note);
     const cleanLocation = normalizeName(location);
     const cleanPredictions = normalizePredictionList(predictions);
@@ -470,10 +470,10 @@ async function createDiscoveryReport({ accountId, note, location, predictions, f
                 }
                 await conn.query(
                     `INSERT INTO discovery_images
-                        (imageId, requestId, accountId, originalFilename, storedPath, mimeType, size, contentHash, perceptualHash)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        (imageId, requestId, accountId, originalFilename, storedPath, mimeType, size, contentHash, perceptualHash, allowContribution)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [imageId, requestId, accountId, file.originalname, relativePath, 'image/webp', file.size,
-                        file.ingest.contentHash, file.ingest.perceptualHash]
+                        file.ingest.contentHash, file.ingest.perceptualHash, allowContribution ? 1 : 0]
                 );
                 imageIds.push(imageId);
             }
@@ -515,12 +515,12 @@ async function createDiscoveryReport({ accountId, note, location, predictions, f
 }
 
 /**
- *  the botanist's view. Status-free, because a botanist must be able to
+ *  the contributor's view. Status-free, because a contributor must be able to
  * read the photo they are being asked to judge. Admin-only is NOT assumed here —
  * routes/discoveries.js gates it on record_plant, and routes/admin.js uses
  * getDiscoveryImageForReview below.
  */
-async function getDiscoveryImageForBotanist(imageId) {
+async function getDiscoveryImageForContributor(imageId) {
     const [rows] = await mysqlPool.query(
         `SELECT imageId, requestId, accountId, originalFilename, storedPath, mimeType, size, uploadedAt
          FROM discovery_images WHERE imageId = ?`,
@@ -531,11 +531,11 @@ async function getDiscoveryImageForBotanist(imageId) {
 
 /** the admin review route, status-free and never cached. */
 async function getDiscoveryImageForReview(imageId) {
-    return getDiscoveryImageForBotanist(imageId);
+    return getDiscoveryImageForContributor(imageId);
 }
 
 /**
- * the botanist queue.
+ * the contributor queue.
  *
  * NEVER filtered by claim — a claimed report stays visible, carrying who has it
  * and when. Only `status = 'pending'` filters, which is why a report closed by
@@ -544,8 +544,8 @@ async function getDiscoveryImageForReview(imageId) {
  */
 async function listPendingDiscoveries({ page, pageSize } = {}) {
     const paging = parsePaging({ page, pageSize });
-    const activeBotanists = await countActiveBotanists();
-    const threshold = effectiveNotAPlantThreshold(activeBotanists);
+    const activeContributors = await countActiveContributors();
+    const threshold = effectiveNotAPlantThreshold(activeContributors);
 
     const SELECT = `
         SELECT ar.requestId, ar.status, ar.createdAt, ar.note, ar.payload,
@@ -601,7 +601,7 @@ const [countRows] = await mysqlPool.query(
 
     const imagesByRequest = await listDiscoveryImagesForRequests(rows.map((r) => r.requestId));
     const requests = rows.map((r) => mapDiscoveryCard(r, imagesByRequest.get(r.requestId) || [], {
-        activeBotanists, threshold
+        activeContributors, threshold
     }));
 
     return {
@@ -609,14 +609,14 @@ const [countRows] = await mysqlPool.query(
         total: countRows[0].total,
         page: paging.page,
         pageSize: paging.pageSize,
-        activeBotanists,
+        activeContributors,
         notAPlantThreshold: threshold,
         notAPlantVotes: settings.discoveries.notAPlantVotes
     };
 }
 
 /**
- * The one row shape every queue card is built from: the botanist queue, the
+ * The one row shape every queue card is built from: the contributor queue, the
  * admin queue and the outcome reads all go through here, so a card cannot show
  * a claim state its own endpoint did not compute.
  */
@@ -642,17 +642,19 @@ function mapDiscoveryCard(row, images, options = {}) {
         reporterId: row.reporterId,
         reporterName: [row.reporterFirstName, row.reporterLastName].filter(Boolean).join(' ')
             || row.reporterName,
-        // Current role of the reporter (superadmin / admin / botanist / user), for the badge.
+        // Current role of the reporter (superadmin / admin / contributor / user), for the badge.
         reporterRole: row.reporterRole || null,
         images: images.map((img) => ({
             imageId: img.imageId,
-            // The BOTANIST queue's route, not the reporter's. The two differ only
-            // in their gate — owner match versus record_plant — so a botanist
+            // The CONTRIBUTOR queue's route, not the reporter's. The two differ only
+            // in their gate — owner match versus record_plant — so a contributor
             // sent here gets a 404 on a photo they are allowed to see.
             url: `/api/discoveries/report-images/${encodeURIComponent(img.imageId)}`,
             mimeType: img.mimeType,
             size: img.size,
-            originalFilename: img.originalFilename
+            originalFilename: img.originalFilename,
+            // Ticked by the reporter: may be attached to a plant record as a contribution image.
+            allowContribution: Boolean(img.allowContribution)
         })),
         photosPurged: Boolean(photosPurged),
         claimedBy: showClaim,
@@ -677,7 +679,7 @@ function mapDiscoveryCard(row, images, options = {}) {
         disqualifierName: row.disqualifierName || null,
         voteCount: Number(row.voteCount || 0),
         notAPlantThreshold: options.threshold ?? null,
-        activeBotanists: options.activeBotanists ?? null,
+        activeContributors: options.activeContributors ?? null,
         claimable: !claimLive && row.status === 'pending' &&
             (!row.recordStatus || row.recordStatus !== 'pending')
     };
@@ -709,12 +711,12 @@ async function getDiscoveryCounts() {
  * claim a report.
  *
  * The whole concurrency story is one line: UPDATE ... WHERE the report is still
- * unheld, then check affectedRows. Two botanists racing produce one winner and
+ * unheld, then check affectedRows. Two contributors racing produce one winner and
  * one clean 409, with no lock table and no FOR UPDATE retry loop.
  *
  * The accounts-row lock is a separate concern from that: it serialises claims BY
- * THE SAME botanist so the cap cannot be raced, while leaving different
- * botanists fully concurrent — the only contention that exists here. Without it
+ * THE SAME contributor so the cap cannot be raced, while leaving different
+ * contributors fully concurrent — the only contention that exists here. Without it
  * two rapid clicks both read a count of 4 and both succeed at 5, which makes the
  * cap advisory and defeats the point of adding it.
  */
@@ -750,18 +752,18 @@ async function claimDiscovery(requestId, accountId, { source = 'manual' } = {}) 
             };
         }
 
-        // Get roleId for per-role maxClaimsPerBotanist limit
+        // Get roleId for per-role maxClaimPerUsers limit
         const [accountRows] = await conn.query('SELECT roleId FROM accounts WHERE accountId = ? FOR UPDATE', [accountId]);
         const roleId = accountRows[0]?.roleId;
 
         const activeClaims = await countLiveClaims(conn, accountId);
-        // Resolve maxClaimsPerBotanist from role_limits -> system_settings -> settings.js
+        // Resolve maxClaimPerUsers from role_limits -> system_settings -> settings.js
         let maxClaims;
         if (roleId) {
-            const resolved = await resolveLimit(conn, 'maxClaimsPerBotanist', roleId);
-            maxClaims = typeof resolved === 'object' ? resolved.maxClaimsPerBotanist : resolved;
+            const resolved = await resolveLimit(conn, 'maxClaimPerUsers', roleId);
+            maxClaims = typeof resolved === 'object' ? resolved.maxClaimPerUsers : resolved;
         }
-        if (!maxClaims) maxClaims = settings.discoveries.maxClaimsPerBotanist;
+        if (!maxClaims) maxClaims = settings.discoveries.maxClaimPerUsers;
 
         if (activeClaims >= maxClaims) {
             await conn.rollback();
@@ -788,7 +790,7 @@ async function claimDiscovery(requestId, accountId, { source = 'manual' } = {}) 
         const SET_CLAIMABLE = `requestId = ? AND requestType = ? AND status = 'pending' AND ? = 1`;
 
         // Attempt 1: the report is unheld. This one line is the whole concurrency
-        // story � two botanists racing produce one winner and one clean 409, with
+        // story � two contributors racing produce one winner and one clean 409, with
         // no lock table and no FOR UPDATE retry loop.
         const [fresh] = await conn.query(
             `UPDATE approval_requests
@@ -801,11 +803,11 @@ async function claimDiscovery(requestId, accountId, { source = 'manual' } = {}) 
         let claimed = fresh.affectedRows > 0;
 
         // Attempt 2: the claim is NOT live. That covers two different situations and
-        // both must be takeable, because the card has already told the botanist the
+        // both must be takeable, because the card has already told the contributor the
         // report is claimable:
         //
         //   - a DEAD holder. Accounts are suspended, never deleted, so ON DELETE SET
-        //     NULL never fires and a suspended botanist's claimedBy would otherwise
+        //     NULL never fires and a suspended contributor's claimedBy would otherwise
         //     stay set forever � nobody else can claim (claimedBy IS NULL) and the
         //     owner cannot act. A claim held by an account that cannot authenticate
         //     is a DEAD claim, not a reservation.
@@ -817,7 +819,7 @@ async function claimDiscovery(requestId, accountId, { source = 'manual' } = {}) 
         //     always wrong.
         //
         // Still a conditional UPDATE, and the previous holder is in its WHERE, so
-        // two botanists taking the same unheld report still yield one winner.
+        // two contributors taking the same unheld report still yield one winner.
         const notLive = report.claimedBy && (
             report.holderStatus !== 'active' ||
             !report.claimedAt ||
@@ -875,7 +877,7 @@ async function claimDiscovery(requestId, accountId, { source = 'manual' } = {}) 
         return 'This report already has a record awaiting review.';
     }
     if (r.claimedBy) {
-        return `${r.claimerName || 'Another botanist'} claimed this ${formatAge(r.claimedAt)}.`;
+        return `${r.claimerName || 'Another contributor'} claimed this ${formatAge(r.claimedAt)}.`;
     }
     return 'This report cannot be claimed.';
 }
@@ -890,7 +892,7 @@ function formatAge(timestamp) {
 }
 
 /**
- * releases YOUR OWN claim. Owner-only by default, so two botanists
+ * releases YOUR OWN claim. Owner-only by default, so two contributors
  * cannot fight over the same report by ping-ponging it.
  *
  * This is the accessibility path the claim cap exists to serve: at the limit,
@@ -927,7 +929,7 @@ async function unclaimDiscovery(requestId, accountId) {
  *
  * Permitted when EITHER the caller holds access_admin, OR the holder is no longer
  * `active`. Accounts are suspended rather than deleted, so ON DELETE SET NULL
- * never fires and a suspended botanist's claimedBy would otherwise stay set
+ * never fires and a suspended contributor's claimedBy would otherwise stay set
  * forever: nobody else can claim (claimedBy IS NULL) and the owner cannot act.
  * That is the one case where "advisory" stops being advisory — a claim you can
  * see but cannot take. A claim held by an account that cannot authenticate is a
@@ -998,7 +1000,7 @@ async function releaseDiscovery(requestId, actorId, actorPermissions) {
  * "I am finished with this". Requires holding the claim, enforced in
  * the WHERE clause, so "resolved" always has an author.
  *
- * Deliberately orthogonal to approval_requests.status: a botanist can close a
+ * Deliberately orthogonal to approval_requests.status: a contributor can close a
  * report while the resulting record still awaits an admin, and if resolvedAt
  * were ever used to gate the queue those two states would disagree — which is
  * normal, not a bug.
@@ -1040,7 +1042,7 @@ async function resolveDiscovery(requestId, accountId) {
 
 /**
  * undo your OWN resolution. Deliberately different from
- * reopenDisqualified (any botanist) and from unclaim (owner-only): undoing your
+ * reopenDisqualified (any contributor) and from unclaim (owner-only): undoing your
  * own note is a correction.
  */
 async function reopenDiscovery(requestId, accountId) {
@@ -1050,16 +1052,16 @@ async function reopenDiscovery(requestId, accountId) {
         [requestId, DISCOVERY_TYPE, accountId]
     );
     if (result.affectedRows === 0) {
-        return { error: 'Only the botanist who resolved this report can reopen it', code: 409 };
+        return { error: 'Only the contributor who resolved this report can reopen it', code: 409 };
     }
     return { requestId };
 }
 
 /**
- * a single botanist's "not a plant" verdict.
+ * a single contributor's "not a plant" verdict.
  *
  * NOT a status: `status` is admin-owned, `denied` already means an admin
- * rejected the submission, and a botanist may disqualify a report that is already
+ * rejected the submission, and a contributor may disqualify a report that is already
  * auto-approved — a status transition has nowhere to go from `approved`.
  *
  * Requires holding the claim, so a verdict always has an author. It does NOT
@@ -1068,16 +1070,16 @@ async function reopenDiscovery(requestId, accountId) {
  *
  * It DOES release the claim, in the same statement. A live claim closes the vote
  * (castNotAPlantVote), so keeping it would make the verdict unfalsifiable: the
- * report stays visible, labelled and contestable to every botanist, and the only
+ * report stays visible, labelled and contestable to every contributor, and the only
  * person entitled to vote on it is the person who just made it. The queue would
  * then freeze behind the verdict's own author until they released the claim by
  * hand or it went stale — a community judgement that one member has to unlock is
  * not a judgement. Releasing here hands the report straight back to the queue and
- * to the quorum, and the verdict stays reversible by ANY botanist via
+ * to the quorum, and the verdict stays reversible by ANY contributor via
  * reinstateDisqualified, which clears both the disqualification and the ballots.
  *
  * One statement, not a claim write followed by a release: the `claimedBy = ?`
- * guard and the clearing have to be the same row version, or a second botanist
+ * guard and the clearing have to be the same row version, or a second contributor
  * could claim the report in between and have their claim silently erased.
  */
 async function disqualifyDiscovery(requestId, accountId, reason) {
@@ -1113,7 +1115,7 @@ async function disqualifyDiscovery(requestId, accountId, reason) {
 /**
  *  undo a "not a plant".
  *
- * Open to ANY botanist, unlike reopen (author-only). A wrong "not a plant" call
+ * Open to ANY contributor, unlike reopen (author-only). A wrong "not a plant" call
  * hides a real report from everyone, so the remedy must not be gated behind
  * being the person who made the mistake.
  *
@@ -1193,12 +1195,12 @@ async function countNotAPlantVotes(requestId) {
 /**
  * the quorum.
  *
- * A single botanist closing a report disposes of another user's contribution, and
+ * A single contributor closing a report disposes of another user's contribution, and
  * the queue is small enough that one wrong call would be unappealable — so the
- * threshold is a community judgement, and a single botanist's verdict
+ * threshold is a community judgement, and a single contributor's verdict
  * (disqualifyDiscovery) stays reinstate-able instead.
  *
- * Insert-or-delete against the composite PK, so a botanist can RETRACT a vote
+ * Insert-or-delete against the composite PK, so a contributor can RETRACT a vote
  * rather than being stuck with it.
  *
  * Below the floor the endpoint refuses rather than storing a ballot that cannot
@@ -1210,17 +1212,17 @@ async function castNotAPlantVote(requestId, accountId) {
     try {
         await conn.beginTransaction();
 
-        const activeBotanists = await countActiveBotanists(conn);
-        const threshold = effectiveNotAPlantThreshold(activeBotanists);
-        if (activeBotanists < 2) {
+        const activeContributors = await countActiveContributors(conn);
+        const threshold = effectiveNotAPlantThreshold(activeContributors);
+        if (activeContributors < 2) {
             await conn.rollback();
             return {
-                error: `Voting needs at least 2 active botanists; there ${activeBotanists === 1 ? 'is' : 'are'} ` +
-                    `${activeBotanists}. An admin can close this report instead.`,
+                error: `Voting needs at least 2 active contributors; there ${activeContributors === 1 ? 'is' : 'are'} ` +
+                    `${activeContributors}. An admin can close this report instead.`,
                 code: 409,
-                activeBotanists,
+                activeContributors,
                 threshold,
-                requiresBotanists: 2
+                requiresContributors: 2
             };
         }
 
@@ -1240,7 +1242,7 @@ async function castNotAPlantVote(requestId, accountId) {
         const report = rows[0];
 
         // OPEN means: pending, no submitted record, and no LIVE claim. Defining it
-        // precisely is what stops the rule deadlocking — a botanist who claims and
+        // precisely is what stops the rule deadlocking — a contributor who claims and
         // then goes quiet would otherwise block a rejection indefinitely,
         // reintroducing exactly the stranding releaseDiscovery exists to prevent.
         // Once the claim goes stale it stops being live and voting resumes.
@@ -1257,12 +1259,12 @@ async function castNotAPlantVote(requestId, accountId) {
             return { error: why, code: 409, voteCount: await countNotAPlantVotes(requestId) };
         }
 
-        // ONE POST, either action: an existing ballot is RETRACTED, and a botanist
+        // ONE POST, either action: an existing ballot is RETRACTED, and a contributor
         // with no ballot casts one. So this must ask which of the two it is before
         // writing.
         //
         // Delete-then-insert unconditionally looks equivalent and is not: it always
-        // ends with an INSERT, so a second POST from the same botanist re-added the
+        // ends with an INSERT, so a second POST from the same contributor re-added the
         // ballot they were trying to withdraw and the tally went back UP. The
         // delete made the double-vote structurally impossible and hid that it had
         // also made retraction impossible.
@@ -1290,7 +1292,7 @@ async function castNotAPlantVote(requestId, accountId) {
         const voteCount = Number(tallyRows[0].n);
 
         if (voteCount >= threshold) {
-            // reviewedBy names the botanist whose vote crossed the threshold, NOT a
+            // reviewedBy names the contributor whose vote crossed the threshold, NOT a
             // system account: a quorum is N humans deciding, so attributing it to
             // System would miscredit the community and contradict disqualifiedBy in
             // the same row. discovery_votes is the complete audit and is NOT
@@ -1314,7 +1316,7 @@ async function castNotAPlantVote(requestId, accountId) {
             requestId,
             voteCount,
             threshold,
-            activeBotanists,
+            activeContributors,
             // Told to the caller rather than inferred: a client cannot tell a
             // retraction from a cast vote from the count alone.
             retracted: retracting,
@@ -1336,13 +1338,13 @@ async function castNotAPlantVote(requestId, accountId) {
  * The rows ARE the storage. A reviewedByNames = "acc_000001,acc_000002,…"
  * column would defeat the whole table: the composite PK is what makes
  * double-voting impossible, and collapsing rows into one value removes that,
- * makes "which reports did this botanist vote on?" a LIKE that also matches
+ * makes "which reports did this contributor vote on?" a LIKE that also matches
  * acc_0000041, breaks retraction, and keeps a deleted account's id forever with
  * no FK to clean it up.
  */
 async function listNotAPlantVoters(requestId) {
-    const activeBotanists = await countActiveBotanists();
-    const threshold = effectiveNotAPlantThreshold(activeBotanists);
+    const activeContributors = await countActiveContributors();
+    const threshold = effectiveNotAPlantThreshold(activeContributors);
     const [rows] = await mysqlPool.query(
         `SELECT v.accountId, a.username, v.votedAt,
                 COALESCE(NULLIF(CONCAT(pr.firstName, ' ', pr.lastName), ' '), a.username) AS fullName
@@ -1357,7 +1359,7 @@ async function listNotAPlantVoters(requestId) {
         requestId,
         threshold,
         configured: settings.discoveries.notAPlantVotes,
-        activeBotanists,
+        activeContributors,
         voters: rows.map((r) => ({
             accountId: r.accountId,
             username: r.username,
@@ -1369,7 +1371,7 @@ async function listNotAPlantVoters(requestId) {
 
 /**
  * the admin override, which is the only path that closes a report for a
- * team with fewer than two active botanists.
+ * team with fewer than two active contributors.
  *
  * Its OWN write, deliberately: disqualifyDiscovery requires holding the
  * claim, enforced in its WHERE, and an admin holds no claim — so routing the
@@ -1475,7 +1477,7 @@ async function cancelDiscoveryReport(requestId, accountId) {
         }
         if (report.recordRequestId) {
             await conn.rollback();
-            return { error: 'A botanist already recorded this report, so it can no longer be withdrawn.', code: 409 };
+            return { error: 'A contributor already recorded this report, so it can no longer be withdrawn.', code: 409 };
         }
         const grace = settings.discoveries.cancelGraceHours;
         if (Number(report.minutesOld) > grace * 60) {
@@ -1491,7 +1493,7 @@ async function cancelDiscoveryReport(requestId, accountId) {
             [requestId]
         );
         await conn.query('DELETE FROM discovery_images WHERE requestId = ?', [requestId]);
-        // A claim is released on cancel, so the botanist's queue card disappears
+        // A claim is released on cancel, so the contributor's queue card disappears
         // rather than sitting on work that no longer exists.
         await conn.query(
             `UPDATE approval_requests
@@ -1655,8 +1657,8 @@ async function getMyDiscoverySummary(accountId) {
 async function listDiscoveryReports({ status, page, pageSize } = {}) {
     const paging = parsePaging({ page, pageSize });
     const cutoff = staleClaimCutoff();
-    const activeBotanists = await countActiveBotanists();
-    const threshold = effectiveNotAPlantThreshold(activeBotanists);
+    const activeContributors = await countActiveContributors();
+    const threshold = effectiveNotAPlantThreshold(activeContributors);
 
     const where = ['ar.requestType = ?'];
     const params = [DISCOVERY_TYPE];
@@ -1732,29 +1734,29 @@ async function listDiscoveryReports({ status, page, pageSize } = {}) {
                 // Who closed the report, and whether a human or the rule set did it.
                 // A report closed by an automatically approved record carries the
                 // SYSTEM account here, which is the point: the trigger was a
-                // botanist pressing submit, the decider was the mode.
+                // contributor pressing submit, the decider was the mode.
                 reviewedBy: r.reviewedBy,
                 approvalMode: r.approvalMode || 'manual',
                 voteCount: Number(r.voteCount || 0),
                 notAPlantThreshold: threshold,
-                activeBotanists
+                activeContributors
             };
         }),
         total: countRows[0].total,
         page: paging.page,
         pageSize: paging.pageSize,
-        activeBotanists,
+        activeContributors,
         notAPlantThreshold: threshold
     };
 }
 
 /**
- * the claim rule a botanist's plant submission must satisfy when it
+ * the claim rule a contributor's plant submission must satisfy when it
  * carries a discoveryRequestId.
  *
  * The client hides the control behind "view only", but the client is not the
- * authority: without this, ANY botanist could attach a record to a report another
- * botanist is working on.
+ * authority: without this, ANY contributor could attach a record to a report another
+ * contributor is working on.
  *
  * It belongs in the transaction beside the claim validation rather than in
  * middleware: no middleware can know who holds the claim on a payload field.
@@ -1771,7 +1773,7 @@ async function assertDiscoveryClaim(conn, discoveryRequestId, accountId) {
     if (rows[0].claimedBy !== accountId) {
         return {
             error: rows[0].claimedBy
-                ? 'Another botanist holds this discovery report'
+                ? 'Another contributor holds this discovery report'
                 : 'You must claim this discovery report before recording it',
             code: 409
         };
@@ -1901,13 +1903,13 @@ async function expireStaleDiscoveryClaims() {
 module.exports = {
     DISQUALIFY_REASONS,
     DISCOVERY_STORAGE_ROOT,
-    countActiveBotanists,
+    countActiveContributors,
     effectiveNotAPlantThreshold,
     getDiscoveryFeatureFlag,
     isAutoDispatchEnabled,
     createDiscoveryReport,
     getDiscoveryImageForOwner,
-    getDiscoveryImageForBotanist,
+    getDiscoveryImageForContributor,
     getDiscoveryImageForReview,
     listPendingDiscoveries,
     getDiscoveryCounts,

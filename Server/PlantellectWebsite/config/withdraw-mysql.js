@@ -1,13 +1,13 @@
-// A botanist withdrawing their OWN pending submission.
+// A contributor withdrawing their OWN pending submission.
 //
-// Applies to the four botanist request types listed in MY_REQUEST_TYPES (record-mysql.js):
+// Applies to the four contributor request types listed in MY_REQUEST_TYPES (record-mysql.js):
 // new plant, contribution, taxonomy update and change request. Only the submitter can do it,
 // only while the request is still 'pending', and the row is kept with status 'cancelled'
 // (the status the schema already has for "the submitter withdrew it"), so the history stays.
 //
 // Photos that were waiting in review are marked 'rejected' and filed under plants/denied/<requestId>/
 // exactly like an admin denial does, so they never reach the library or the training set.
-// A discovery report the submission came from is NOT touched: the botanist's claim on the
+// A discovery report the submission came from is NOT touched: the contributor's claim on the
 // report stays, so they can submit again.
 
 const { mysqlPool } = require('./pool-mysql');

@@ -1,28 +1,18 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
-const fs = require('fs');
 const { mysqlPool } = require('../config/mysql.js');
 const {
     getPermissionsVersion,
     loadAccountPermissions,
-    insertCertificate,
-    insertRoleRequest,
-    recordConsent,
-    processNewRequest
+    recordConsent
 } = require('../config/mysql.js');
 const { logAuthEvent } = require('../mongoose-schemas/Authlog');
 const settings = require('../config/settings');
-const { uploadCertificate } = require('../config/upload');
+const { photoUrl } = require('../config/profile-mysql');
 
 const router = express.Router();
 
 const CONSENT_TYPES = ['terms', 'info_usage'];
-
-function discardUploadedFile(file) {
-    if (file && file.path && fs.existsSync(file.path)) {
-        fs.unlinkSync(file.path);
-    }
-}
 
 /**
  * Replaces the session id before storing the authenticated session, so an id
@@ -39,20 +29,16 @@ function regenerateThenSet(req, sessionData) {
     });
 }
 
-router.post('/register', uploadCertificate.single('certificate'), async (req, res) => {
-    const { email, username, password, firstName, lastName, role } = req.body;
-    const certFile = req.file;
+router.post('/register', async (req, res) => {
+    const { email, username, password, firstName, lastName } = req.body;
 
     if (!email || !username || !password) {
-        discardUploadedFile(certFile);
         return res.status(400).json({ error: 'Email, username, and password are required' });
     }
     if (password.length < 6) {
-        discardUploadedFile(certFile);
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
     if (username.length < 6) {
-        discardUploadedFile(certFile);
         return res.status(400).json({ error: 'Username must be at least 6 characters' });
     }
 
@@ -60,42 +46,31 @@ router.post('/register', uploadCertificate.single('certificate'), async (req, re
     const acceptedTerms = ['true', 'on', '1'].includes(String(req.body.agreeTerms).toLowerCase());
     const acceptedInfo = ['true', 'on', '1'].includes(String(req.body.agreeInfo).toLowerCase());
     if (!acceptedTerms || !acceptedInfo) {
-        discardUploadedFile(certFile);
         return res.status(400).json({ error: 'You must agree to the terms and to the use of your information' });
     }
 
-    let selectedRole = 'user';
-    if (role && ['user', 'botanist'].includes(role)) {
-        selectedRole = role;
-    }
-    if (selectedRole === 'botanist' && !certFile) {
-        return res.status(400).json({ error: 'Certificate is required for Botanist registration' });
-    }
-
+    // Every sign-up is a plain 'user'. The botanist role is retired: users hold
+    // the contribution permissions themselves (community build), so there is no
+    // role to request, no certificate to upload and nothing to wait on.
     const conn = await mysqlPool.getConnection();
-    let roleRequestId = null;
-    let autoDecision = null;
     try {
+        await conn.beginTransaction();
+
         const [existing] = await conn.query(
             'SELECT accountId FROM accounts WHERE email = ? OR username = ?',
             [email, username]
         );
         if (existing.length > 0) {
             await conn.rollback();
-            discardUploadedFile(certFile);
             return res.status(409).json({ error: 'Email or username already exists' });
         }
 
         const [userRows] = await conn.query('SELECT roleId FROM roles WHERE roleName = ?', ['user']);
         if (userRows.length === 0) {
             await conn.rollback();
-            discardUploadedFile(certFile);
             return res.status(500).json({ error: 'Default role not found' });
         }
 
-        // A pending botanist gets a usable 'user' account straight away; the
-        // botanist permissions arrive only when an admin approves.
-        const isPending = selectedRole === 'botanist';
         const passwordHash = await bcrypt.hash(password, 10);
         const accountId = await require('../config/ids.js').insertRow(
             conn,
@@ -110,32 +85,7 @@ router.post('/register', uploadCertificate.single('certificate'), async (req, re
         );
         await recordConsent(conn, accountId, CONSENT_TYPES, settings.terms.version);
 
-        if (isPending) {
-            roleRequestId = await insertRoleRequest(conn, accountId, 'botanist');
-            if (certFile) {
-                await insertCertificate(conn, accountId, certFile);
-            }
-        } else {
-            discardUploadedFile(certFile);
-        }
-
         await conn.commit();
-
-        // The automatic pass, AFTER the commit and AFTER the session is established.
-        //
-        // In that order deliberately: the session is created first so that if the
-        // role really was granted automatically, this response already reports the
-        // new permission set rather than a set that is one refresh out of date. And
-        // because the account row is committed, a failure here cannot un-register
-        // anybody — the registration stands as "pending review" with a reason.
-        if (roleRequestId) {
-            try {
-                autoDecision = await processNewRequest(roleRequestId, { triggeredBy: 'registration' });
-            } catch (err) {
-                console.error('Automatic role approval error:', err.message);
-                autoDecision = { autoDecided: false, reason: `Automatic approval could not run: ${err.message}` };
-            }
-        }
 
         const perms = await loadAccountPermissions(accountId);
         const version = await getPermissionsVersion();
@@ -158,16 +108,10 @@ router.post('/register', uploadCertificate.single('certificate'), async (req, re
             email: perms.email || email,
             username,
             roles: perms.roles,
-            permissions: perms.permissions,
-            pending: isPending && perms.roles.length === 1,
-            // When the role really was granted by the rule set, say so rather than
-            // letting the client render "awaiting review" over a live permission.
-            autoApproved: autoDecision && autoDecision.autoDecided === true,
-            autoSkipReason: autoDecision && !autoDecision.autoDecided ? (autoDecision.reason || null) : null
+            permissions: perms.permissions
         });
     } catch (err) {
         await conn.rollback();
-        discardUploadedFile(certFile);
         console.error('Register error:', err.message);
         res.status(500).json({ error: 'Registration failed' });
     } finally {
@@ -291,8 +235,13 @@ router.get('/me', async (req, res) => {
             req.session.permissionsVersion = currentVersion;
         }
 
+        // bio, name and photoUrl are for the mobile profile screen. Additive: the website's
+        // sidebar.js only reads the fields it already knew.
         const [accountRows] = await mysqlPool.query(
-            'SELECT email, username FROM accounts WHERE accountId = ?',
+            `SELECT a.email, a.username, pr.firstName, pr.lastName, pr.bio, pr.imagePath, pr.updatedAt
+             FROM accounts a
+             LEFT JOIN profiles pr ON pr.accountId = a.accountId
+             WHERE a.accountId = ?`,
             [req.session.accountId]
         );
         const account = accountRows[0];
@@ -301,6 +250,10 @@ router.get('/me', async (req, res) => {
             accountId: req.session.accountId,
             email: account ? account.email : '',
             username: account ? account.username : '',
+            firstName: account ? account.firstName || null : null,
+            lastName: account ? account.lastName || null : null,
+            bio: account ? account.bio || null : null,
+            photoUrl: account ? photoUrl(account.imagePath, account.updatedAt) : null,
             roles: req.session.roles,
             permissions: req.session.permissions
         });

@@ -45,7 +45,7 @@ async function listPlants({ search, type, taxonomyGap, page, pageSize }) {
         `SELECT p.plantId, p.commonName, p.scientificName, p.quantity, p.createdAt,
                 t.typeName, t.toxicityLevel, t.isHarmful,
                 ${gapSelect},
-                (SELECT COUNT(*) FROM plant_images i WHERE i.plantId = p.plantId AND i.status = 'approved') AS imageCount,
+                (SELECT COUNT(*) FROM plant_images i WHERE i.plantId = p.plantId AND i.status = 'approved' AND i.origin = 'record') AS imageCount,
                 (SELECT COUNT(*) FROM plant_images i WHERE i.plantId = p.plantId AND i.status = 'pending') AS pendingImageCount,
                 (SELECT COUNT(*) FROM plant_description d WHERE d.plantId = p.plantId AND d.status = 'approved') AS descriptionCount
          FROM plants p
@@ -255,11 +255,17 @@ async function listPlantImages(plantId) {
     }));
 }
 
-/** Public serving: approved rows only. */
+/**
+ * Public serving: approved, visible, unarchived record photos only. No route uses this today;
+ * the filter is here so that a future caller cannot serve a hidden photo or a private scan
+ * contribution by id. (storedPath is the master, which is never public; the public site serves
+ * the generated copies instead.)
+ */
 async function getImageForServing(imageId) {
     const [rows] = await mysqlPool.query(
         `SELECT imageId, plantId, originalFilename, storedPath, mimeType
-         FROM plant_images WHERE imageId = ? AND status = 'approved'`,
+         FROM plant_images
+         WHERE imageId = ? AND status = 'approved' AND publicVisible = TRUE AND archivedAt IS NULL AND origin = 'record'`,
         [imageId]
     );
     return rows[0] || null;
@@ -280,7 +286,7 @@ async function getImageForReview(imageId) {
 
 /**
  * Owner serving: the submitter sees their own photo whatever the status, because
- * the only feedback a botanist gets for a rejected upload is the per-request
+ * the only feedback a contributor gets for a rejected upload is the per-request
  * note. The accountId predicate is the entire privacy property of the owner
  * route — written in the style of getImageForReview (which deliberately omits
  * it) this would expose every pending photo to its uploader's rivals. Never

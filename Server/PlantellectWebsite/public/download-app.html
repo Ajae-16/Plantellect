@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantellect - Get the App</title>
+
+    <!-- Saved theme is applied before first paint (same 'siteTheme' key as every other page). -->
+    <script src="javascript/download-app.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Lancelot&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="css/public/download-app.css">
+</head>
+<body>
+
+    <!-- Same cucumber photo the home page uses -->
+    <div class="dl-background"></div>
+
+    <!--
+        Secret entry to the admin sign-in: five quick clicks in a row on this button.
+        It is also a normal light / dark switch, so it looks like nothing else.
+        The behaviour lives in javascript/download-app.js.
+    -->
+    <button type="button" class="dl-theme" id="themeButton" aria-label="Switch to dark mode">
+        <span class="material-symbols-outlined" id="themeIcon" aria-hidden="true">dark_mode</span>
+    </button>
+
+    <main class="dl-page">
+        <section class="dl-card">
+            <img src="resource/logo.png" alt="Plantellect logo" class="dl-logo">
+
+            <h1>Plantellect is on your phone</h1>
+            <p class="dl-lead">
+                Identify, share, and discover plants with a community that grows
+                knowledge together. Sign in and start from the mobile app.
+            </p>
+
+            <!-- Change the download link here. This is the only place it is written. -->
+            <a class="dl-button" id="downloadLink" href="https://github.com/Ajae-16/Plantellect/releases/download/alpha-test/Plantellect-app-alpha-test.apk">
+                <span class="material-symbols-outlined" aria-hidden="true">download</span>
+                Download the app
+            </a>
+
+            <div class="dl-divider"><span>or scan with phone</span></div>
+
+            <!-- Drop your generated QR code at public/resource/app-qr-code.png -->
+            <img src="resource/app-qr-code.png" alt="QR code to download the Plantellect app"
+                 class="dl-qr" id="qrImage" width="220" height="220">
+
+            <p class="dl-note">Open your phone's camera, point it at the code and tap the link.</p>
+        </section>
+    </main>
+
+</body>
+</html>

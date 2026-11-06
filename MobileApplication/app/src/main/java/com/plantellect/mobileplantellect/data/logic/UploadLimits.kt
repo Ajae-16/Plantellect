@@ -7,21 +7,15 @@ package com.plantellect.mobileplantellect.data.logic
 object UploadLimits {
     /** settings.plantImages.maxDiscoveryFiles */
     const val MAX_DISCOVERY_PHOTOS = 3
-    /** settings.plantImages.maxFilesPerRequest (a botanist contribution) */
+    /** settings.plantImages.maxFilesPerRequest (a contribution) */
     const val MAX_CONTRIBUTION_PHOTOS = 20
     /** settings.ml.maxTopK */
     const val MAX_TOP_K = 10
-    /** settings.certificates.maxSizeBytes */
-    const val MAX_CERTIFICATE_BYTES = 20L * 1024 * 1024
-
-    /**
-     * Allowed certificate types -> the file extension to send. The server checks BOTH the mime type
-     * and the extension of the uploaded file NAME, so a picked file without an extension is rejected
-     * unless the name is rebuilt from the type.
-     */
-    val CERTIFICATE_TYPES = mapOf(
-        "application/pdf" to ".pdf",
-        "image/jpeg" to ".jpg",
-        "image/png" to ".png"
-    )
+    /** settings.userImages.maxSizeBytes: a profile photo is at most 10 MB. */
+    const val MAX_PROFILE_PHOTO_BYTES = 10 * 1024 * 1024
+    /** settings.userImages.bioMaxLength, counted in characters (an emoji is one). */
+    const val MAX_BIO_CHARS = 500
+    /** config/profile-rules.js */
+    const val PASSWORD_MIN_CHARS = 6
+    const val PASSWORD_MAX_BYTES = 72
 }

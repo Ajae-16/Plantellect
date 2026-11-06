@@ -1,8 +1,8 @@
 /**
- * Shared rich text for botanist descriptions (uses, benefits, things to watch out for).
+ * Shared rich text for contributor descriptions (uses, benefits, things to watch out for).
  *
  * The database stores plain TEXT. This file turns that text into safe HTML, and helps a
- * botanist write it. Rules live in css/core/richtext.css. A page needs:
+ * contributor write it. Rules live in css/core/richtext.css. A page needs:
  *     <script src="javascript/richtext.js"></script>
  * then   RichText.render(el, text)      show formatted text in an element
  *        RichText.html(text)            the same as an HTML string
@@ -11,7 +11,7 @@
  *        RichText.openGuide()           the "how to format" dialog
  *        RichText.contributorClass(i)   contrib-box--cN, cycling through 8 colours
  *
- * What a botanist can type (the same list is shown by openGuide):
+ * What a contributor can type (the same list is shown by openGuide):
  *   Enter                new line (kept in the database)
  *   \n   (backslash n)   next paragraph
  *   a blank line         next paragraph
@@ -21,7 +21,7 @@
  *   !!important!!        red emphasis
  *
  * Safety: the text is HTML-escaped FIRST, then the marks are turned into a fixed set of
- * tags. Nothing a botanist types can become a script, link or attribute.
+ * tags. Nothing a contributor types can become a script, link or attribute.
  */
 (function (global) {
     'use strict';
@@ -109,7 +109,7 @@
         el.innerHTML = markup || (emptyText ? '<p class="rt-empty">' + esc(emptyText) + '</p>' : '');
     }
 
-    /** contrib-box--c1 ... c8, then round again: a 9th botanist reuses colour 1. */
+    /** contrib-box--c1 ... c8, then round again: a 9th contributor reuses colour 1. */
     function contributorClass(index) {
         return 'contrib-box--c' + ((Math.max(0, index | 0) % 8) + 1);
     }

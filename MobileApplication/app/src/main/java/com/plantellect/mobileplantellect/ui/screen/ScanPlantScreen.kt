@@ -76,6 +76,7 @@ import com.plantellect.mobileplantellect.ui.theme.GreenLight
 import com.plantellect.mobileplantellect.ui.theme.ScanBad
 import com.plantellect.mobileplantellect.ui.theme.ScanOk
 import com.plantellect.mobileplantellect.ui.theme.ScanWarn
+import com.plantellect.mobileplantellect.ui.theme.extraColors
 import com.plantellect.mobileplantellect.viewmodel.ScanUiState
 import com.plantellect.mobileplantellect.viewmodel.ScanViewModel
 import kotlinx.coroutines.CancellationException
@@ -110,6 +111,8 @@ fun ScanPlantScreen() {
 
     /** Developer mode (Settings): percentages and technical status. Off = plain-language output. */
     val debug by app.container.settings.debugMode.collectAsStateWithLifecycle()
+    val autoContribute by app.container.settings.autoContribute.collectAsStateWithLifecycle()
+    val contributeHintHidden by app.container.settings.contributeHintHidden.collectAsStateWithLifecycle()
     /** Kept fresh every 10 s by ServerMonitor; offline scans never wait on the server. */
     val serverStatus by app.container.serverMonitor.status.collectAsStateWithLifecycle()
     val serverReachable = serverStatus == ServerStatus.ONLINE
@@ -381,7 +384,7 @@ fun ScanPlantScreen() {
                             .height(viewfinderHeight)
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                             .clip(RoundedCornerShape(28.dp))
-                            .background(Color.Black)
+                            .background(MaterialTheme.extraColors.overlay)
                     ) {
                         AndroidView(
                             modifier = Modifier.fillMaxSize(),
@@ -398,10 +401,10 @@ fun ScanPlantScreen() {
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
-                                Box(Modifier.fillMaxSize().background(Color.Black))
+                                Box(Modifier.fillMaxSize().background(MaterialTheme.extraColors.overlay))
                             }
                             if (uiState is ScanUiState.Scanning) {
-                                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.30f)))
+                                Box(Modifier.fillMaxSize().background(MaterialTheme.extraColors.overlay.copy(alpha = 0.30f)))
                                 ScanningLine(Modifier.fillMaxSize().padding(20.dp))
                             }
                         }
@@ -437,12 +440,12 @@ fun ScanPlantScreen() {
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .padding(8.dp)
-                                    .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                                    .background(MaterialTheme.extraColors.overlay.copy(alpha = 0.35f), CircleShape)
                             ) {
                                 Icon(
                                     Icons.Default.FlipCameraAndroid,
                                     contentDescription = "Switch camera",
-                                    tint = Color.White
+                                    tint = MaterialTheme.extraColors.onOverlay
                                 )
                             }
 
@@ -480,6 +483,7 @@ fun ScanPlantScreen() {
                         )
                         is ScanUiState.Scanning -> ScanningPanel(
                             serverReachable = serverReachable,
+                            retryInSeconds = state.retryInSeconds,
                             debug = debug,
                             onCancel = { vm.reset() }
                         )
@@ -504,7 +508,9 @@ fun ScanPlantScreen() {
                                         .padding(horizontal = 16.dp, vertical = 8.dp),
                                     ui = offer,
                                     onHelp = { vm.contribute() },
-                                    onClose = { vm.dismissContribution() }
+                                    onClose = { vm.dismissContribution() },
+                                    showSettingsHint = !autoContribute && !contributeHintHidden,
+                                    onHideHint = { app.container.settings.setContributeHintHidden(true) }
                                 )
                             }
 
@@ -551,15 +557,15 @@ private fun frameColorFor(outcome: ScanOutcome): Color = when (outcome) {
 @Composable
 private fun BusyOverlay(message: String) {
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.extraColors.overlay.copy(alpha = 0.45f)),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            CircularProgressIndicator(color = Color.White)
-            Text(message, color = Color.White, style = MaterialTheme.typography.titleMedium)
+            CircularProgressIndicator(color = MaterialTheme.extraColors.onOverlay)
+            Text(message, color = MaterialTheme.extraColors.onOverlay, style = MaterialTheme.typography.titleMedium)
         }
     }
 }
@@ -594,18 +600,20 @@ private fun StatusPill(modifier: Modifier = Modifier, status: ServerStatus, debu
             ServerStatus.CHECKING -> "Checking server…"
             ServerStatus.NO_NETWORK -> "No network"
             ServerStatus.SERVER_UNREACHABLE -> "Server unreachable"
+            ServerStatus.OFFLINE_MODE -> "Offline mode (on purpose)"
         }
-        status == ServerStatus.NO_NETWORK || status == ServerStatus.SERVER_UNREACHABLE -> "Offline mode"
+        status == ServerStatus.NO_NETWORK || status == ServerStatus.SERVER_UNREACHABLE ||
+                status == ServerStatus.OFFLINE_MODE -> "Offline mode"
         else -> return   // online (or still checking): nothing to say to a normal user
     }
     val dot = when (status) {
         ServerStatus.ONLINE -> ScanOk
-        ServerStatus.CHECKING -> ScanWarn
+        ServerStatus.CHECKING, ServerStatus.OFFLINE_MODE -> ScanWarn
         else -> ScanBad
     }
     Surface(
         modifier = modifier,
-        color = Color.Black.copy(alpha = 0.45f),
+        color = MaterialTheme.extraColors.overlay.copy(alpha = 0.45f),
         shape = CircleShape
     ) {
         Row(
@@ -614,7 +622,7 @@ private fun StatusPill(modifier: Modifier = Modifier, status: ServerStatus, debu
         ) {
             Box(Modifier.size(8.dp).background(dot, CircleShape))
             Spacer(Modifier.width(8.dp))
-            Text(text, color = Color.White, style = MaterialTheme.typography.labelMedium)
+            Text(text, color = MaterialTheme.extraColors.onOverlay, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
@@ -761,6 +769,7 @@ private fun CaptureButton(
 @Composable
 private fun ScanningPanel(
     serverReachable: Boolean,
+    retryInSeconds: Int?,
     debug: Boolean,
     onCancel: () -> Unit
 ) {
@@ -772,7 +781,11 @@ private fun ScanningPanel(
     ) {
         LinearProgressIndicator(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50)))
         Text(
-            if (serverReachable) "Identifying your plant…" else "Identifying on your phone…",
+            when {
+                retryInSeconds != null -> "Can't reach the server. Trying again in $retryInSeconds s…"
+                serverReachable -> "Identifying your plant…"
+                else -> "Identifying on your phone…"
+            },
             style = MaterialTheme.typography.titleMedium,
             color = colors.onSurface
         )
@@ -908,6 +921,7 @@ private fun OnDeviceBody(outcome: ScanOutcome.OnDevice, debug: Boolean) {
     val reasonText = when (outcome.reason) {
         OnDeviceReason.NO_CONNECTION -> "You're offline, so this result comes from your phone."
         OnDeviceReason.SERVER_UNREACHABLE -> "We couldn't reach the server, so this result comes from your phone."
+        OnDeviceReason.OFFLINE_MODE -> "Offline mode is on, so this result comes from your phone."
     }
 
     when (best.kind) {

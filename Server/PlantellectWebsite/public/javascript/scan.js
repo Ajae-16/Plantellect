@@ -36,8 +36,13 @@ document.addEventListener('DOMContentLoaded', function () {
     let selectedImageFile = null;
     let previewObjectUrl = null;
     let lastScanResult = null;
+    // Set by setupDiscoveryReport(): tells the "Not identified?" card the scanned photo changed.
+    let onScanPhotoChange = function () {};
     // null until plantAuth.ready resolves; "Record this plant" re-renders if it is late.
     let canRecord = null;
+    // The scan contribution card (Help improve the ML / Record it / Skip), or null when there is none.
+    // { token, file, prediction, phase: 'offer' | 'sending' | 'done' | 'refused', message, tone }
+    let contribution = null;
 
     // Shown in the camera screen and the console, so it is obvious whether the
     // browser loaded this file or an old cached copy.
@@ -164,6 +169,8 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         selectedImageFile = file;
+        // An offer is bound to the exact photo that was scanned, so it ends with that photo.
+        clearContribution();
         setMessage('', null);
         // Revoked on REPLACEMENT rather than after render: a page left open across
         // many scans would otherwise hold every blob it ever previewed.
@@ -173,6 +180,7 @@ document.addEventListener('DOMContentLoaded', function () {
         scanPreview.hidden = false;
         if (scanUploadPrompt) scanUploadPrompt.hidden = true;
         scanPredictBtn.disabled = false;
+        onScanPhotoChange();
     }
 
     // -------------------------------------------------------------- upload ----
@@ -504,6 +512,10 @@ document.addEventListener('DOMContentLoaded', function () {
     scanPredictBtn.addEventListener('click', async function () {
         if (!selectedImageFile) return;
 
+        // The offer (if any) must be posted with THESE bytes, so keep the file that is being scanned.
+        const scannedFile = selectedImageFile;
+        clearContribution();
+
         scanPredictBtn.disabled = true;
         scanPredictBtn.textContent = 'Predicting...';
         scanResults.hidden = false;
@@ -513,6 +525,10 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             const result = await predictPlant(selectedImageFile, 5);
             renderResults(result);
+            offerContribution(result, scannedFile);
+            // Keep the scanned photo on this device (a few days) so the "Not identified?" report can
+            // use it, even after a reload, instead of asking for another one.
+            if (window.PhotoCache && window.PhotoCache.saveReportPhoto) window.PhotoCache.saveReportPhoto(selectedImageFile);
         } catch (err) {
             scanResults.innerHTML = '';
             scanResults.hidden = true;
@@ -585,10 +601,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Defence in depth: the server already withholds non-species classes, but one
         // must never render as a species or get a "Record this plant" link.
         const predictions = speciesOnly(result && result.predictions);
-        let html = '<div class="scan-result-header">' +
-            `<span>Inference: ${escapeHtml(result.inference_ms)}ms</span>` +
-            `<span>Model: ${escapeHtml(result.model_version)}</span>` +
-            '</div>';
+        let html = '';
 
         const verdict = verdictMessage(result, predictions[0]);
         if (verdict) html += `<p class="scan-verdict">${escapeHtml(verdict)}</p>`;
@@ -653,14 +666,28 @@ document.addEventListener('DOMContentLoaded', function () {
      * navigating to record.html. Rendered only when the session holds
      * record_plant, and re-rendered if the permission arrives late.
      */
-    function renderRecordLink(pred) {
-        if (canRecord !== true) return '';
-        const params = new URLSearchParams({
-            tab: 'new',
+    function recordHref(pred, fromScan) {
+        const names = {
             scientificName: pred.scientific_name || '',
             commonName: pred.commonName || pred.common_name || ''
-        });
-        return '<a class="scan-record-link" href="record.html?' + params.toString() + '" ' +
+        };
+        if (fromScan === true) {
+            // The contribution card's "Record it" . from=scan tells record.html this trip came from a
+            // scan, so it prefills the names and asks for a description. A species that is already in the library
+            // (the server attached a plantId) goes to "Add to existing" with that plant chosen; a species that is
+            // not goes to the new-plant tab.
+            const params = pred.plantId
+                ? new URLSearchParams({ tab: 'contribute', plantId: String(pred.plantId), ...names, from: 'scan' })
+                : new URLSearchParams({ tab: 'new', ...names, from: 'scan' });
+            return 'record.html?' + params.toString();
+        }
+        const params = new URLSearchParams({ tab: 'new', ...names });
+        return 'record.html?' + params.toString();
+    }
+
+    function renderRecordLink(pred) {
+        if (canRecord !== true) return '';
+        return '<a class="scan-record-link" href="' + recordHref(pred) + '" ' +
             'data-record-species="' + escapeHtml(pred.scientific_name || '') + '">Record this plant</a>';
     }
 
@@ -683,6 +710,145 @@ document.addEventListener('DOMContentLoaded', function () {
                 'error'
             );
         }
+    }
+
+    // ------------------------------------------------- scan contribution ----
+    // routes/ml.js adds `contribute_offer` to the /predict answer only when the server itself decided
+    // this photo may be offered for training (see config/contribute-offer.js). Without it nothing here
+    // runs and the page is exactly as it was. The card never decides anything: it shows the choices,
+    // posts the same file with the token to POST /api/ml/contribute, and shows the server's answer.
+    const scanContribute = document.getElementById('scanContribute');
+
+    // Worth another try: nothing was refused, the request just did not get through or the server tripped.
+    const CONTRIBUTE_RETRY_REASONS = ['network', 'server_error', 'save_failed'];
+    // Nothing more to do for this photo: it is already held (as a contribution, or in the library).
+    const CONTRIBUTE_DONE_REASONS = ['already_contributed', 'already_in_library'];
+    // A daily limit is the server saying thanks and "not now", not a fault: shown calmly, not as an error.
+    const CONTRIBUTE_LIMIT_REASONS = ['daily_cap', 'species_cap'];
+
+    function clearContribution() {
+        contribution = null;
+        if (!scanContribute) return;
+        scanContribute.hidden = true;
+        scanContribute.innerHTML = '';
+    }
+
+    function offerContribution(result, file) {
+        const offer = result && result.contribute_offer;
+        if (!scanContribute || !offer || typeof offer.token !== 'string' || offer.token === '') return;
+        // An "Other plant" offer (the model sees a plant it has no class for) comes with an unrecognized outcome.
+        const otherPlant = offer.kind === 'other_plant';
+        if (otherPlant ? result.outcome !== 'unrecognized' : result.outcome !== 'identified') return;
+        // The photo on screen changed while the scan was running: the offer is for the old one.
+        if (file !== selectedImageFile) return;
+        const top = otherPlant
+            ? { confidence: Number(offer.confidence) || 0, otherPlant: true }
+            : speciesOnly(result.predictions)[0];
+        if (!top) return;
+        contribution = { token: offer.token, file: file, prediction: top, phase: 'offer', message: '', tone: '' };
+        renderContributionCard(false);
+    }
+
+    function renderContributionCard(focusMessage) {
+        if (!scanContribute) return;
+        if (!contribution) {
+            clearContribution();
+            return;
+        }
+        const c = contribution;
+        const pred = c.prediction;
+        const otherPlant = Boolean(pred.otherPlant);
+        const name = pred.commonName || pred.scientific_name || 'this plant';
+        const pct = ((pred.confidence || 0) * 100).toFixed(1);
+        const sending = c.phase === 'sending';
+        const asking = c.phase === 'offer' || sending;
+        const recordLink = canRecord === true && !otherPlant
+            ? '<a class="btn scan-btn-secondary" href="' + recordHref(pred, true) + '" ' +
+                'data-record-species="' + escapeHtml(pred.scientific_name || '') + '">Record it</a>'
+            : '';
+
+        let html = '<h2 id="scanContributeTitle" class="scan-contribute-title">Help improve the plant model?</h2>';
+        if (asking) {
+            html += otherPlant
+                ? '<p class="scan-contribute-lead">The model is <strong>' + escapeHtml(pct) + '%</strong> sure this is a plant it does not know yet. ' +
+                    'You can share this photo to help it learn new plants.</p>'
+                : '<p class="scan-contribute-lead">The model is <strong>' + escapeHtml(pct) + '%</strong> sure this is <strong>' +
+                    escapeHtml(name) + '</strong>. You can share this photo to help it learn' +
+                    (recordLink ? ', or record the plant instead.' : '.') + '</p>';
+        }
+        if (c.message) {
+            html += '<p id="scanContributeStatus" class="scan-contribute-status ' + escapeHtml(c.tone || 'info') +
+                '" role="status" tabindex="-1">' + escapeHtml(c.message) + '</p>';
+        }
+        if (asking) {
+            html += '<div class="scan-actions">' +
+                '<button type="button" class="btn scan-btn-primary" data-contribute="help"' + (sending ? ' disabled' : '') + '>' +
+                    (sending ? 'Sending…' : 'Help improve the ML') + '</button>' +
+                recordLink +
+                '<button type="button" class="btn scan-btn-secondary" data-contribute="close"' + (sending ? ' disabled' : '') + '>Skip</button>' +
+                '</div>' +
+                '<p class="scan-hint scan-contribute-consent">Used only to train the plant model. Never shown publicly.</p>';
+        } else if (c.phase === 'refused') {
+            html += '<div class="scan-actions">' + recordLink +
+                '<button type="button" class="btn scan-btn-secondary" data-contribute="close">Close</button></div>';
+        }
+        scanContribute.innerHTML = html;
+        scanContribute.hidden = false;
+
+        // The buttons were just replaced, so a keyboard or screen-reader user would lose their place:
+        // move to the outcome of what they pressed.
+        if (focusMessage) {
+            const status = document.getElementById('scanContributeStatus');
+            if (status) status.focus();
+        }
+    }
+
+    async function submitContribution() {
+        const c = contribution;
+        if (!c || c.phase === 'sending') return;
+        c.phase = 'sending';
+        c.message = '';
+        c.tone = '';
+        renderContributionCard(false);
+        const name = c.prediction.commonName || c.prediction.scientific_name || 'this plant';
+        try {
+            await contributeScanPhoto(c.file, c.token);
+            if (contribution !== c) return;   // another photo was chosen meanwhile: nothing left to show
+            c.phase = 'done';
+            c.tone = 'success';
+            c.message = (c.prediction.otherPlant ? 'Thank you! Your photo will help the model learn new plants. ' : 'Thank you! Your photo of ' + name + ' will help the model learn. ') +
+                'It is used only for training and is never shown publicly.';
+        } catch (err) {
+            if (contribution !== c) return;
+            const reason = err && err.reason;
+            c.message = (err && err.message) || 'The photo could not be sent.';
+            if (CONTRIBUTE_DONE_REASONS.includes(reason)) {
+                c.phase = 'done';
+                c.tone = reason === 'already_contributed' ? 'success' : 'info';
+            } else if (CONTRIBUTE_RETRY_REASONS.includes(reason) || (err && err.status >= 500 && reason !== 'contribute_unavailable')) {
+                c.phase = 'offer';      // the buttons come back, so the person can try again
+                c.tone = 'error';
+            } else {
+                c.phase = 'refused';    // a cap, an expired offer, the setting turned off, ...: say why, no retry
+                c.tone = CONTRIBUTE_LIMIT_REASONS.includes(reason) ? 'info' : 'error';
+            }
+        }
+        renderContributionCard(true);
+    }
+
+    if (scanContribute) {
+        scanContribute.addEventListener('click', function (event) {
+            const record = event.target.closest('[data-record-species]');
+            if (record) {
+                // Plain link: it navigates on its own. This only carries the photo across, like the result list does.
+                stashScanPhoto(record.getAttribute('data-record-species'));
+                return;
+            }
+            const action = event.target.closest('[data-contribute]');
+            if (!action || action.disabled) return;
+            if (action.getAttribute('data-contribute') === 'help') submitContribution();
+            else clearContribution();      // Skip or Close: the token is dropped with the card
+        });
     }
 
     // ------------------------------------------------------------ lifecycle ----
@@ -713,6 +879,8 @@ document.addEventListener('DOMContentLoaded', function () {
         // A result rendered before this point is re-rendered, so a permission
         // that arrives late does not silently lose the link.
         reRenderResults();
+        // The card's "Record it" depends on the same permission.
+        renderContributionCard(false);
     });
 
     // ------------------------------------------------------------ reporting ----
@@ -720,21 +888,36 @@ document.addEventListener('DOMContentLoaded', function () {
     //
     // The predictions ride along as a HINT and nothing else. They are stored on
     // the report because what the model almost thought it was is often the most
-    // useful part of a failed prediction for the botanist who picks it up — but
+    // useful part of a failed prediction for the contributor who picks it up — but
     // they never pre-fill the form and are never shown as an answer. A prediction
     // is the reason this person is being asked, so it is not trustworthy input.
-    const DISCOVERY_MAX_FILES = 3;
+    // Tick-box clues for "What do you see?". Ticking only APPENDS text to the note, so a person who
+    // does not know the words for a plant can still describe it; "Anything else?" is for the rest.
+    const REPORT_CHECKLIST = [
+        { title: 'Leaves', items: ['compound leaves (many small leaflets)', 'simple leaves', 'leaves in pairs (opposite)', 'leaves one by one (alternate)', 'broad leaves', 'narrow or needle-like leaves', 'thorny or spiny'] },
+        { title: 'Flowers and fruit', items: ['has flowers', 'has fruit, berries or pods', 'no flowers or fruit visible'] },
+        { title: 'Growth', items: ['tree', 'shrub', 'vine or climber', 'small herb or ground cover', 'grass-like'] },
+        { title: 'Other clues', items: ['hairy or fuzzy surface', 'waxy or shiny surface', 'milky sap', 'strong smell', 'growing on a wall or rock', 'growing in water or wet ground'] }
+    ];
 
     async function setupDiscoveryReport() {
         const card = document.getElementById('discoveryReportCard');
         if (!card) return;
 
         const form = document.getElementById('discoveryReportForm');
-        const fileInput = document.getElementById('reportImages');
-        const fileHint = document.getElementById('reportFileHint');
         const result = document.getElementById('discoveryReportResult');
         const quota = document.getElementById('discoveryReportQuota');
         const submit = document.getElementById('discoveryReportSubmit');
+        const photoBox = document.getElementById('reportPhotoBox');
+        const photoImg = document.getElementById('reportPhotoImg');
+        const photoMeta = document.getElementById('reportPhotoMeta');
+        const noPhoto = document.getElementById('reportNoPhoto');
+        const pickBtn = document.getElementById('reportPickBtn');
+        const pickInput = document.getElementById('reportPickInput');
+        const checklist = document.getElementById('reportChecklist');
+        const noteField = document.getElementById('reportNote');
+        const notePreview = document.getElementById('reportNotePreview');
+        const contribute = document.getElementById('reportContribute');
 
         // The summary is the gate and the copy in one request: a 401 means the form
         // cannot work at all and must stay hidden.
@@ -758,33 +941,85 @@ document.addEventListener('DOMContentLoaded', function () {
             quota.hidden = false;
             quota.textContent = `You have ${summary.open} open report${summary.open === 1 ? '' : 's'} ` +
                 `of ${summary.limit}. One must be reviewed or withdrawn before you can file another.`;
-            ['reportNote', 'reportLocation', 'reportImages'].forEach((id) => {
-                const field = document.getElementById(id);
-                if (field) field.disabled = true;
-            });
-            submit.disabled = true;
+            form.querySelectorAll('input, textarea, button').forEach((el) => { el.disabled = true; });
         }
 
-        fileInput.addEventListener('change', function () {
-            const count = fileInput.files ? fileInput.files.length : 0;
-            // The count alone would never be enough — the server rejects the
-            // overflow too. This is the demonstration, not the control.
-            fileHint.textContent = count === 0
-                ? ''
-                : count > DISCOVERY_MAX_FILES
-                    ? `Only the first ${DISCOVERY_MAX_FILES} will be sent.`
-                    : `${count} photo${count === 1 ? '' : 's'} ready to send.`;
+        // ---- the photo: the scan itself, else the cached last scan, else one chosen photo ----
+        let cachedFile = null;      // last scan, restored from the device cache after a reload
+        let pickedFile = null;      // only for accounts that cannot scan
+        let sentFile = null;        // already reported: never offered again
+        let previewUrl = null;
+
+        function reportFile() {
+            const file = selectedImageFile || pickedFile || cachedFile;
+            return file && file !== sentFile ? file : null;
+        }
+
+        function renderPhoto() {
+            const file = reportFile();
+            if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+            if (file) {
+                previewUrl = URL.createObjectURL(file);
+                photoImg.src = previewUrl;
+                photoMeta.textContent = file === selectedImageFile
+                    ? 'The photo you just scanned. No need to take another one.'
+                    : file === pickedFile
+                        ? 'The photo you chose.'
+                        : 'Your last scanned photo, kept on this device for a few days.';
+            }
+            photoBox.hidden = !file;
+            // The picker is only a fallback for somebody who cannot scan at all.
+            const canPick = !selectedImageFile && !cachedFile;
+            noPhoto.hidden = Boolean(file) || !canPick;
+            pickBtn.hidden = !canPick;
+        }
+        onScanPhotoChange = renderPhoto;
+
+        pickBtn.addEventListener('click', () => pickInput.click());
+        pickInput.addEventListener('change', () => {
+            const file = pickInput.files && pickInput.files[0];
+            if (file && String(file.type || '').startsWith('image/')) pickedFile = file;
+            renderPhoto();
         });
+
+        try {
+            if (window.PhotoCache && window.PhotoCache.takeReportPhoto) cachedFile = await window.PhotoCache.takeReportPhoto();
+        } catch (err) { /* no cache: the scan itself still works */ }
+        renderPhoto();
+
+        // ---- the checklist: ticked items become one sentence at the front of the note ----
+        checklist.innerHTML = REPORT_CHECKLIST.map((group) =>
+            '<div class="report-group"><p class="report-group-title">' + escapeHtml(group.title) + '</p><div class="report-chips">' +
+            group.items.map((item) =>
+                '<label class="report-chip"><input type="checkbox" value="' + escapeHtml(item) + '"><span>' + escapeHtml(item) + '</span></label>'
+            ).join('') + '</div></div>'
+        ).join('');
+
+        function composeNote() {
+            const ticked = Array.from(checklist.querySelectorAll('input:checked')).map((box) => box.value);
+            const extra = noteField.value.trim();
+            const parts = [];
+            if (ticked.length) parts.push('What I see: ' + ticked.join(', ') + '.');
+            if (extra) parts.push(extra);
+            return parts.join(' ');
+        }
+
+        function updatePreview() {
+            const note = composeNote();
+            notePreview.textContent = note ? 'The contributor will read: ' + note : '';
+        }
+        checklist.addEventListener('change', updatePreview);
+        noteField.addEventListener('input', updatePreview);
 
         form.addEventListener('submit', async function (event) {
             event.preventDefault();
-            const note = document.getElementById('reportNote').value.trim();
+            const note = composeNote();
             const location = document.getElementById('reportLocation').value.trim();
-            const files = Array.from(fileInput.files || []).slice(0, DISCOVERY_MAX_FILES);
+            const file = reportFile();
 
-            if (!note && files.length === 0) {
+            if (!note && !file) {
                 result.hidden = false;
-                result.textContent = 'Add a note or at least one photo before sending.';
+                result.textContent = 'Scan a photo above, or tick what you see, before sending.';
                 return;
             }
 
@@ -792,7 +1027,7 @@ document.addEventListener('DOMContentLoaded', function () {
             body.append('note', note);
             body.append('location', location);
             // Species guesses only. When the server withheld the list (outcome
-            // 'unrecognized') it sends them as hint_predictions, so the botanist still
+            // 'unrecognized') it sends them as hint_predictions, so the contributor still
             // sees what the model almost thought. They stay a hint, never an answer.
             const predictions = speciesOnly(
                 lastScanResult && (lastScanResult.hint_predictions || lastScanResult.predictions)
@@ -800,7 +1035,10 @@ document.addEventListener('DOMContentLoaded', function () {
             if (predictions.length > 0) {
                 body.append('predictions', JSON.stringify(predictions));
             }
-            files.forEach((file) => body.append('images', file));
+            if (file) {
+                body.append('images', file, file.name || 'scan-photo.jpg');
+                body.append('allowContribution', contribute.checked ? '1' : '0');
+            }
 
             submit.disabled = true;
             result.hidden = false;
@@ -823,9 +1061,15 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (response.status === 409) quota.hidden = false;
                     return;
                 }
+                // Sent: the temporary copy is no longer needed, and the same photo is never offered twice.
+                sentFile = file;
+                cachedFile = null;
+                pickedFile = null;
+                if (window.PhotoCache && window.PhotoCache.dropReportPhoto) window.PhotoCache.dropReportPhoto();
                 form.reset();
-                fileHint.textContent = '';
-                result.textContent = 'Sent. A botanist will pick it up from the queue. ' +
+                updatePreview();
+                renderPhoto();
+                result.textContent = 'Sent. A contributor will pick it up from the queue. ' +
                     `Reference ${data.requestId}. You have ${data.openReports} of ${data.maxOpenReports} open.`;
                 quota.hidden = false;
                 if (typeof window.loadDiscoveryBadge === 'function') await window.loadDiscoveryBadge();

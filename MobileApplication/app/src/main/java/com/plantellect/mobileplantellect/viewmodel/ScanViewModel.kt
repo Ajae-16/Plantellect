@@ -3,6 +3,7 @@ package com.plantellect.mobileplantellect.viewmodel
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.plantellect.mobileplantellect.data.local.SettingsStore
 import com.plantellect.mobileplantellect.data.logic.AppError
 import com.plantellect.mobileplantellect.data.remote.ExtrasResult
 import com.plantellect.mobileplantellect.data.remote.ReportHint
@@ -15,11 +16,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 sealed interface ScanUiState {
     data object Idle : ScanUiState
-    data class Scanning(val uri: Uri) : ScanUiState
+    /** [retryInSeconds] is set while the server was unreachable and the scan waits to try it again. */
+    data class Scanning(val uri: Uri, val retryInSeconds: Int? = null) : ScanUiState
     data class Done(val uri: Uri, val outcome: ScanOutcome) : ScanUiState
 }
 
@@ -33,7 +36,11 @@ data class ContributionUi(
     val phase: ContributePhase,
     val speciesName: String,
     val message: String? = null,
-    val tone: MessageTone = MessageTone.INFO
+    val tone: MessageTone = MessageTone.INFO,
+    /** True for a plant the model has no class for: there is no species to name, only a confidence. */
+    val otherPlant: Boolean = false,
+    /** The server's own confidence for the offer (0..1). */
+    val confidence: Double? = null
 )
 
 // ------------------------------------------------------------------ "Not identified?" report
@@ -51,7 +58,10 @@ data class ReportUi(
     val isError: Boolean = false
 )
 
-class ScanViewModel(private val repo: ScanRepository) : ViewModel() {
+class ScanViewModel(
+    private val repo: ScanRepository,
+    private val settings: SettingsStore
+) : ViewModel() {
     private val _state = MutableStateFlow<ScanUiState>(ScanUiState.Idle)
     val state: StateFlow<ScanUiState> = _state.asStateFlow()
 
@@ -93,7 +103,9 @@ class ScanViewModel(private val repo: ScanRepository) : ViewModel() {
         _state.value = ScanUiState.Scanning(uri)
         job = viewModelScope.launch {
             val outcome = try {
-                repo.scan(uri, skipLocalGate = skipLocalGate)
+                repo.scan(uri, skipLocalGate = skipLocalGate) { left ->
+                    _state.update { s -> if (s is ScanUiState.Scanning) s.copy(retryInSeconds = left) else s }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -102,6 +114,8 @@ class ScanViewModel(private val repo: ScanRepository) : ViewModel() {
             }
             _contribution.value = offerFor(outcome)
             _state.value = ScanUiState.Done(uri, outcome)
+            // Settings > Privacy > "Help improve": send the offered photo without the person tapping the button.
+            if (_contribution.value != null && settings.autoContribute.value) contribute()
         }
     }
 
@@ -109,15 +123,25 @@ class ScanViewModel(private val repo: ScanRepository) : ViewModel() {
 
     /**
      * The server adds `contribute_offer` only when every one of its own rules holds (contributions on,
-     * identified, species in the library, confidence over the bar). The app only checks it is there.
+     * identified, species in the library or "other plant" allowed, confidence over the bar). The app only
+     * checks it is there and agrees with the outcome.
      */
     private fun offerFor(outcome: ScanOutcome): ContributionUi? {
         val server = outcome as? ScanOutcome.Server ?: return null
         if (server.uploadedJpeg == null) return null
+        val offer = server.response.contributeOffer ?: return null
+        if (offer.token.isBlank()) return null
+        // An "other plant" offer (a plant the model has no class for) goes with an unrecognized outcome,
+        // like the website's card; a species offer goes with an identified one.
+        if (offer.isOtherPlant) {
+            if (server.response.outcome != "unrecognized") return null
+            return ContributionUi(ContributePhase.OFFER, "this plant", otherPlant = true, confidence = offer.confidence)
+        }
         if (server.response.verdict() != ScanVerdict.IDENTIFIED) return null
-        if (server.response.contributeOffer?.token.isNullOrBlank()) return null
         val top = server.response.predictions.firstOrNull() ?: return null
-        return ContributionUi(ContributePhase.OFFER, top.displayName.ifBlank { top.scientificName })
+        return ContributionUi(
+            ContributePhase.OFFER, top.displayName.ifBlank { top.scientificName }, confidence = offer.confidence
+        )
     }
 
     fun contribute() {

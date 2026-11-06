@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.plantellect.mobileplantellect.data.logic.ProfileValidator
 import com.plantellect.mobileplantellect.data.remote.dto.AccountDto
 import com.plantellect.mobileplantellect.ui.theme.LeafMedium
 import com.plantellect.mobileplantellect.viewmodel.ProfileViewModel
@@ -80,7 +81,8 @@ fun ProfileScreen(
     }
 
     // Reports are only fetched when signed in, so a guest never triggers a failing call.
-    LaunchedEffect(account != null) { if (account != null) vm.load(1) }
+    LaunchedEffect(account != null) { if (account != null) { vm.load(1); vm.loadOwnProfile() } }
+    val edit by vm.edit.collectAsState()
 
     PlantellectPage {
         PageHeading("Personal space", "Your profile", "Your account and the plants you have reported.")
@@ -143,7 +145,7 @@ fun ProfileScreen(
         // ---- security: change password ----
         SectionTitle("Security")
 
-        OutlinedButton(onClick = { passwordNotice = null; showChangePassword = true }) {
+        OutlinedButton(onClick = { passwordNotice = null; vm.clearEditMessages(); showChangePassword = true }) {
             Text("Change password")
         }
 
@@ -199,10 +201,15 @@ fun ProfileScreen(
     // Dialogs live outside the page column so they never add spacing to it.
     if (showChangePassword && account != null) {
         ChangePasswordDialog(
+            busy = edit.changingPassword,
+            serverError = edit.passwordMessage?.takeIf { it.isError }?.text,
             onDismiss = { showChangePassword = false },
-            onConfirmed = {
-                showChangePassword = false
-                passwordNotice = "Your password was changed."
+            // The dialog stays open until the server accepts the change, so a wrong current password can be fixed.
+            onSubmit = { current, new ->
+                vm.changePassword(current, new) {
+                    showChangePassword = false
+                    passwordNotice = "Your password was changed."
+                }
             }
         )
     }
@@ -265,28 +272,28 @@ private fun ReportCard(
 
 /**
  * Two steps: (1) the form with current / new / confirm-new, (2) an "Are you sure?" dialog.
- * UI only: [onConfirmed] runs when the user taps "Yes, change it".
- *
- * NOTE: the server has no change-password endpoint yet (routes/auth.js only has register, login,
- * logout and me), so there is nothing to call from the TODO below until one is added.
+ * [onSubmit] runs when the user taps "Yes, change it" (POST /api/profile/password). [serverError] is the
+ * server's answer to the last attempt (wrong current password, locked after 5 wrong guesses, ...).
  */
 @Composable
 private fun ChangePasswordDialog(
+    busy: Boolean,
+    serverError: String?,
     onDismiss: () -> Unit,
-    onConfirmed: () -> Unit
+    onSubmit: (current: String, new: String) -> Unit
 ) {
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var confirming by remember { mutableStateOf(false) }
 
+    // Same rules as the server (6 to 72 bytes, different from the current one), checked once something is typed.
     val problem: String? = when {
-        next.isNotEmpty() && next.length < 8 -> "New password must be at least 8 characters."
-        next.isNotEmpty() && next == current -> "New password must differ from the current one."
-        confirm.isNotEmpty() && confirm != next -> "The new passwords do not match."
+        next.isNotEmpty() -> ProfileValidator.passwordProblem(current.ifEmpty { " " }, next, confirm.ifEmpty { null })
         else -> null
     }
-    val canSubmit = current.isNotEmpty() && next.isNotEmpty() && confirm.isNotEmpty() && problem == null
+    val canSubmit = !busy && current.isNotEmpty() && next.isNotEmpty() && confirm.isNotEmpty() &&
+            ProfileValidator.passwordProblem(current, next, confirm) == null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -296,9 +303,10 @@ private fun ChangePasswordDialog(
                 PasswordField("Current password", current) { current = it }
                 PasswordField("New password", next) { next = it }
                 PasswordField("Confirm new password", confirm) { confirm = it }
-                problem?.let {
+                (problem ?: serverError)?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
@@ -316,9 +324,8 @@ private fun ChangePasswordDialog(
             text = { Text("Are you sure you want to change your password?") },
             confirmButton = {
                 Button(onClick = {
-                    // TODO: call the change-password request here, then onConfirmed() on success.
                     confirming = false
-                    onConfirmed()
+                    onSubmit(current, next)
                 }) { Text("Yes, change it") }
             },
             dismissButton = {

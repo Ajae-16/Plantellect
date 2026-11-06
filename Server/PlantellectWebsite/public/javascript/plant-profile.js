@@ -31,7 +31,7 @@ function formatCreatedAt(raw) {
 }
 
 /**
- * Renders a botanist's text with its paragraphs, bullets and emphasis (richtext.js).
+ * Renders a contributor's text with its paragraphs, bullets and emphasis (richtext.js).
  * An empty value reads "No information recorded yet."
  */
 function renderList(el, text) {
@@ -40,13 +40,13 @@ function renderList(el, text) {
 
 /** Who wrote a description: the full name, falling back to the username. */
 function authorLabel(d) {
-    return (d && d.author && d.author.name) || 'A botanist';
+    return (d && d.author && d.author.name) || 'A contributor';
 }
 
 /**
- * The boxes for every description that is not the primary one. Each botanist has a colour
+ * The boxes for every description that is not the primary one. Each contributor has a colour
  * (RichText.contributorClass cycles through eight, so the ninth reuses the first). A box shows
- * only what that botanist actually recorded: no empty headings.
+ * only what that contributor actually recorded: no empty headings.
  */
 function renderOtherDescriptions(others, firstColourIndex) {
     const section = document.getElementById('moreDetails');
@@ -71,6 +71,7 @@ function renderOtherDescriptions(others, firstColourIndex) {
                 <span class="contrib-name">${escapeHtml(authorLabel(d))}</span>${spec}
             </div>
             ${blocks.map(([title, body]) => `<div class="contrib-section"><h5>${title}</h5>${body}</div>`).join('')}
+            <div class="desc-vote" data-desc-id="${escapeHtml(d.descriptionId)}" hidden></div>
         </article>`;
     }).join('');
     section.hidden = !list.innerHTML.trim();
@@ -86,7 +87,7 @@ function formatRange(min, max, note, unit) {
 }
 
 /**
- * "What it looks like" is built from the botanist's measurements. Lines are
+ * "What it looks like" is built from the contributor's measurements. Lines are
  * joined with \n; #plantDescription uses white-space: pre-line to show them.
  */
 function describeParts(parts) {
@@ -128,16 +129,15 @@ function isAdminViewer(viewer) {
 const ADMIN_LABELS = { admin: 'Administrator', superadmin: 'Superadministrator' };
 
 /**
- * 'botanist' | 'admin' | null (plain text). The role comes from the server
- * (person.role, or profileType / isBotanist from older responses), never from
- * a name, badge or label.
+ * 'contributor' | 'admin' | null (plain text). The role comes from the server
+ * (person.role), never from a name, badge or label. A plain `user` account is a
+ * contributor: there is no separate verified role any more.
  */
 function personKind(person) {
     if (!person) return null;
-    if (person.role === 'botanist') return 'botanist';
+    if (person.role === 'user') return 'contributor';
     if (person.role === 'admin' || person.role === 'superadmin') return 'admin';
-    const type = person.profileType || (person.isBotanist ? 'botanist' : null);
-    return type === 'botanist' || type === 'admin' ? type : null;
+    return person.profileType === 'admin' ? 'admin' : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,25 +152,25 @@ const SECTION_REPORTED = 'reportedBy';
  * Where a person's name links for THIS visitor in THIS section, or null for
  * plain text. Anything not listed here is plain text (fails closed).
  *
- *   recordedBy   botanist             -> everyone, guests included
+ *   recordedBy   contributor          -> everyone, guests included
  *                admin / superadmin   -> admins and superadmins only
  *   reviewedBy   admin / superadmin   -> admins and superadmins only
  *                (anyone else named here is plain text)
  *   reportedBy   never linked, for any viewer, until a future update
  *
- * Administrators are served by botanist-profile.html too (it renders the
+ * Administrators are served by contributor-profile.html too (it renders the
  * administrator layout from profile.role), so there is no second profile page.
- * This is display only: GET /api/botanists/:accountId enforces the same rule.
+ * This is display only: GET /api/contributors/:accountId enforces the same rule.
  */
 function profileHref(person, viewer, section) {
     if (section === SECTION_REPORTED) return null;
     if (!person || !person.accountId) return null;
 
     const kind = personKind(person);
-    const url = `botanist-profile.html?accountId=${encodeURIComponent(person.accountId)}`;
+    const url = `contributor-profile.html?accountId=${encodeURIComponent(person.accountId)}`;
 
     if (section === SECTION_RECORDED) {
-        if (kind === 'botanist') return url;
+        if (kind === 'contributor') return url;
         if (kind === 'admin' && isAdminViewer(viewer)) return url;
         return null;
     }
@@ -197,9 +197,9 @@ function splitNameString(value) {
 /**
  * Renders a list of people into a "Recorded by / Reviewed by / Reported by" row.
  * `section` picks the link rule (see profileHref); badges are the same in all:
- *  - botanist:           Verified Botanist badge
+ *  - contributor:        no badge, just the linked name
  *  - admin / superadmin: role tag, NO badge
- *  - user / system:      plain text
+ *  - system:             plain text
  * A name is a link only when profileHref() says so; otherwise it is a <span>
  * with no href, handler or pointer. Links are underlined (see .person-link in
  * public-theme.css), so an underlined name is always clickable and a plain one
@@ -229,19 +229,269 @@ function renderPeople(rowId, listId, people, viewer, section) {
         const name = escapeHtml(p.name);
         const kind = personKind(p);
         const href = profileHref(p, viewer, section);
-        const badge = kind === 'botanist'
-            ? '<span class="verified-badge"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span>Verified Botanist</span>'
-            : '';
         const roleTag = kind === 'admin' && ADMIN_LABELS[p.role]
             ? `<span class="role-tag">${ADMIN_LABELS[p.role]}</span>`
             : '';
         const label = href
             ? `<a class="person-link" href="${href}" title="View ${name}'s profile">${name}</a>`
             : `<span class="person-name">${name}</span>`;
-        return `<span class="person">${label}${badge}${roleTag}</span>`;
+        return `<span class="person">${label}${roleTag}</span>`;
     }).join('');
     row.hidden = false;
 }
+
+// ---------------------------------------------------------------------------
+// Thumbs up / down on a description (display only: the server enforces every rule).
+//
+//   up    one click; click again to take it back.
+//   down  opens a small panel: a dropdown of premade reasons, and for "Other" a box for the
+//         voter's own note, so the admin can see WHY a fact was marked bad. Click the filled
+//         thumb again to take the vote back.
+// Both counts are public, and "View votes" opens a small table: up and down totals, the premade
+// reasons counted, and the voters' own notes. Voter NAMES are never shown here (admin only).
+// ---------------------------------------------------------------------------
+
+const DescriptionVotes = (() => {
+    let plantId = null;
+    let summary = null;             // { signedIn, reasons, noteMaxLength, descriptions }
+    const openTables = new Set();   // description ids whose votes table is open
+
+    const icon = (name) => `<span class="material-symbols-outlined" aria-hidden="true">${name}</span>`;
+
+    function stateFor(id) {
+        return summary && summary.descriptions ? summary.descriptions[id] : null;
+    }
+
+    /** The votes table: totals first, then WHY people downvoted. No names: that is admin-only. */
+    function tableHtml(st) {
+        const rows = [
+            `<tr class="vt-up"><td>Upvote</td><td class="vt-n">${st.up}</td><td>Helpful</td></tr>`,
+            `<tr class="vt-down"><td>Downvote</td><td class="vt-n">${st.down}</td><td>Not good</td></tr>`
+        ];
+        for (const r of st.reasons || []) {
+            rows.push(`<tr class="vt-sub"><td>&nbsp;&nbsp;&#8627; Downvote</td><td class="vt-n">${r.count}</td><td>${escapeHtml(r.label)}</td></tr>`);
+        }
+        for (const note of st.notes || []) {
+            rows.push(`<tr class="vt-sub"><td>&nbsp;&nbsp;&#8627; Downvote note</td><td class="vt-n">1</td><td>&ldquo;${escapeHtml(note)}&rdquo;</td></tr>`);
+        }
+        return `<table class="votes-table">
+            <caption>Votes on this description</caption>
+            <thead><tr><th scope="col">Vote</th><th scope="col">Count</th><th scope="col">Reason</th></tr></thead>
+            <tbody>${rows.join('')}</tbody>
+        </table>`;
+    }
+
+    function barHtml(id, st) {
+        const mine = st.myVote;
+        const dis = st.own ? ' disabled' : '';
+        const why = st.own ? 'You wrote this description' : '';
+        return `
+            <div class="vote-row">
+                <button type="button" class="vote-btn vote-up${mine === 'up' ? ' is-active' : ''}" data-vote="up"
+                        aria-pressed="${mine === 'up'}" aria-label="Helpful: upvote this description"
+                        title="${why || (mine === 'up' ? 'Remove your upvote' : 'This is helpful')}"${dis}>
+                    ${icon('thumb_up')}<span class="vote-count">${st.up}</span>
+                </button>
+                <button type="button" class="vote-btn vote-down${mine === 'down' ? ' is-active' : ''}" data-vote="down"
+                        aria-pressed="${mine === 'down'}" aria-label="Not good: downvote this description"
+                        title="${why || (mine === 'down' ? 'Remove your downvote' : 'Something is wrong with this')}"${dis}>
+                    ${icon('thumb_down')}<span class="vote-count">${st.down}</span>
+                </button>
+                <button type="button" class="vote-table-btn" data-act="table" aria-expanded="${openTables.has(id)}">View votes</button>
+                <span class="vote-hint" role="status" aria-live="polite">${st.own ? 'Your description' : ''}</span>
+            </div>
+            <div class="votes-table-wrap"${openTables.has(id) ? '' : ' hidden'}>${tableHtml(st)}</div>
+            <div class="down-panel" hidden>
+                <label class="down-label">What is wrong with it?
+                    <select class="down-reason">
+                        <option value="">Choose a reason&hellip;</option>
+                        ${summary.reasons.map(r => `<option value="${escapeHtml(r.code)}">${escapeHtml(r.label)}</option>`).join('')}
+                    </select>
+                </label>
+                <label class="down-label down-note-wrap" hidden>Your note for the administrator
+                    <textarea class="down-note" rows="3" maxlength="${summary.noteMaxLength}"
+                              placeholder="Say what is wrong, e.g. which fact is incorrect"></textarea>
+                    <span class="down-count"><span class="down-count-n">0</span>/${summary.noteMaxLength}</span>
+                </label>
+                <p class="vote-error" role="alert" hidden></p>
+                <div class="down-actions">
+                    <button type="button" class="vote-submit" data-act="send">Send downvote</button>
+                    <button type="button" class="vote-cancel" data-act="cancel">Cancel</button>
+                </div>
+            </div>`;
+    }
+
+    function paint(bar) {
+        const id = bar.dataset.descId;
+        const st = stateFor(id);
+        if (!st) { bar.hidden = true; bar.innerHTML = ''; return; }
+        bar.innerHTML = barHtml(id, st);
+        bar.classList.toggle('is-own', Boolean(st.own));
+        bar.hidden = false;
+    }
+
+    function paintAll() {
+        document.querySelectorAll('.desc-vote[data-desc-id]').forEach(paint);
+    }
+
+    function setHint(bar, text) {
+        const hint = bar.querySelector('.vote-hint');
+        if (hint) hint.innerHTML = text;
+    }
+
+    async function send(bar, method, body) {
+        const id = bar.dataset.descId;
+        const res = await fetch(`/api/plants/${encodeURIComponent(plantId)}/descriptions/${encodeURIComponent(id)}/vote`, {
+            method,
+            credentials: 'include',
+            headers: body ? { 'Content-Type': 'application/json' } : undefined,
+            body: body ? JSON.stringify(body) : undefined
+        });
+        let data = {};
+        try { data = await res.json(); } catch (e) { /* keep {} */ }
+        return { ok: res.ok, status: res.status, data };
+    }
+
+    /** Applies a server answer: the new count and ballot, or the description vanishing. */
+    function applyResult(bar, data) {
+        const id = bar.dataset.descId;
+        if (data.hidden) {
+            // Enough people flagged it: it is gone from the page for everyone, right now.
+            // The primary one has no box of its own: the server has already handed the primary
+            // to the next best description, so the page is simply drawn again.
+            if (bar.id === 'primaryVote') { window.location.reload(); return; }
+            const box = bar.closest('.contrib-box');
+            if (box) box.remove();
+            else bar.hidden = true;
+            const list = document.getElementById('contribList');
+            const section = document.getElementById('moreDetails');
+            if (section && list && !list.children.length) section.hidden = true;
+            return;
+        }
+        const st = stateFor(id);
+        if (st) { st.up = data.up; st.myVote = data.myVote; }
+        paint(bar);
+        refresh();   // the down count, reasons and notes changed for everyone, not only for this ballot
+    }
+
+    /** Re-reads every count and repaints, keeping the open tables open. */
+    async function refresh() {
+        try {
+            const res = await fetch(`/api/plants/${encodeURIComponent(plantId)}/description-votes`, { credentials: 'include' });
+            if (!res.ok) return;
+            summary = await res.json();
+            paintAll();
+        } catch (err) {
+            console.error('Refresh description votes error:', err);
+        }
+    }
+
+    async function onVote(bar, kind) {
+        const st = stateFor(bar.dataset.descId);
+        if (!st || st.own) return;
+
+        if (!summary.signedIn) {
+            setHint(bar, '<a href="auth.html#login">Sign in</a> to vote');
+            return;
+        }
+
+        if (kind === 'down') {
+            if (st.myVote === 'down') return retract(bar);
+            const panel = bar.querySelector('.down-panel');
+            panel.hidden = !panel.hidden;
+            if (!panel.hidden) panel.querySelector('.down-reason').focus();
+            return;
+        }
+        if (st.myVote === 'up') return retract(bar);
+
+        const result = await send(bar, 'POST', { value: 'up' });
+        if (!result.ok) return setHint(bar, escapeHtml(result.data.error || 'Could not save your vote'));
+        applyResult(bar, result.data);
+    }
+
+    async function retract(bar) {
+        const result = await send(bar, 'DELETE');
+        if (!result.ok) return setHint(bar, escapeHtml(result.data.error || 'Could not remove your vote'));
+        applyResult(bar, result.data);
+    }
+
+    async function submitDown(bar) {
+        const reasonEl = bar.querySelector('.down-reason');
+        const noteEl = bar.querySelector('.down-note');
+        const errEl = bar.querySelector('.vote-error');
+        const code = reasonEl.value;
+        const showError = (msg) => { errEl.textContent = msg; errEl.hidden = false; };
+
+        if (!code) return showError('Please choose a reason.');
+        const body = { value: 'down', reasonCode: code };
+        if (code === 'other') {
+            const note = noteEl.value.trim();
+            if (note.length < 3) return showError('Please write a short note so the administrator knows what is wrong.');
+            body.reasonNote = note;
+        }
+        errEl.hidden = true;
+        const button = bar.querySelector('[data-act="send"]');
+        button.disabled = true;
+        const result = await send(bar, 'POST', body);
+        button.disabled = false;
+        if (!result.ok) return showError(result.data.error || 'Could not save your vote');
+        applyResult(bar, result.data);
+    }
+
+    function onClick(e) {
+        const bar = e.target.closest('.desc-vote');
+        if (!bar || !summary) return;
+        const voteBtn = e.target.closest('.vote-btn');
+        if (voteBtn && !voteBtn.disabled) return void onVote(bar, voteBtn.dataset.vote);
+        const act = e.target.closest('[data-act]');
+        if (!act) return;
+        if (act.dataset.act === 'table') {
+            const id = bar.dataset.descId;
+            const wrap = bar.querySelector('.votes-table-wrap');
+            wrap.hidden = !wrap.hidden;
+            if (wrap.hidden) openTables.delete(id); else openTables.add(id);
+            act.setAttribute('aria-expanded', String(!wrap.hidden));
+            return;
+        }
+        if (act.dataset.act === 'cancel') bar.querySelector('.down-panel').hidden = true;
+        else if (act.dataset.act === 'send') submitDown(bar);
+    }
+
+    function onChange(e) {
+        if (!e.target.classList.contains('down-reason')) return;
+        const bar = e.target.closest('.desc-vote');
+        const wrap = bar.querySelector('.down-note-wrap');
+        wrap.hidden = e.target.value !== 'other';
+        if (!wrap.hidden) wrap.querySelector('.down-note').focus();
+    }
+
+    function onInput(e) {
+        if (!e.target.classList.contains('down-note')) return;
+        const n = e.target.closest('.down-note-wrap').querySelector('.down-count-n');
+        n.textContent = String(e.target.value.length);
+    }
+
+    let bound = false;
+    async function init(id) {
+        plantId = id;
+        if (!bound) {
+            bound = true;
+            document.addEventListener('click', onClick);
+            document.addEventListener('change', onChange);
+            document.addEventListener('input', onInput);
+        }
+        try {
+            const res = await fetch(`/api/plants/${encodeURIComponent(plantId)}/description-votes`, { credentials: 'include' });
+            if (!res.ok) return;                       // no votes UI is better than a broken one
+            summary = await res.json();
+            paintAll();
+        } catch (err) {
+            console.error('Load description votes error:', err);
+        }
+    }
+
+    return { init };
+})();
 
 // ---------------------------------------------------------------------------
 // Photo lightbox: zoom (wheel, pinch, double-click, buttons), pan, fullscreen.
@@ -580,7 +830,7 @@ async function loadPlantProfile() {
     renderList(document.getElementById('plantUses'), primary && primary.uses);
     renderList(document.getElementById('plantBenefits'), primary && primary.benefits);
 
-    // Who wrote the description the cards above show, then one box per other botanist.
+    // Who wrote the description the cards above show, then one box per other contributor.
     const byline = document.getElementById('primaryByline');
     const allDescriptions = plant.descriptions || [];
     if (byline) {
@@ -594,7 +844,18 @@ async function loadPlantProfile() {
     }
     renderOtherDescriptions(allDescriptions.filter(d => d !== primary), 1);
 
-    // A harmful plant warns from its toxicity level even when no botanist wrote notes,
+    // The primary description gets its own thumbs, right under the byline.
+    const primaryVote = document.getElementById('primaryVote');
+    if (primaryVote) {
+        if (primary && primary.descriptionId) {
+            primaryVote.dataset.descId = primary.descriptionId;
+        } else {
+            delete primaryVote.dataset.descId;
+            primaryVote.hidden = true;
+        }
+    }
+
+    // A harmful plant warns from its toxicity level even when no contributor wrote notes,
     // and the plant's caution note shows whenever it has one, harmful or not.
     const harmfulEl = document.getElementById('plantHarmful');
     const harmfulText = primary && primary.harmful;
@@ -623,6 +884,9 @@ async function loadPlantProfile() {
     renderPeople('reportedByRow', 'reportedByList', plant.reportedBy, viewer, SECTION_REPORTED);
 
     showContributeLink(plantId, viewer);
+
+    // Last, and not awaited by anything above: the page is already readable without the thumbs.
+    DescriptionVotes.init(plantId);
 }
 
 /** Shows the Contribute button only when the session holds record_plant. */

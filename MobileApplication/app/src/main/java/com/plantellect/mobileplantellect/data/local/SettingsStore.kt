@@ -26,6 +26,37 @@ class SettingsStore(context: Context) {
     /** Developer view: confidence percentages and technical status. Off = plain-language results. */
     val debugMode: StateFlow<Boolean> = _debugMode.asStateFlow()
 
+    private val _typeCombo = MutableStateFlow(prefs.getString(KEY_TYPE_COMBO, null) ?: "DEFAULT")
+    /**
+     * The font combo, by its name in ui/theme/TypeCombos.kt (kept as text so this layer does not depend on
+     * the UI; TypeCombo.fromName turns an unknown or removed name into the default).
+     */
+    val typeCombo: StateFlow<String> = _typeCombo.asStateFlow()
+
+    private val _autoContribute = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CONTRIBUTE, false))
+    /**
+     * "Help improve": every scan the server offers for training is sent without asking. Off by default;
+     * the Settings screen only turns it on after the person confirms.
+     */
+    val autoContribute: StateFlow<Boolean> = _autoContribute.asStateFlow()
+
+    private val _contributeHintHidden = MutableStateFlow(prefs.getBoolean(KEY_CONTRIBUTE_HINT_HIDDEN, false))
+    /** True once the person chose "Don't show this again" on the scan card's "turn this on in Settings" hint. */
+    val contributeHintHidden: StateFlow<Boolean> = _contributeHintHidden.asStateFlow()
+
+    private val _offlineMode = MutableStateFlow(prefs.getBoolean(KEY_OFFLINE, false))
+    /**
+     * Settings > Scanning > "Offline mode". On: every scan runs on the phone's own model and the server is not
+     * contacted for scanning. Off (default): the server is preferred, and a scan that finds it unreachable waits
+     * and retries before falling back to the phone's model.
+     */
+    val offlineMode: StateFlow<Boolean> = _offlineMode.asStateFlow()
+
+    fun setOfflineMode(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_OFFLINE, enabled).apply()
+        _offlineMode.value = enabled
+    }
+
     fun setThemeMode(mode: ThemeMode) {
         prefs.edit().putString(KEY_THEME, mode.name).apply()
         _themeMode.value = mode
@@ -41,9 +72,28 @@ class SettingsStore(context: Context) {
         _debugMode.value = enabled
     }
 
+    fun setTypeCombo(name: String) {
+        prefs.edit().putString(KEY_TYPE_COMBO, name).apply()
+        _typeCombo.value = name
+    }
+
+    fun setAutoContribute(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_CONTRIBUTE, enabled).apply()
+        _autoContribute.value = enabled
+    }
+
+    fun setContributeHintHidden(hidden: Boolean) {
+        prefs.edit().putBoolean(KEY_CONTRIBUTE_HINT_HIDDEN, hidden).apply()
+        _contributeHintHidden.value = hidden
+    }
+
     private companion object {
+        const val KEY_TYPE_COMBO = "type_combo"
+        const val KEY_AUTO_CONTRIBUTE = "auto_contribute"
+        const val KEY_CONTRIBUTE_HINT_HIDDEN = "contribute_hint_hidden"
         const val KEY_THEME = "theme_mode"
         const val KEY_DYNAMIC = "dynamic_color"
         const val KEY_DEBUG = "debug_mode"
+        const val KEY_OFFLINE = "offline_mode"
     }
 }

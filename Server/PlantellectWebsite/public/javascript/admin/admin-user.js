@@ -26,7 +26,6 @@
 
     const FILTER_LABELS = {
         admin: 'Administrators',
-        botanist: 'Botanists',
         user: 'General Users',
         active: 'Active Accounts'
     };
@@ -258,7 +257,6 @@
     function updateCounts(counts) {
         if (!counts) return;
         document.getElementById('countAdmin').textContent = counts.admin;
-        document.getElementById('countBotanist').textContent = counts.botanist;
         document.getElementById('countUsers').textContent = counts.user;
         document.getElementById('countActive').textContent = counts.active;
     }
@@ -301,7 +299,7 @@
 
     /**
      * Role dropdown (replaces the Make admin button). Only a viewer with admin_promote is
-     * offered "Admin" and can change an admin/superadmin; change_role covers user <-> botanist.
+     * offered "Admin" and can change an admin/superadmin; change_role covers nothing beyond user.
      * No dropdown on your own row or the machine "system" account. The server enforces the same.
      */
     function renderRoleSelect(u, notSelf) {
@@ -313,8 +311,7 @@
         const locked = (u.role === 'admin' || u.role === 'superadmin') && !canPromote;
 
         const options = [
-            { value: 'user', label: 'General User' },
-            { value: 'botanist', label: 'Botanist' }
+            { value: 'user', label: 'General User' }
         ];
         if (canPromote) options.push({ value: 'admin', label: 'Admin' });
         if (!options.some((o) => o.value === u.role)) {

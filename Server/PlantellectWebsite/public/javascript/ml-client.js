@@ -16,6 +16,9 @@
  *   outcome        'identified' | 'uncertain' | 'unrecognized' - ONLY present in enforce mode
  *   reason         'species' | 'non_plant' | 'other_plant' | 'low_confidence' | 'close_call'
  *                  - only present together with outcome
+ *   contribute_offer  { token, expires_at } - ONLY present when this photo may be offered for training
+ *                  (contributeMode on, enforce mode, identified, species in the library, top-1 at or above
+ *                  the contribute threshold). Absent otherwise. Pass the token to contributeScanPhoto().
  *   inference_ms, model_id, model_version
  * Switch on `outcome` first. Without it (mlConfidence off or log mode) show `predictions` as before.
  */
@@ -36,6 +39,46 @@ async function predictPlant(imageFile, topK = 5) {
     }
 
     return response.json();
+}
+
+/**
+ * Offer a scanned photo to help train the model (private, training-only).
+ * Only meaningful when the predictPlant() answer carried `contribute_offer`.
+ * @param {File} imageFile - the SAME file that was sent to predictPlant(). The offer is bound to the
+ *   SHA-256 of those exact bytes, so a resized, re-encoded or different photo is refused (wrong_image).
+ * @param {string} token - contribute_offer.token from that predictPlant() answer
+ * @returns {Promise<Object>} { ok: true, plantId } on 201
+ * @throws {Error} message = the server's own words; .reason = the server's short code
+ *   (already_contributed, daily_cap, offer_expired, ...), or 'network' when the server could not be
+ *   reached and nothing was sent; .status = the HTTP status (0 for 'network')
+ */
+async function contributeScanPhoto(imageFile, token) {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    formData.append('token', token);
+
+    let response;
+    try {
+        response = await fetch('/api/ml/contribute', {
+            method: 'POST',
+            body: formData,
+            credentials: 'include'
+        });
+    } catch (err) {
+        const failure = new Error('Could not reach the server. The photo was not sent.');
+        failure.reason = 'network';
+        failure.status = 0;
+        throw failure;
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        const failure = new Error(data.error || 'The photo could not be sent.');
+        failure.reason = typeof data.reason === 'string' ? data.reason : '';
+        failure.status = response.status;
+        throw failure;
+    }
+    return data;
 }
 
 /**
@@ -62,10 +105,11 @@ async function getModelInfo() {
 // worse than no function. Nothing new may build on /api/ml/health.
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { predictPlant, getModelInfo };
+    module.exports = { predictPlant, getModelInfo, contributeScanPhoto };
 }
 
 if (typeof window !== 'undefined') {
     window.predictPlant = predictPlant;
     window.getModelInfo = getModelInfo;
+    window.contributeScanPhoto = contributeScanPhoto;
 }

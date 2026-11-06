@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -26,7 +27,9 @@ enum class ServerStatus {
     /** The phone has no active network at all (airplane mode, Wi-Fi off, ...). */
     NO_NETWORK,
     /** The phone has a network but the Plantellect server did not answer. */
-    SERVER_UNREACHABLE
+    SERVER_UNREACHABLE,
+    /** Settings > Scanning > Offline mode is on: the server is not contacted (and not probed) on purpose. */
+    OFFLINE_MODE
 }
 
 /**
@@ -40,6 +43,8 @@ class ServerMonitor(
     private val network: NetworkMonitor,
     baseClient: OkHttpClient,
     private val baseUrl: String,
+    /** Settings > Scanning > Offline mode. While true nothing is sent to the server, not even a probe. */
+    private val offlineMode: StateFlow<Boolean>,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) {
     /**
@@ -67,6 +72,7 @@ class ServerMonitor(
     private val mutex = Mutex()
     private var loop: Job? = null
     private var watcher: Job? = null
+    private var modeWatcher: Job? = null
 
     /** Safe to call repeatedly. Call from onStart so nothing runs while the app is in the background. */
     fun start() {
@@ -78,11 +84,14 @@ class ServerMonitor(
             }
         }
         watcher = scope.launch { network.changes.collect { checkNow() } }
+        // Turning offline mode on or off takes effect at once instead of at the next 10 s tick.
+        modeWatcher = scope.launch { offlineMode.drop(1).collect { checkNow() } }
     }
 
     fun stop() {
         loop?.cancel(); loop = null
         watcher?.cancel(); watcher = null
+        modeWatcher?.cancel(); modeWatcher = null
     }
 
     /** Runs one probe now and returns whether the server answered. Concurrent callers queue up. */
@@ -94,10 +103,12 @@ class ServerMonitor(
 
     /** A real request just failed with a connection error: don't wait for the next probe to find out. */
     fun reportFailure() {
+        if (offlineMode.value) return
         _status.value = if (network.hasNetwork()) ServerStatus.SERVER_UNREACHABLE else ServerStatus.NO_NETWORK
     }
 
     private suspend fun probe(): ServerStatus {
+        if (offlineMode.value) return ServerStatus.OFFLINE_MODE
         if (!network.hasNetwork()) return ServerStatus.NO_NETWORK
         return withContext(Dispatchers.IO) {
             try {

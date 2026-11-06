@@ -1,4 +1,4 @@
-/* Shared rich text: how a botanist's formatted description is DISPLAYED, the little
+/* Shared rich text: how a contributor's formatted description is DISPLAYED, the little
    toolbar that helps them write it, and the colour-coded contributor boxes.
    Markup is produced by public/javascript/richtext.js (RichText.html / .attach).
    Imported by public-theme.css (every public page) and admin-plants.css (admin pages),

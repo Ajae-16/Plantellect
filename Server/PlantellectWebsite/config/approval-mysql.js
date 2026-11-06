@@ -359,7 +359,7 @@ async function approvePlantRequest(requestId, reviewerId, note, options = {}) {
                     'plants',
                     ['taxonomyId', 'typeId', 'commonName', 'scientificName', 'quantity'],
                     // quantity starts at 0 and is raised by the photos approved below; it is
-                    // no longer a number the botanist types.
+                    // no longer a number the contributor types.
                     [taxonomyId, typeId, commonName, scientificName, 0]
                 );
             }
@@ -490,7 +490,7 @@ async function approvePlantRequest(requestId, reviewerId, note, options = {}) {
         // species already in the library.
         //
         // targetPlantId is set at the same time  so the admin queue, the
-        // botanist queue and the reporter's view all reach the plant in ONE hop
+        // contributor queue and the reporter's view all reach the plant in ONE hop
         // instead of two via recordRequestId. Note it carries ON DELETE CASCADE,
         // so deleting that plant later silently deletes the report too — pre-existing
         // behaviour for every request type, and why a report is not durable evidence.
@@ -512,7 +512,7 @@ async function approvePlantRequest(requestId, reviewerId, note, options = {}) {
                     [plantId, reviewerId, audit.approvalMode, systemNote, payload.discoveryRequestId]
                 );
                 // Credit, NOT authorship. The 'contributor' row and
-                // plant_description.accountId stay with the botanist who wrote the
+                // plant_description.accountId stay with the contributor who wrote the
                 // description; a 'user' is only ever a reporter.
                 await addContributorRow(conn, plantId, reporterId, 'reporter');
                 // The report is approved, so its photos move to discoveries/approved/.
@@ -613,7 +613,7 @@ async function approvePlantRequest(requestId, reviewerId, note, options = {}) {
  * option.
  *
  *   revise  the record is denied and the linked discovery report STAYS pending and
- *           returns to the botanist, who still holds the claim and can fix a typo
+ *           returns to the contributor, who still holds the claim and can fix a typo
  *           or swap a photo and resubmit immediately.
  *   reject  the species itself is refused: the record AND the report are denied
  *           with the same note, so nothing is left open.
@@ -621,7 +621,7 @@ async function approvePlantRequest(requestId, reviewerId, note, options = {}) {
  * The report write is in the SAME transaction as the denial — a report closed by a
  * half-applied rejection would vanish from the queue with no decision recorded.
  *
- * disqualifiedBy is left alone by both kinds: that column is a BOTANIST's "not a
+ * disqualifiedBy is left alone by both kinds: that column is a CONTRIBUTOR's "not a
  * plant" verdict carrying a reason enum, and borrowing it for an admin's action
  * would misattribute the finding. The claim is likewise not cleared —
  * `status != 'pending'` already ends its life for the cap, and keeping it records
@@ -657,7 +657,7 @@ async function denyPlantRequest(requestId, reviewerId, note, kind = 'revise') {
         });
         const photoFileProblems = [...photoMoves.failed];
         // plant_taxonomy and plant_change carry a targetPlantId but no content of their
-        // own. Without this guard, denying one would also reject the same botanist's
+        // own. Without this guard, denying one would also reject the same contributor's
         // unrelated pending descriptions and measurements on that plant.
         const carriesNoContent = request.requestType === 'plant_taxonomy' || request.requestType === 'plant_change';
         if (request.targetPlantId && !carriesNoContent) {

@@ -33,4 +33,22 @@ object ImagePreparer {
 
     fun toJpeg(bitmap: Bitmap, quality: Int = 88): ByteArray =
         ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
+
+    /**
+     * Re-encodes to JPEG that is at most [maxBytes], lowering quality and then size until it fits.
+     * Returns null only if even the smallest attempt is over the limit (practically never).
+     */
+    fun toJpegUnder(context: Context, uri: Uri, maxBytes: Int): ByteArray? {
+        var side = 2048
+        while (side >= 512) {
+            val bitmap = load(context, uri, maxSide = side)
+            for (quality in intArrayOf(90, 80, 70, 55)) {
+                val bytes = toJpeg(bitmap, quality)
+                if (bytes.size <= maxBytes) return bytes
+            }
+            bitmap.recycle()
+            side /= 2
+        }
+        return null
+    }
 }

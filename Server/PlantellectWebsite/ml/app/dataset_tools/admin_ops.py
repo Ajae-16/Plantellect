@@ -179,9 +179,57 @@ def browse(index_dir, roots, label="", part="", split="", kind="", page=1, size=
             "items": [_photo(r) for r in part_rows]}
 
 
-def _photo(r):
-    return {"pid": r["pid"], "sha": r["sha256"], "split": r["split"], "kind": r["kind"], "label": r["label"],
-            "part": r["part"], "source": r["source"], "name": Path(r["rel"]).name}
+def _photo(r, issues=None):
+    out = {"pid": r["pid"], "sha": r["sha256"], "split": r["split"], "kind": r["kind"], "label": r["label"],
+           "part": r["part"], "source": r["source"], "name": Path(r["rel"]).name}
+    if issues is not None:
+        out["issues"] = issues.get(r["pid"], [])
+    return out
+
+
+# What the audit found, as a tag on each photo of the Folders view. Several audit categories read as one tag for an admin:
+#   leak       LEAK (the same photo in two splits) and SIMILAR_LEAK (a near copy in another split)
+#   duplicate  REDUNDANT (the same photo twice inside one split and class)
+#   clash      CROSS_CLASS (the same photo filed under two different classes)
+ISSUE_KIND = {"LEAK": "leak", "SIMILAR_LEAK": "leak", "REDUNDANT": "duplicate", "CROSS_CLASS": "clash"}
+_ISSUE_RANK = {"LEAK": 0, "CROSS_CLASS": 1, "SIMILAR_LEAK": 2, "REDUNDANT": 3}   # which category speaks for a kind when a photo has two
+_issue_cache = {"key": None, "map": {}}
+
+
+def issue_map(index_dir):
+    """pid -> [{kind, category, clusterId}] for every photo in a cluster of the last audit that nobody has reviewed yet.
+
+    A set an admin marked as handled or "not a problem" no longer tags its photos. A photo moved since the audit has a new
+    pid (it is a hash of the path), so it drops its tag until the next audit re-checks it, which is what the move note says.
+    Rebuilt only when latest.json or review.json changes."""
+    rp, vp = Path(index_dir) / "reports" / "latest.json", Path(index_dir) / "review.json"
+    key = (rp.stat().st_mtime_ns if rp.exists() else None, vp.stat().st_mtime_ns if vp.exists() else None)
+    if _issue_cache["key"] == key:
+        return _issue_cache["map"]
+    report = _report(index_dir)
+    review = _json_file(vp, {})
+    found = {}
+    for c in (report or {}).get("clusters", []):
+        kind = ISSUE_KIND.get(c.get("category"))
+        if not kind or c.get("id") in review:
+            continue
+        for m in c.get("members", []):
+            pid = m.get("pid")
+            if not pid:
+                continue
+            per_kind = found.setdefault(pid, {})
+            have = per_kind.get(kind)
+            if have is None or _ISSUE_RANK[c["category"]] < _ISSUE_RANK[have["category"]]:
+                per_kind[kind] = {"kind": kind, "category": c["category"], "clusterId": c["id"]}
+    out = {pid: sorted(per_kind.values(), key=lambda i: _ISSUE_RANK[i["category"]]) for pid, per_kind in found.items()}
+    _issue_cache.update(key=key, map=out)
+    return out
+
+
+def labels_of(index_dir, roots, pids):
+    """pid -> {label, kind} for photos that are in the dataset. The web server uses it to know which species an operation
+    touches (species locks). A pid that is gone is left out; a malformed one is a 400."""
+    return {"labels": {pid: {"label": r["label"], "kind": r["kind"]} for pid, r in _lookup(index_dir, roots, pids).items()}}
 
 
 _KIND_ORDER = ["species", "other_plant", "non_plant"]
@@ -201,6 +249,7 @@ def folder(index_dir, roots, split="", kind="", label="", part="", source="", pa
     A dataset with no train/val/test split skips that level.
     """
     rows = _rows(index_dir, roots)
+    issues = issue_map(index_dir)
     has_split = any(r["split"] for r in rows)
     split_of = lambda r: r["split"] or "pool"
     cur = {"split": split, "kind": kind, "label": label, "part": part, "source": source}
@@ -223,8 +272,15 @@ def folder(index_dir, roots, split="", kind="", label="", part="", source="", pa
         out = []
         for n in sorted(buckets, key=rank):
             first = min(buckets[n], key=lambda r: r["rel"])
-            out.append({"name": _crumb(level, n), "value": n, "count": len(buckets[n]),
-                        "cover": {"pid": first["pid"], "sha": first["sha256"]}})
+            folder_item = {"name": _crumb(level, n), "value": n, "count": len(buckets[n]),
+                           "cover": {"pid": first["pid"], "sha": first["sha256"]}}
+            flagged = {}
+            for r in buckets[n]:
+                for kind in {i["kind"] for i in issues.get(r["pid"], [])}:
+                    flagged[kind] = flagged.get(kind, 0) + 1
+            if flagged:
+                folder_item["flagged"] = flagged            # photos in this folder with an audit finding, per tag
+            out.append(folder_item)
         return out
 
     folders, loose, level = [], [], None
@@ -257,8 +313,9 @@ def folder(index_dir, roots, split="", kind="", label="", part="", source="", pa
         chosen[lv] = v
         crumbs.append({"label": _crumb(lv, v), "params": dict(chosen)})
     return {"crumbs": crumbs, "parent": dict(crumbs[-2]["params"]) if len(crumbs) > 1 else {},
-            "atRoot": not crumbs, "level": level, "folders": folders, "photos": [_photo(r) for r in shown],
-            "photoTotal": len(loose), "page": page, "pageSize": size, "photosInside": len(sel)}
+            "atRoot": not crumbs, "level": level, "folders": folders, "photos": [_photo(r, issues) for r in shown],
+            "photoTotal": len(loose), "page": page, "pageSize": size, "photosInside": len(sel),
+            "auditAt": (_report(index_dir) or {}).get("generatedAt")}
 
 
 def thumb_path(index_dir, sha):

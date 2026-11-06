@@ -51,6 +51,21 @@ export async function updateConfidence(modelId, config) {
     return response.json();
 }
 
+// One request for every changed model: the server validates all of them and saves all or none.
+export async function updateConfidenceMany(changes) {
+    const response = await fetch('/admin/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ mlConfidence: changes })
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update confidence thresholds');
+    }
+    return response.json();
+}
+
 export async function updateApprovalMode(requestType, enabled) {
     const response = await fetch('/admin/api/approval-modes', {
         method: 'POST',
@@ -107,17 +122,45 @@ export async function updateRoleLimits(roleLimits) {
     return response.json();
 }
 
-export function renderModelSelector(container, models, activeModelId, onChange) {
+// Settings are drafts: nothing here saves on change. Each section registers with SettingsForms
+// (javascript/admin/settings-forms.js), which adds Save / Cancel, a per-row undo and the
+// "Save all / Cancel all" bar. The load* functions at the bottom do the registering.
+const forms = () => window.SettingsForms;
+
+export function renderModelSelector(container, models, activeModelId) {
     const options = models.map(m => `<option value="${escapeHtml(m)}" ${m === activeModelId ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('');
     container.innerHTML = `
-        <label for="activeModelSelect" class="setting-label">Active Model</label>
-        <select id="activeModelSelect" class="setting-select">${options}</select>
+        <div class="setting-row">
+            <label for="activeModelSelect" class="setting-label">Active Model</label>
+            <select id="activeModelSelect" class="setting-select">${options}</select>
+        </div>
     `;
-    const select = container.querySelector('#activeModelSelect');
-    select.addEventListener('change', () => onChange(select.value));
 }
 
-export function renderConfidenceThresholds(container, confidence, availableModels, onChange) {
+// Same values as DEFAULTS in config/ml-confidence.js; only used to fill a panel that has no saved value.
+const CONFIDENCE_DEFAULTS = {
+    mode: 'off', acceptThreshold: 0.70, uncertainThreshold: 0.35, marginThreshold: 0.15,
+    contributeMode: 'off', contributeThreshold: 0.95, contributeUpperThreshold: 1, contributeDailyCap: 5, contributeSpeciesCap: 20, contributeOtherPlants: 'off', contributeOtherPlantCap: 20
+};
+
+// Shown as percents (95) on this page only. The backend, the database and the scan tokens all keep
+// 0..1 (0.95): the conversion happens in SettingsForms.decimalToPercent / percentToDecimal.
+const PERCENT_FIELDS = ['acceptThreshold', 'uncertainThreshold', 'marginThreshold', 'contributeThreshold', 'contributeUpperThreshold'];
+const WHOLE_FIELDS = ['contributeDailyCap', 'contributeSpeciesCap', 'contributeOtherPlantCap'];
+const PERCENT_LABELS = {
+    acceptThreshold: 'Accept Threshold', uncertainThreshold: 'Uncertain Threshold', marginThreshold: 'Margin Threshold',
+    contributeThreshold: 'Contribute lower threshold', contributeUpperThreshold: 'Contribute upper threshold'
+};
+
+function percentRow(c, field) {
+    return `
+                <div class="setting-row">
+                    <label class="setting-label">${PERCENT_LABELS[field]} (%)</label>
+                    <input type="number" class="setting-input" data-field="${field}" data-percent value="${forms().decimalToPercent(c[field])}" step="any" min="0" max="100">
+                </div>`;
+}
+
+export function renderConfidenceThresholds(container, confidence, availableModels) {
     // Every model the ML service has loaded gets a panel, even before it has a saved
     // entry: the panel below falls back to defaults, and the first save creates the
     // entry. (Filtering on `confidence[m]` meant a new model could never be configured.)
@@ -127,8 +170,14 @@ export function renderConfidenceThresholds(container, confidence, availableModel
         <button type="button" class="confidence-tab ${i === 0 ? 'active' : ''}" data-model="${escapeHtml(id)}">${escapeHtml(id)}</button>
     `).join('');
 
+    // What each panel was built from, so an untouched field is saved back exactly as it was
+    // (a stored 0.123456 shows as 12.35 and must not be rewritten as 0.1235).
+    const originals = {};
+
     const panelsHtml = modelIds.map((id, i) => {
-        const c = confidence[id] || { mode: 'off', acceptThreshold: 0.70, uncertainThreshold: 0.35, marginThreshold: 0.15 };
+        // Merged over the defaults so a model saved before the contribute keys existed still renders.
+        const c = { ...CONFIDENCE_DEFAULTS, ...(confidence[id] || {}) };
+        originals[id] = c;
         return `
             <div class="confidence-panel ${i === 0 ? 'active' : ''}" data-model="${escapeHtml(id)}">
                 <div class="setting-row">
@@ -139,17 +188,41 @@ export function renderConfidenceThresholds(container, confidence, availableModel
                         <option value="enforce" ${c.mode === 'enforce' ? 'selected' : ''}>Enforce</option>
                     </select>
                 </div>
+                ${percentRow(c, 'acceptThreshold')}
+                ${percentRow(c, 'uncertainThreshold')}
+                ${percentRow(c, 'marginThreshold')}
+                <h3 class="confidence-subhead">Scan contributions</h3>
+                <p class="admin-subtitle">Lets a user offer a scan photo for ML training only. Never shown publicly. Offers are made only when Mode above is <strong>Enforce</strong> and the scan is identified.</p>
                 <div class="setting-row">
-                    <label class="setting-label">Accept Threshold</label>
-                    <input type="number" class="setting-input" data-field="acceptThreshold" value="${c.acceptThreshold}" step="0.01" min="0" max="1">
+                    <label class="setting-label">Contribute offers</label>
+                    <select class="setting-select" data-field="contributeMode">
+                        <option value="off" ${c.contributeMode !== 'on' ? 'selected' : ''}>Off</option>
+                        <option value="on" ${c.contributeMode === 'on' ? 'selected' : ''}>On</option>
+                    </select>
+                </div>
+                ${percentRow(c, 'contributeThreshold')}
+                ${percentRow(c, 'contributeUpperThreshold')}
+                <p class="admin-subtitle">A scan is offered only when its top confidence is <strong>between</strong> the lower and upper thresholds (both included), for example 85 to 95. Set the upper to 100 for no ceiling. The scan must also be identified, so keep the band at or above the Accept Threshold.</p>
+                <div class="setting-row">
+                    <label class="setting-label">Daily cap per user</label>
+                    <input type="number" class="setting-input" data-field="contributeDailyCap" value="${c.contributeDailyCap}" step="1" min="1" max="1000">
                 </div>
                 <div class="setting-row">
-                    <label class="setting-label">Uncertain Threshold</label>
-                    <input type="number" class="setting-input" data-field="uncertainThreshold" value="${c.uncertainThreshold}" step="0.01" min="0" max="1">
+                    <label class="setting-label">Daily cap per species</label>
+                    <input type="number" class="setting-input" data-field="contributeSpeciesCap" value="${c.contributeSpeciesCap}" step="1" min="1" max="1000">
+                </div>
+                <h3 class="confidence-subhead">Other plant contributions</h3>
+                <p class="admin-subtitle">Scans the model calls <strong>Other plant</strong> (a plant it has no class for). They use the same Contribute offers switch and confidence band above, but have their own switch and daily cap. These photos have no plant yet: they wait under <strong>Other plant (no plant assigned yet)</strong> in Plants &gt; Scan contributions until an admin moves them to the right plant. They never reach the dataset or the public library on their own.</p>
+                <div class="setting-row">
+                    <label class="setting-label">Accept Other plant scans</label>
+                    <select class="setting-select" data-field="contributeOtherPlants">
+                        <option value="off" ${c.contributeOtherPlants !== 'on' ? 'selected' : ''}>Off</option>
+                        <option value="on" ${c.contributeOtherPlants === 'on' ? 'selected' : ''}>On</option>
+                    </select>
                 </div>
                 <div class="setting-row">
-                    <label class="setting-label">Margin Threshold</label>
-                    <input type="number" class="setting-input" data-field="marginThreshold" value="${c.marginThreshold}" step="0.01" min="0" max="1">
+                    <label class="setting-label">Daily cap for Other plant (all users)</label>
+                    <input type="number" class="setting-input" data-field="contributeOtherPlantCap" value="${c.contributeOtherPlantCap}" step="1" min="1" max="1000">
                 </div>
             </div>
         `;
@@ -168,25 +241,65 @@ export function renderConfidenceThresholds(container, confidence, availableModel
         });
     });
 
-    container.querySelectorAll('.confidence-panel').forEach(panel => {
-        const modelId = panel.dataset.model;
-        panel.querySelectorAll('select, input').forEach(input => {
-            input.addEventListener('change', () => {
-                const config = {
-                    mode: panel.querySelector('.confidence-mode').value,
-                    acceptThreshold: parseFloat(panel.querySelector('[data-field="acceptThreshold"]').value),
-                    uncertainThreshold: parseFloat(panel.querySelector('[data-field="uncertainThreshold"]').value),
-                    marginThreshold: parseFloat(panel.querySelector('[data-field="marginThreshold"]').value)
-                };
-                onChange(modelId, config);
-            });
+    // Marks the tab of every model that has unsaved edits (so a change on a hidden tab is not missed).
+    function markDirtyTabs() {
+        container.querySelectorAll('.confidence-panel').forEach(panel => {
+            const tab = container.querySelector(`.confidence-tab[data-model="${CSS.escape(panel.dataset.model)}"]`);
+            if (tab) tab.classList.toggle('is-dirty', Boolean(panel.querySelector('.sf-changed')));
         });
-    });
+    }
+
+    // Reads one panel back into the stored shape (0..1). Returns { config } or { error }.
+    function readPanel(panel) {
+        const original = originals[panel.dataset.model];
+        const config = { ...original };
+        config.mode = panel.querySelector('.confidence-mode').value;
+        config.contributeMode = panel.querySelector('[data-field="contributeMode"]').value;
+        config.contributeOtherPlants = panel.querySelector('[data-field="contributeOtherPlants"]').value;
+        for (const field of PERCENT_FIELDS) {
+            const input = panel.querySelector(`[data-field="${field}"]`);
+            if (!input.classList.contains('sf-changed')) continue;   // untouched: keep the stored number as is
+            const decimal = forms().percentToDecimal(input.value);
+            if (Number.isNaN(decimal) || decimal < 0 || decimal > 1) {
+                return { error: `${panel.dataset.model}: ${PERCENT_LABELS[field]} must be a number from 0 to 100.` };
+            }
+            config[field] = decimal;
+        }
+        for (const field of WHOLE_FIELDS) {
+            const input = panel.querySelector(`[data-field="${field}"]`);
+            if (!input.classList.contains('sf-changed')) continue;
+            const n = Number(input.value);
+            if (input.value.trim() === '' || !Number.isInteger(n) || n < 1 || n > 1000) {
+                return { error: `${panel.dataset.model}: ${input.closest('.setting-row').querySelector('.setting-label').textContent} must be a whole number from 1 to 1000.` };
+            }
+            config[field] = n;
+        }
+        if (config.contributeThreshold > config.contributeUpperThreshold) {
+            return { error: `${panel.dataset.model}: the contribute lower threshold cannot be higher than the upper threshold.` };
+        }
+        if (config.uncertainThreshold >= config.acceptThreshold) {
+            return { error: `${panel.dataset.model}: the Uncertain Threshold must be lower than the Accept Threshold.` };
+        }
+        return { config };
+    }
+
+    // { modelId: config } for every panel with unsaved edits, or { error }.
+    function collectChanges() {
+        const changes = {};
+        for (const panel of container.querySelectorAll('.confidence-panel')) {
+            if (!panel.querySelector('.sf-changed')) continue;
+            const read = readPanel(panel);
+            if (read.error) return { error: read.error };
+            changes[panel.dataset.model] = read.config;
+        }
+        return { changes };
+    }
+
+    return { markDirtyTabs, collectChanges, originals };
 }
 
-export function renderApprovalModes(container, payload, onToggle) {
+export function renderApprovalModes(container, payload) {
     const modes = payload.modes || [];
-    const autoCount = modes.filter(m => m.auto).length;
 
     const railsHtml = (payload.rules && payload.rules.rails) || [];
     const railsHtmlStr = railsHtml.length > 0
@@ -195,6 +308,7 @@ export function renderApprovalModes(container, payload, onToggle) {
             '</ul><p>' + escapeHtml((payload.rules && payload.rules.neverDenies) || '') + '</p></details>'
         : '';
 
+    // The notice for this section is the static #approvalModesNotice in admin-settings.html.
     container.innerHTML = `
         <p class="admin-subtitle">All types start as <strong>manual</strong>. Automatic means a fixed rule approves submissions, recorded as &ldquo;System&rdquo;.</p>
         <div class="approval-mode-list" id="approvalModesList">
@@ -222,74 +336,79 @@ export function renderApprovalModes(container, payload, onToggle) {
             `).join('')}
         </div>
         <div id="approvalModesRails">${railsHtmlStr}</div>
-        <p class="admin-notice" id="approvalModesNotice" hidden></p>
     `;
 
+    // The row's label and look follow the switch while it is a draft.
     container.querySelectorAll('.approval-mode-input').forEach(input => {
-        input.addEventListener('change', () => onToggle(input));
-    });
-}
-
-export function renderDiscoveriesSettings(container, settings, onChange) {
-    const fields = [
-        { key: 'maxClaimsPerBotanist', label: 'Max Claims per Botanist', min: 1, max: 1000 },
-        { key: 'maxOpenReportsPerAccount', label: 'Max Open Reports per Account', min: 1, max: 1000 },
-        { key: 'cancelGraceHours', label: 'Cancel Grace Period (hours)', min: 0, max: 8760 },
-        { key: 'reportCooldownMinutes', label: 'Report Cooldown (minutes)', min: 0, max: 10080 },
-        { key: 'claimStaleDays', label: 'Claim Stale Days', min: 1, max: 365 },
-        { key: 'notAPlantVotes', label: 'Not-a-Plant Vote Ceiling', min: 2, max: 100 },
-        { key: 'discoveryClosedPhotoDays', label: 'Closed Report Photo Retention (days)', min: 1, max: 365 }
-    ];
-
-    container.innerHTML = fields.map(f => `
-        <div class="setting-row">
-            <label class="setting-label">${escapeHtml(f.label)}</label>
-            <input type="number" class="setting-input" data-key="${f.key}" value="${settings[f.key]}" min="${f.min}" max="${f.max}">
-        </div>
-    `).join('');
-
-    container.querySelectorAll('.setting-input').forEach(input => {
         input.addEventListener('change', () => {
-            const updated = {};
-            container.querySelectorAll('.setting-input').forEach(i => {
-                updated[i.dataset.key] = parseInt(i.value, 10);
-            });
-            onChange(updated);
+            const row = input.closest('.approval-mode-row');
+            if (!row) return;
+            row.classList.toggle('is-auto', input.checked);
+            const pill = row.querySelector('.mode-pill');
+            if (pill) pill.textContent = input.checked ? 'Automatic' : 'Manual';
         });
     });
 }
 
-export function renderMLRequestSettings(container, settings, onChange) {
+const DISCOVERY_FIELDS = [
+    { key: 'maxClaimPerUsers', label: 'Max Claims per User', min: 1, max: 1000 },
+    { key: 'maxOpenReportsPerAccount', label: 'Max Open Reports per Account', min: 1, max: 1000 },
+    { key: 'cancelGraceHours', label: 'Cancel Grace Period (hours)', min: 0, max: 8760 },
+    { key: 'reportCooldownMinutes', label: 'Report Cooldown (minutes)', min: 0, max: 10080 },
+    { key: 'claimStaleDays', label: 'Claim Stale Days', min: 1, max: 365 },
+    { key: 'notAPlantVotes', label: 'Not-a-Plant Vote Ceiling', min: 2, max: 100 },
+    { key: 'discoveryClosedPhotoDays', label: 'Closed Report Photo Retention (days)', min: 1, max: 365 }
+];
+
+export function renderDiscoveriesSettings(container, settings) {
+    container.innerHTML = DISCOVERY_FIELDS.map(f => `
+        <div class="setting-row">
+            <label class="setting-label">${escapeHtml(f.label)}</label>
+            <input type="number" class="setting-input" data-key="${f.key}" value="${settings[f.key]}" min="${f.min}" max="${f.max}" step="1">
+        </div>
+    `).join('');
+}
+
+// Whole-number inputs: returns { values } (every key, as numbers) or { error }.
+function readWholeNumbers(container, fields) {
+    const values = {};
+    for (const f of fields) {
+        const input = container.querySelector(`[data-key="${f.key}"]`);
+        const n = Number(input.value);
+        if (input.value.trim() === '' || !Number.isInteger(n) || n < f.min || n > f.max) {
+            return { error: `${f.label} must be a whole number from ${f.min} to ${f.max}.` };
+        }
+        values[f.key] = n;
+    }
+    return { values };
+}
+
+export function renderMLRequestSettings(container, settings) {
     container.innerHTML = `
         <div class="setting-row">
             <label class="setting-label">Max Top-K</label>
-            <input type="number" class="setting-input" id="maxTopKInput" value="${settings.maxTopK}" min="1" max="100">
+            <input type="number" class="setting-input" id="maxTopKInput" value="${settings.maxTopK}" min="1" max="100" step="1">
         </div>
     `;
-
-    const input = container.querySelector('#maxTopKInput');
-    input.addEventListener('change', () => {
-        onChange({ maxTopK: parseInt(input.value, 10) });
-    });
 }
 
-export function renderSpamQuotas(container, roleLimits, onChange) {
+const QUOTA_DEFAULTS = {
+    maxClaimPerUsers: 20,
+    maxOpenReportsPerAccount: 10,
+    maxScan: 30,
+    rateLimitWindowMin: 10
+};
+const QUOTA_LIMITS = { maxClaimPerUsers: 1000, maxOpenReportsPerAccount: 1000, maxScan: 1000, rateLimitWindowMin: 10080 };
+
+export function renderSpamQuotas(container, roleLimits) {
     if (!roleLimits || roleLimits.length === 0) {
         container.innerHTML = '<p>No role limits configured.</p>';
         return;
     }
 
-    // Default values from settings for reference
-    const DEFAULTS = {
-        maxClaimsPerBotanist: 20,
-        maxOpenReportsPerAccount: 10,
-        maxScan: 30,
-        rateLimitWindowMin: 10
-    };
-
     container.innerHTML = `
         <div class="quota-defaults-note" style="margin-bottom: 12px; font-size: 13px; opacity: 0.7;">
-            Defaults: Max Claims ${DEFAULTS.maxClaimsPerBotanist}, Max Open Reports ${DEFAULTS.maxOpenReportsPerAccount}, Max Scans ${DEFAULTS.maxScan} per ${DEFAULTS.rateLimitWindowMin} min window.
+            Defaults: Max Claims ${QUOTA_DEFAULTS.maxClaimPerUsers}, Max Open Reports ${QUOTA_DEFAULTS.maxOpenReportsPerAccount}, Max Scans ${QUOTA_DEFAULTS.maxScan} per ${QUOTA_DEFAULTS.rateLimitWindowMin} min window.
             Empty fields use defaults.
         </div>
         <table class="role-limits-table">
@@ -306,35 +425,42 @@ export function renderSpamQuotas(container, roleLimits, onChange) {
                 ${roleLimits.map(r => `
                     <tr data-role="${escapeHtml(r.roleName)}">
                         <td>${escapeHtml(r.roleName)}</td>
-                        <td><input type="number" class="setting-input quota-input" data-key="maxClaimsPerBotanist" value="${r.maxClaimsPerBotanist ?? ''}" min="1" max="1000" placeholder="${DEFAULTS.maxClaimsPerBotanist}"></td>
-                        <td><input type="number" class="setting-input quota-input" data-key="maxOpenReportsPerAccount" value="${r.maxOpenReportsPerAccount ?? ''}" min="1" max="1000" placeholder="${DEFAULTS.maxOpenReportsPerAccount}"></td>
-                        <td><input type="number" class="setting-input quota-input" value="${r.maxScan ?? ''}" data-key="maxScan" min="1" max="1000" placeholder="${DEFAULTS.maxScan}"></td>
-                        <td><input type="number" class="setting-input quota-input" value="${r.rateLimitWindowMin ?? ''}" data-key="rateLimitWindowMin" min="1" max="10080" placeholder="${DEFAULTS.rateLimitWindowMin}"></td>
+                        <td><input type="number" class="setting-input quota-input" data-key="maxClaimPerUsers" value="${r.maxClaimPerUsers ?? ''}" min="1" max="1000" placeholder="${QUOTA_DEFAULTS.maxClaimPerUsers}"></td>
+                        <td><input type="number" class="setting-input quota-input" data-key="maxOpenReportsPerAccount" value="${r.maxOpenReportsPerAccount ?? ''}" min="1" max="1000" placeholder="${QUOTA_DEFAULTS.maxOpenReportsPerAccount}"></td>
+                        <td><input type="number" class="setting-input quota-input" value="${r.maxScan ?? ''}" data-key="maxScan" min="1" max="1000" placeholder="${QUOTA_DEFAULTS.maxScan}"></td>
+                        <td><input type="number" class="setting-input quota-input" value="${r.rateLimitWindowMin ?? ''}" data-key="rateLimitWindowMin" min="1" max="10080" placeholder="${QUOTA_DEFAULTS.rateLimitWindowMin}"></td>
                     </tr>
                 `).join('')}
             </tbody>
         </table>
-        <p class="admin-notice" id="spamQuotasNotice" hidden></p>
     `;
+}
 
-    if (onChange) {
-        let debounceTimer = null;
-        container.querySelectorAll('.quota-input').forEach(input => {
-            input.addEventListener('change', () => {
-                clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(() => {
-                    const row = input.closest('tr');
-                    const roleName = row.dataset.role;
-                    const updated = { roleName };
-                    row.querySelectorAll('.quota-input').forEach(i => {
-                        const val = i.value;
-                        if (val !== '') updated[i.dataset.key] = parseInt(val, 10);
-                    });
-                    onChange([updated]);
-                }, 500);
-            });
-        });
+// The changed role rows as the API wants them, or { error }. The API can set a limit but not clear
+// one, so a box that had a number may not be emptied.
+function collectQuotaChanges(container) {
+    const rows = [];
+    for (const tr of container.querySelectorAll('tr[data-role]')) {
+        if (!tr.querySelector('.sf-changed')) continue;
+        const row = { roleName: tr.dataset.role };
+        for (const input of tr.querySelectorAll('.quota-input')) {
+            const key = input.dataset.key;
+            const text = input.value.trim();
+            if (text === '') {
+                if (input._sfInitial !== '' && input.classList.contains('sf-changed')) {
+                    return { error: `${tr.dataset.role}: a limit cannot be cleared here, enter a number instead.` };
+                }
+                continue;
+            }
+            const n = Number(text);
+            if (!Number.isInteger(n) || n < 1 || n > QUOTA_LIMITS[key]) {
+                return { error: `${tr.dataset.role}: ${key} must be a whole number from 1 to ${QUOTA_LIMITS[key]}.` };
+            }
+            row[key] = n;
+        }
+        rows.push(row);
     }
+    return { rows };
 }
 
 export function showNotice(containerId, message, isError = false) {
@@ -377,14 +503,15 @@ export async function initSettingsPage() {
         { id: 'approvalModesSection', loader: loadApprovalModesSection },
         { id: 'discoveriesSection', loader: loadDiscoveriesSection },
         { id: 'mlRequestSection', loader: loadMLRequestSection },
-        { id: 'spamQuotasSection', loader: loadSpamQuotasSection }
+        { id: 'spamQuotasSection', loader: loadSpamQuotasSection },
+        { id: 'datasetAuditSection', loader: loadDatasetAuditSection }
     ];
 
     await Promise.all(sections.map(s => s.loader().catch(err => {
         console.error(`Failed to load ${s.id}:`, err);
         const container = document.getElementById(s.id);
         if (container) {
-            const inner = container.querySelector('.model-selector, .confidence-editor, .approval-modes-editor, .discoveries-editor, .ml-request-editor, .spam-quotas-editor');
+            const inner = container.querySelector('.model-selector, .confidence-editor, .approval-modes-editor, .discoveries-editor, .ml-request-editor, .spam-quotas-editor, .dataset-audit-editor');
             if (inner) inner.innerHTML = '<p class="admin-notice error">Failed to load section: ' + escapeHtml(err.message) + '</p>';
             else container.innerHTML = '<p class="admin-notice error">Failed to load section: ' + escapeHtml(err.message) + '</p>';
         }
@@ -405,23 +532,17 @@ async function loadModelSection() {
         const [settings, modelsData] = await Promise.all([fetchSettings(), fetchAvailableModels()]);
         const activeModelId = settings.mlActiveModel?.modelId || '';
         const availableModels = (modelsData.available_models || []).map(modelIdOf).filter(Boolean);
-        renderModelSelector(inner, availableModels, activeModelId, handleModelChange);
+        renderModelSelector(inner, availableModels, activeModelId);
+        forms().register({
+            id: 'model', label: 'ML Model', root: inner, noticeId: 'modelNotice',
+            save: async () => {
+                const modelId = inner.querySelector('#activeModelSelect').value;
+                await updateActiveModel(modelId);
+                return `Active model switched to ${modelId}`;
+            }
+        });
     } catch (err) {
         if (inner) inner.innerHTML = '<p class="admin-notice error">Failed to load model selector: ' + escapeHtml(err.message) + '</p>';
-    }
-}
-
-async function handleModelChange(modelId) {
-    const notice = document.getElementById('modelNotice');
-    const select = document.getElementById('activeModelSelect');
-    const previousValue = select ? select.value : modelId;
-    try {
-        await updateActiveModel(modelId);
-        showNotice('modelNotice', `Active model switched to ${modelId}`);
-    } catch (err) {
-        showNotice('modelNotice', 'Error: ' + err.message, true);
-        // Revert dropdown to previous value on failure
-        if (select) select.value = previousValue;
     }
 }
 
@@ -432,19 +553,22 @@ async function loadConfidenceSection() {
     try {
         const [settings, modelsData] = await Promise.all([fetchSettings(), fetchAvailableModels()]);
         const availableModels = (modelsData.available_models || []).map(modelIdOf).filter(Boolean);
-        renderConfidenceThresholds(inner, settings.mlConfidence || {}, availableModels, handleConfidenceChange);
+        const editor = renderConfidenceThresholds(inner, settings.mlConfidence || {}, availableModels);
+        forms().register({
+            id: 'confidence', label: 'Confidence', root: inner, noticeId: 'confidenceNotice',
+            onChange: () => editor.markDirtyTabs(),
+            validate: () => editor.collectChanges().error || '',
+            save: async () => {
+                const { changes } = editor.collectChanges();
+                const ids = Object.keys(changes);
+                await updateConfidenceMany(changes);
+                // What was just saved is the new "untouched" value for the next edit.
+                for (const id of ids) editor.originals[id] = changes[id];
+                return `Updated ${ids.join(', ')} confidence settings`;
+            }
+        });
     } catch (err) {
         if (inner) inner.innerHTML = '<p class="admin-notice error">Failed to load confidence thresholds: ' + escapeHtml(err.message) + '</p>';
-    }
-}
-
-async function handleConfidenceChange(modelId, config) {
-    const notice = document.getElementById('confidenceNotice');
-    try {
-        await updateConfidence(modelId, config);
-        showNotice('confidenceNotice', `Updated ${modelId} confidence thresholds`);
-    } catch (err) {
-        showNotice('confidenceNotice', 'Error: ' + err.message, true);
     }
 }
 
@@ -456,39 +580,37 @@ async function loadApprovalModesSection() {
         const response = await fetch('/admin/api/approval-modes', { credentials: 'include' });
         if (!response.ok) throw new Error('Failed to load approval modes');
         const payload = await response.json();
-        renderApprovalModes(inner, payload, handleApprovalModeToggle);
+        renderApprovalModes(inner, payload);
+        forms().register({
+            id: 'approvalModes', label: 'Approval Modes', root: inner, noticeId: 'approvalModesNotice',
+            save: async () => {
+                const changed = Array.from(inner.querySelectorAll('.approval-mode-input'))
+                    .filter(input => input.checked !== input.defaultChecked);
+                const done = [];
+                const skipped = [];
+                const failed = [];
+                for (const input of changed) {
+                    const mode = (payload.modes || []).find(m => m.requestType === input.dataset.requestType);
+                    // Turning automatic approval ON is the one change that asks first, at save time.
+                    if (input.checked && mode && !confirmAutoEnable(mode)) { skipped.push(mode.label); continue; }
+                    try {
+                        await updateApprovalMode(input.dataset.requestType, input.checked);
+                        done.push(mode ? mode.label : input.dataset.requestType);
+                    } catch (err) {
+                        failed.push(`${mode ? mode.label : input.dataset.requestType}: ${err.message}`);
+                    }
+                }
+                // Show what the server now says, whatever happened above.
+                await loadApprovalModesSection();
+                if (failed.length) throw new Error('Not saved: ' + failed.join('; '));
+                const parts = [];
+                if (done.length) parts.push('Updated ' + done.join(', '));
+                if (skipped.length) parts.push('Left unchanged (not confirmed): ' + skipped.join(', '));
+                return parts.join('. ') + '.';
+            }
+        });
     } catch (err) {
         if (inner) inner.innerHTML = '<p class="admin-notice error">Failed to load approval modes: ' + escapeHtml(err.message) + '</p>';
-    }
-}
-
-async function handleApprovalModeToggle(input) {
-    const requestType = input.dataset.requestType;
-    const enabled = input.checked;
-    const notice = document.getElementById('approvalModesNotice');
-    const row = input.closest('.approval-mode-row');
-
-    const known = (await fetch('/admin/api/approval-modes', { credentials: 'include' }).then(r => r.json())).modes.find(m => m.requestType === requestType);
-
-    if (enabled && known && !confirmAutoEnable(known)) {
-        input.checked = false;
-        return;
-    }
-
-    notice.hidden = true;
-    try {
-        const data = await updateApprovalMode(requestType, enabled);
-        showNotice('approvalModesNotice', data.message);
-        loadApprovalModesSection();
-    } catch (err) {
-        input.checked = !enabled;
-        showNotice('approvalModesNotice', 'Error: ' + err.message, true);
-    } finally {
-        if (row) {
-            row.classList.toggle('is-auto', input.checked);
-            const pill = row.querySelector('.mode-pill');
-            if (pill) pill.textContent = input.checked ? 'Automatic' : 'Manual';
-        }
     }
 }
 
@@ -497,19 +619,18 @@ async function loadDiscoveriesSection() {
     if (!container) return;
     try {
         const settings = await fetchSettings();
-        renderDiscoveriesSettings(container.querySelector('.discoveries-editor'), settings.discoveries || {}, handleDiscoveriesChange);
+        const inner = container.querySelector('.discoveries-editor');
+        renderDiscoveriesSettings(inner, settings.discoveries || {});
+        forms().register({
+            id: 'discoveries', label: 'Discoveries', root: inner, noticeId: 'discoveriesNotice',
+            validate: () => readWholeNumbers(inner, DISCOVERY_FIELDS).error || '',
+            save: async () => {
+                await updateDiscoveriesSettings(readWholeNumbers(inner, DISCOVERY_FIELDS).values);
+                return 'Discovery settings updated';
+            }
+        });
     } catch (err) {
         container.innerHTML = '<p class="admin-notice error">Failed to load discovery settings: ' + escapeHtml(err.message) + '</p>';
-    }
-}
-
-async function handleDiscoveriesChange(updated) {
-    const notice = document.getElementById('discoveriesNotice');
-    try {
-        await updateDiscoveriesSettings(updated);
-        showNotice('discoveriesNotice', 'Discovery settings updated');
-    } catch (err) {
-        showNotice('discoveriesNotice', 'Error: ' + err.message, true);
     }
 }
 
@@ -517,21 +638,22 @@ async function loadMLRequestSection() {
     const container = document.getElementById('mlRequestSection');
     if (!container) return;
     const inner = container.querySelector('.ml-request-editor');
+    const fields = [{ key: 'maxTopK', label: 'Max Top-K', min: 1, max: 100 }];
     try {
         const settings = await fetchSettings();
-        renderMLRequestSettings(inner, settings.mlRequest || {}, handleMLRequestChange);
+        renderMLRequestSettings(inner, settings.mlRequest || {});
+        const input = inner.querySelector('#maxTopKInput');
+        input.dataset.key = 'maxTopK';
+        forms().register({
+            id: 'mlRequest', label: 'ML Request', root: inner, noticeId: 'mlRequestNotice',
+            validate: () => readWholeNumbers(inner, fields).error || '',
+            save: async () => {
+                await updateMLRequestSettings(readWholeNumbers(inner, fields).values);
+                return 'ML request settings updated';
+            }
+        });
     } catch (err) {
         if (inner) inner.innerHTML = '<p class="admin-notice error">Failed to load ML request settings: ' + escapeHtml(err.message) + '</p>';
-    }
-}
-
-async function handleMLRequestChange(updated) {
-    const notice = document.getElementById('mlRequestNotice');
-    try {
-        await updateMLRequestSettings(updated);
-        showNotice('mlRequestNotice', 'ML request settings updated');
-    } catch (err) {
-        showNotice('mlRequestNotice', 'Error: ' + err.message, true);
     }
 }
 
@@ -543,19 +665,94 @@ async function loadSpamQuotasSection() {
         const response = await fetch('/admin/api/role-limits', { credentials: 'include' });
         if (!response.ok) throw new Error('Failed to load role limits');
         const data = await response.json();
-        renderSpamQuotas(inner, data.roleLimits || [], handleSpamQuotasChange);
+        renderSpamQuotas(inner, data.roleLimits || []);
+        if (!inner.querySelector('.quota-input')) return;   // "No role limits configured": nothing to edit
+        forms().register({
+            id: 'spamQuotas', label: 'Spam Quotas', root: inner, noticeId: 'spamQuotasNotice',
+            validate: () => collectQuotaChanges(inner).error || '',
+            save: async () => {
+                await updateRoleLimits(collectQuotaChanges(inner).rows);
+                return 'Spam quotas updated';
+            }
+        });
     } catch (err) {
         if (inner) inner.innerHTML = '<p class="admin-notice error">Failed to load spam quotas: ' + escapeHtml(err.message) + '</p>';
     }
 }
 
-async function handleSpamQuotasChange(roleLimits) {
-    const notice = document.getElementById('spamQuotasNotice');
+/* ------------------------------------------------------------------ */
+/* Dataset Audit: model + similarity thresholds                         */
+/* The ML service keeps these (the audit reads them there); this      */
+/* section and the quick row on the Dataset page edit the same values. */
+/* ------------------------------------------------------------------ */
+
+const AUDIT_SETTINGS_URL = '/admin/api/dataset/audit-settings';
+const AUDIT_LOW = 0.5;
+const AUDIT_HIGH = 0.999;
+
+export function renderDatasetAuditSettings(container, data) {
+    const options = (data.available || []).map(e =>
+        `<option value="${escapeHtml(e.kind)}">${escapeHtml(e.label)}</option>`).join('');
+    const known = (data.available || []).some(e => e.kind === data.embedder);
+    const defaults = data.defaults || {};
+    container.innerHTML = `
+        <div class="setting-row">
+            <label class="setting-label" for="auditModelInput">Model that compares photos</label>
+            <select class="setting-input" id="auditModelInput" data-key="embedder">
+                ${options}${known ? '' : `<option value="${escapeHtml(data.embedder)}">${escapeHtml(data.embedder)}</option>`}
+            </select>
+        </div>
+        <div class="setting-row">
+            <label class="setting-label" for="auditSimilarInput">Similar from (default ${escapeHtml(defaults.cosSimilar)})</label>
+            <input type="number" class="setting-input" id="auditSimilarInput" data-key="cosSimilar" min="${AUDIT_LOW}" max="${AUDIT_HIGH}" step="0.01">
+        </div>
+        <div class="setting-row">
+            <label class="setting-label" for="auditSameInput">Same photo from (default ${escapeHtml(defaults.cosSame)})</label>
+            <input type="number" class="setting-input" id="auditSameInput" data-key="cosSame" min="${AUDIT_LOW}" max="${AUDIT_HIGH}" step="0.01">
+        </div>
+        <p class="admin-subtitle">A trained model usually puts photos of the same plant closer together than MobileNet does, so after changing the model look at the nearest-neighbour numbers of the next audit before trusting these thresholds.</p>
+    `;
+    container.querySelector('#auditModelInput').value = data.embedder;
+    container.querySelector('#auditSimilarInput').value = data.cosSimilar;
+    container.querySelector('#auditSameInput').value = data.cosSame;
+}
+
+export function readDatasetAuditSettings(container) {
+    const similar = Number(container.querySelector('#auditSimilarInput').value);
+    const same = Number(container.querySelector('#auditSameInput').value);
+    const blank = container.querySelector('#auditSimilarInput').value.trim() === '' || container.querySelector('#auditSameInput').value.trim() === '';
+    if (blank || !Number.isFinite(similar) || !Number.isFinite(same)) return { error: 'Enter both similarity numbers.' };
+    if (similar < AUDIT_LOW || similar > AUDIT_HIGH || same < AUDIT_LOW || same > AUDIT_HIGH) {
+        return { error: `Similarity numbers must be between ${AUDIT_LOW} and ${AUDIT_HIGH}.` };
+    }
+    if (similar > same) return { error: 'Similar cannot be higher than Same photo.' };
+    return { values: { embedder: container.querySelector('#auditModelInput').value, cosSimilar: similar, cosSame: same } };
+}
+
+async function loadDatasetAuditSection() {
+    const container = document.getElementById('datasetAuditSection');
+    if (!container) return;
+    const inner = container.querySelector('.dataset-audit-editor');
     try {
-        await updateRoleLimits(roleLimits);
-        showNotice('spamQuotasNotice', 'Spam quotas updated');
+        const response = await fetch(AUDIT_SETTINGS_URL, { credentials: 'include' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Failed to load dataset audit settings');
+        renderDatasetAuditSettings(inner, data);
+        forms().register({
+            id: 'datasetAudit', label: 'Dataset Audit', root: inner, noticeId: 'datasetAuditNotice',
+            validate: () => readDatasetAuditSettings(inner).error || '',
+            save: async () => {
+                const put = await fetch(AUDIT_SETTINGS_URL, {
+                    method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(readDatasetAuditSettings(inner).values)
+                });
+                const out = await put.json().catch(() => ({}));
+                if (!put.ok) throw new Error(out.error || 'Failed to save dataset audit settings');
+                return 'Dataset audit settings updated. They apply from the next audit.';
+            }
+        });
     } catch (err) {
-        showNotice('spamQuotasNotice', 'Error: ' + err.message, true);
+        if (inner) inner.innerHTML = '<p class="admin-notice error">Failed to load dataset audit settings: ' + escapeHtml(err.message) + '</p>';
     }
 }
 

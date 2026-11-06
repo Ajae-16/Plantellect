@@ -76,4 +76,12 @@ interface RecordApi {
 
     @POST("${ApiConfig.PLANTS}/requests/{id}/withdraw")
     suspend fun withdraw(@Path("id") id: String): Response<MessageDto>
+
+    /** The live photo limits the form should show and enforce (the admin edits the count). */
+    @GET("${ApiConfig.PLANTS}/limits")
+    suspend fun limits(): Response<PhotoLimitsDto>
+
+    /** Values already used at each taxonomy level, for the autocomplete lists. */
+    @GET("${ApiConfig.PLANTS}/taxonomy-suggestions")
+    suspend fun taxonomySuggestions(): Response<TaxonomySuggestionsDto>
 }

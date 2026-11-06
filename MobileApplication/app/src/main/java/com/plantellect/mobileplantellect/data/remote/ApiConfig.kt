@@ -11,7 +11,11 @@ object ApiConfig {
     const val PLANTS = "api/plants"
     const val ML = "api/ml"
     const val DISCOVERIES = "api/discoveries"
-    const val BOTANISTS = "api/botanists"
+    /** The signed-in user's own profile: bio, password, photo (routes/profile.js). */
+    const val PROFILE = "api/profile"
+    // The botanist role is retired; the server serves public profiles at /api/contributors
+    // (/api/botanists only survives there as an alias).
+    const val CONTRIBUTORS = "api/contributors"
 
     fun absolute(baseUrl: String, path: String?): String? = when {
         path.isNullOrBlank() -> null

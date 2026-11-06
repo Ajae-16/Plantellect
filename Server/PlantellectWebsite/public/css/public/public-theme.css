@@ -11,7 +11,7 @@
    Light-mode styling of each page lives in that page's own CSS
    (library.css, capture-plant.css, profile.css). This file only
    holds: the shared page background, the nav fix, and dark rules.
-   The two profile pages (plant-profile.html, botanist-profile.html) are
+   The two profile pages (plant-profile.html, contributor-profile.html) are
    styled further down this file, for both themes. The record page and
    plant library dark fixes are at the very END.
 
@@ -37,7 +37,7 @@ html[data-theme="dark"] {
 /* =========================================================
    PAGE BACKGROUND
    Home / About keep the flat colour (they sit behind a photo).
-   Library, Scan, Profile and the plant / botanist profile pages
+   Library, Scan, Profile and the plant / contributor profile pages
    (anything with .library-container or .profile-page) share one
    soft gradient. Change it here and all of them follow.
    ========================================================= */
@@ -410,6 +410,31 @@ html[data-theme="dark"] .scan-prediction-bar { background-color: var(--dk-hover)
 
 html[data-theme="dark"] .scan-prediction-fill { background-color: var(--dk-accent); }
 
+/* scan contribution card (capture-plant.css) */
+html[data-theme="dark"] .scan-contribute {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+    border-left-color: var(--dk-accent);
+}
+
+html[data-theme="dark"] .scan-contribute-title { color: var(--dk-accent); }
+html[data-theme="dark"] .scan-contribute-lead { color: var(--dk-text); }
+
+html[data-theme="dark"] .scan-contribute-status {
+    background-color: var(--dk-surface-2);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .scan-contribute-status.success {
+    background-color: rgba(143, 200, 96, 0.18);
+    color: var(--dk-text);
+}
+
+html[data-theme="dark"] .scan-contribute-status.error {
+    background-color: rgba(169, 68, 66, 0.25);
+    color: #f0b4b2;
+}
+
 /* ---- record page ---- */
 
 html[data-theme="dark"] .record-tabs {
@@ -742,7 +767,7 @@ html[data-theme="dark"] .record-discovery-photos img { border-color: var(--dk-bo
 
 /* =========================================================
    PROFILE PAGES
-   plant-profile.html + botanist-profile.html (botanist AND administrator).
+   plant-profile.html + contributor-profile.html (contributor AND administrator).
    Tokens per theme, then shared pieces, then each page's own components.
    Everything is scoped to .profile-page. The page gradient above and the
    --dk-* palette are what these rules build on.
@@ -962,7 +987,7 @@ html[data-theme="dark"] .profile-page {
 .profile-page .info-card.warning li::marker { color: var(--pf-danger); }
 
 /* ---------- Meta: dataset chip, Contribute button, people rows ---------- */
-.profile-page .botanist-meta {
+.profile-page .contributor-meta {
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
     gap: 12px;
     margin-top: 24px; padding-top: 20px;
@@ -1052,7 +1077,7 @@ html[data-theme="dark"] .profile-page {
 }
 
 /* =========================================================
-   BOTANIST / ADMINISTRATOR PROFILE (botanist-profile.html)
+   CONTRIBUTOR / ADMINISTRATOR PROFILE (contributor-profile.html)
    ========================================================= */
 
 .profile-page .profile-header-bar {
@@ -1061,7 +1086,7 @@ html[data-theme="dark"] .profile-page {
 }
 
 /* ---------- Hero ---------- */
-.profile-page .botanist-hero {
+.profile-page .contributor-hero {
     display: flex; flex-direction: column; align-items: center; gap: 10px;
     padding: 12px 24px 28px;
     text-align: center;
@@ -1076,7 +1101,7 @@ html[data-theme="dark"] .profile-page {
     font-size: 32px; font-weight: 700;
     box-shadow: 0 0 0 4px var(--pf-surface), 0 0 0 6px var(--pf-accent), var(--pf-shadow);
 }
-.profile-page .botanist-hero h1 {
+.profile-page .contributor-hero h1 {
     margin-top: 8px;
     font-size: clamp(22px, 5vw, 28px);
     line-height: 1.2;
@@ -1092,12 +1117,12 @@ html[data-theme="dark"] .profile-page {
     font-size: 13px; font-weight: 600;
 }
 .profile-page .role-badge .material-symbols-outlined { font-size: 16px; }
-.profile-page .botanist-bio {
+.profile-page .contributor-bio {
     max-width: 56ch;
     font-size: 14px; line-height: 1.65;
     color: var(--pf-muted);
 }
-.profile-page .botanist-bio:empty { display: none; }
+.profile-page .contributor-bio:empty { display: none; }
 
 /* ---------- Metrics ---------- */
 .profile-page .metrics-bar {
@@ -1206,7 +1231,7 @@ html[data-theme="dark"] .profile-page {
 /* A failed or restricted load: show the message only. */
 .profile-page.profile-unavailable .role-badge,
 .profile-page.profile-unavailable .metrics-bar,
-.profile-page.profile-unavailable .botanist-bio,
+.profile-page.profile-unavailable .contributor-bio,
 .profile-page.profile-unavailable .contributions-section { display: none; }
 
 /* ---------- Profile pages: responsive ---------- */
@@ -1216,13 +1241,13 @@ html[data-theme="dark"] .profile-page {
     /* plant profile */
     .profile-page .profile-content { padding: 0 18px 24px; }
     .profile-page .info-grid { grid-template-columns: 1fr; }
-    .profile-page .botanist-meta { flex-direction: column; align-items: flex-start; }
+    .profile-page .contributor-meta { flex-direction: column; align-items: flex-start; }
     .profile-page .contribute-btn { width: 100%; justify-content: center; }
     .profile-page .contributor-info { flex-direction: column; gap: 6px; }
     .profile-page .people-label { flex-basis: auto; padding-top: 0; }
 
-    /* botanist profile */
-    .profile-page .botanist-hero { padding: 8px 16px 22px; }
+    /* contributor profile */
+    .profile-page .contributor-hero { padding: 8px 16px 22px; }
     .profile-page .metrics-bar { grid-template-columns: 1fr 1fr; }
     .profile-page .contributions-section { padding: 4px 16px 22px; }
     .profile-page .plant-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }

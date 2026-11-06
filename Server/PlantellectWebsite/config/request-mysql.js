@@ -1,64 +1,20 @@
 // Admin: requests (the unified review queue).
 // Split out of mysql.js; see mysql.js for the combined export list.
 
-const { logImageReview } = require('../mongoose-schemas/Imgreview.js');
 const approvalMode = require('./approval-mode.js');
 const { mysqlPool } = require('./pool-mysql');
 const { parsePaging } = require('./shared-mysql');
-const { bumpPermissionsVersion } = require('./auth-mysql');
 
 // ---------------------------------------------------------------------------
 // Admin: requests (the unified review queue)
 // ---------------------------------------------------------------------------
-
-async function listPendingRoleRequests() {
-    const [rows] = await mysqlPool.query(
-        `SELECT ar.requestId, ar.accountId, ar.requestedRole, ar.status, ar.createdAt,
-                ar.note, a.email, a.username,
-                pr.firstName, pr.lastName,
-                c.certificateId, c.originalFilename AS certificateFilename,
-                c.mimeType AS certificateMimeType, c.size AS certificateSize
-         FROM approval_requests ar
-         JOIN accounts a ON ar.accountId = a.accountId
-         LEFT JOIN profiles pr ON pr.accountId = a.accountId
-         LEFT JOIN certificates c ON c.certificateId = (
-             SELECT c2.certificateId FROM certificates c2
-             WHERE c2.accountId = ar.accountId
-             ORDER BY c2.uploadedAt DESC LIMIT 1
-         )
-         WHERE ar.status = 'pending' AND ar.requestType = 'role_permission'
-         ORDER BY ar.createdAt ASC`
-    );
-    return rows.map((r) => ({
-        requestId: r.requestId,
-        accountId: r.accountId,
-        requestedRole: r.requestedRole,
-        status: r.status,
-        createdAt: r.createdAt,
-        requestedAt: r.createdAt,
-        note: r.note,
-        email: r.email,
-        username: r.username,
-        fullName: [r.firstName, r.lastName].filter(Boolean).join(' ') || r.username,
-        hasCertificate: Boolean(r.certificateId),
-        certificate: r.certificateId
-            ? {
-                certificateId: r.certificateId,
-                url: `/admin/certificates/${encodeURIComponent(r.accountId)}`,
-                filename: r.certificateFilename,
-                mimeType: r.certificateMimeType,
-                size: r.certificateSize
-            }
-            : null
-    }));
-}
 
 /**
  * Plant-facing view of the queue. A plant_addition draft lives in `payload`, so
  * its name and type are read from there; a contribution, a taxonomy update and a
  * change request point at targetPlantId. A taxonomy update carries
  * `taxonomyChanges`; a plant_change carries `changes` (field -> { from, to }) and
- * the botanist's `changeReason`, for the diff view.
+ * the contributor's `changeReason`, for the diff view.
  */
 async function listPlantRequests({ requestType, page, pageSize }) {
     const paging = parsePaging({ page, pageSize });
@@ -118,7 +74,7 @@ async function listPlantRequests({ requestType, page, pageSize }) {
                 type: isAddition ? (payload.typeName || null) : r.targetType,
                 typeLabel: isAddition ? (payload.typeName || null) : r.targetType,   // the name IS the label
                 // The badge colour. An addition has no plant yet, so it comes from the
-                // type the botanist described.
+                // type the contributor described.
                 toxicityLevel: isAddition
                     ? ((payload.typeSpec && payload.typeSpec.toxicityLevel) || 'none')
                     : (r.targetToxicity || 'none'),
@@ -126,7 +82,7 @@ async function listPlantRequests({ requestType, page, pageSize }) {
                 submittedBy: r.submitterId,
                 // Full name when the profile has one, username as the fallback.
                 submittedByName: fullName || r.submitterName,
-                // Current role (superadmin / admin / botanist / user), for the badge.
+                // Current role (superadmin / admin / contributor / user), for the badge.
                 submittedByRole: r.submitterRole,
                 submittedByUsername: r.submitterName,
                 requestedAt: r.createdAt,
@@ -142,7 +98,7 @@ async function listPlantRequests({ requestType, page, pageSize }) {
                 taxonomyReason: r.requestType === 'plant_taxonomy' ? (payload.reason || null) : null,
                 changes: isChange ? (payload.changes || {}) : null,
                 changeReason: isChange ? (payload.reason || null) : null,
-                // 'base' (plant info) or 'description' (one botanist's own description);
+                // 'base' (plant info) or 'description' (one contributor's own description);
                 // 'legacy' for a request filed before the split.
                 changeScope: isChange ? (payload.scope || 'legacy') : null,
                 changeDescriptionId: isChange ? (payload.descriptionId || null) : null,
@@ -254,109 +210,9 @@ async function finishRequest(conn, requestId, status, reviewerId, note) {
     return audit;
 }
 
-/**
- * The shared body of a role_permission decision.
- *
- * Lives here rather than in routes/role-requests.js because there are now two
- * callers — an admin clicking Approve, and the automatic pass — and two copies of
- * a privilege grant is exactly how they drift. The route's own inline transaction
- * was the second copy; this is the one, and the route now only maps HTTP onto it.
- *
- * Automatic approval of a role request is deliberately permitted and is NOT one of
- * the two publishing switches: it grants record_plant, and the certificate an
- * admin would have inspected is already required at registration. It changes a
- * permission, so it bumps permissions_version exactly as a manual approval does —
- * otherwise the account's live session would keep its old permission set until it
- * happened to log in again.
- */
-async function decideRoleRequest(requestId, reviewerId, { approve, note, deleteCertificate } = {}) {
-    const conn = await mysqlPool.getConnection();
-    try {
-        await conn.beginTransaction();
-
-        // claimPendingRequest, not a bare SELECT: the same FOR UPDATE guard the
-        // plant approvers take, so two callers cannot both grant the role.
-        const request = await claimPendingRequest(conn, requestId);
-        if (!request) {
-            await conn.rollback();
-            return { error: 'Pending role request not found or already resolved', code: 409 };
-        }
-        if (request.requestType !== 'role_permission') {
-            await conn.rollback();
-            return { error: 'Not a role request', code: 400 };
-        }
-
-        const accountId = request.accountId;
-        const requestedRole = request.requestedRole;
-
-        if (approve) {
-            const [roleRows] = await conn.query('SELECT roleId FROM roles WHERE roleName = ?', [requestedRole]);
-            if (roleRows.length === 0) {
-                await conn.rollback();
-                return { error: 'Invalid role', code: 400 };
-            }
-            await conn.query('UPDATE accounts SET roleId = ? WHERE accountId = ?', [roleRows[0].roleId, accountId]);
-            await bumpPermissionsVersion(conn);
-        }
-
-        const audit = await finishRequest(
-            conn,
-            requestId,
-            approve ? 'approved' : 'denied',
-            reviewerId,
-            note
-        );
-
-        // The certificate is only destroyed on an explicit denial, and only when
-        // the caller asked for it — an approval must not lose the evidence.
-        if (!approve && deleteCertificate) {
-            const [certs] = await conn.query(
-                'SELECT certificateId FROM certificates WHERE accountId = ?',
-                [accountId]
-            );
-            for (const cert of certs) {
-                await deleteCertificate(conn, cert.certificateId);
-            }
-        }
-
-        await conn.commit();
-
-        await logImageReview({
-            requestId,
-            requestType: request.requestType,
-            imageId: null,
-            plantId: null,
-            accountId,
-            decision: approve
-                ? (audit.approvalMode === 'auto' ? 'auto_approved' : 'approved')
-                : 'rejected',
-            approvalMode: audit.approvalMode,
-            decisionSource: audit.decisionSource,
-            ruleVersion: audit.ruleVersion,
-            reason: audit.reason,
-            reviewedBy: reviewerId,
-            note: note || ''
-        });
-
-        return {
-            requestId,
-            accountId,
-            approvalMode: audit.approvalMode,
-            ...(approve ? { newRole: requestedRole } : {})
-        };
-    } catch (err) {
-        await conn.rollback().catch(() => {});
-        throw err;
-    } finally {
-        conn.release();
-    }
-}
-
 module.exports = {
-    listPendingRoleRequests,
     listPlantRequests,
     getRequestDetail,
     claimPendingRequest,
-    finishRequest,
-    decideRoleRequest
+    finishRequest
 };

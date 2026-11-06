@@ -6,7 +6,7 @@ import retrofit2.http.GET
 import retrofit2.http.Path
 
 interface BotanistApi {
-    /** Public profile of a botanist (or any account that reported a plant). */
-    @GET("${ApiConfig.BOTANISTS}/{accountId}")
+    /** Public profile of a contributor (any account that recorded, reviewed or reported a plant). */
+    @GET("${ApiConfig.CONTRIBUTORS}/{accountId}")
     suspend fun profile(@Path("accountId") accountId: String): Response<BotanistProfileDto>
 }

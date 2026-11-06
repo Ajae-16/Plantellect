@@ -57,6 +57,11 @@ const mlScanSchema = new mongoose.Schema(
          * false so every existing document reads as unreported.
          */
         reported: { type: Boolean, default: false },
+        /**
+         * True when this scan was offered for contribution (a contribute_offer token was issued).
+         * Logged at scan time. Whether the user then contributed is not recorded here.
+         */
+        contributeOffered: { type: Boolean, default: false },
         verdict: {
             mode: { type: String, enum: ['off', 'log', 'enforce'] },
             outcome: { type: String, enum: ['identified', 'uncertain', 'unrecognized'] },
@@ -97,6 +102,7 @@ async function logMlScan(data) {
             inferenceMs: data.inferenceMs ?? null,
             predictions: Array.isArray(data.predictions) ? data.predictions : [],
             linksResolved: Boolean(data.linksResolved),
+            contributeOffered: Boolean(data.contributeOffered),
             ...(data.verdict ? { verdict: data.verdict } : {}),
             ip: data.ip || '',
             userAgent: data.userAgent || '',

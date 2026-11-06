@@ -1,4 +1,4 @@
-// Botanist submissions.
+// Contributor submissions.
 // Split out of mysql.js; see mysql.js for the combined export list.
 
 const path = require('path');
@@ -11,7 +11,7 @@ const { normalizeName, normalizeScientificName, PARTS_FIELDS, hasAnyPartValue, l
 const { assertDiscoveryClaim, linkDiscoveryRecord, DISCOVERY_STORAGE_ROOT } = require('./discovery-mysql');
 
 // ---------------------------------------------------------------------------
-// Botanist submissions
+// Contributor submissions
 // ---------------------------------------------------------------------------
 
 /**
@@ -144,7 +144,7 @@ function userError(message, code) {
 }
 
 /**
- * Resolves the discovery-report photos a botanist chose to attach to a record.
+ * Resolves the discovery-report photos a contributor chose to attach to a record.
  *
  * Attaching is a COPY: the report's own file stays where it is, as evidence, and
  * the copy enters plant_images as a PENDING row, so the admin decides on it like
@@ -242,12 +242,12 @@ async function stageImages(conn, { accountId, plantId, relativeDir, files, photo
  * A species that is already in the library is refused here with the existing
  * plantId, so the client can turn the submission into a contribution. This
  * replaces "accept it and convert at approval": that conversion is still the
- * backstop for two botanists racing on a species neither could see, but it must
+ * backstop for two contributors racing on a species neither could see, but it must
  * not be the normal path, because a duplicate request carries its own taxonomy
  * and its own plant row that nobody can use.
  *
  * An ARCHIVED plant still counts as existing (its scientific name is taken), but
- * the botanist is told to ask an admin to restore it rather than to add to it,
+ * the contributor is told to ask an admin to restore it rather than to add to it,
  * because contributions to an archived plant are refused.
  *
  * When the draft came from a claimed discovery report the payload carries
@@ -439,7 +439,7 @@ async function createPlantContributionRequest(accountId, plantId, draft, files, 
  * blank field means "no change", never "clear this level", and the Unspecified
  * sentinel cannot be proposed: it is the gap marker, not a value.
  *
- * One pending request per plant. That is what stops two botanists filing rival
+ * One pending request per plant. That is what stops two contributors filing rival
  * taxonomies for the same species and leaving the admin to pick between them by
  * submission order.
  */
@@ -530,8 +530,8 @@ async function createPlantTaxonomyRequest(accountId, plantId, body) {
  * This is NOT the public detail read. That one hides a plant until it has an
  * approved description, and "does this species already exist?" has to be
  * answered for a plant that has none yet — otherwise the form would let a
- * botanist record, as new, a species that is sitting in the database unpublished.
- * Botanist-only at the route.
+ * contributor record, as new, a species that is sitting in the database unpublished.
+ * Contributor-only at the route.
  *
  * Returns the type's safety flags (so the form can hide Harmful / caution), the
  * current taxonomy (shown read-only), and whether a taxonomy update is already
@@ -576,7 +576,7 @@ async function getRecordingPlant({ plantId, scientificName }) {
  * The caller's own plant submissions and where each one stands.
  *
  * EXCLUDES plant_discovery on purpose. This selects WHERE ar.accountId = ? across
- * every request type, and lets a botanist file reports — so their own
+ * every request type, and lets a contributor file reports — so their own
  * reports would surface here, contradicting the plan's own validation and
  * breaking the existing submissions-status whitelist (which covers only
  * pending/approved/denied) the moment a report reached cancelled or rejected.
@@ -588,7 +588,7 @@ async function getRecordingPlant({ plantId, scientificName }) {
  * easy one to forget, and omitting it leaves the pagination total counting rows
  * the page never shows.
  *
- * A botanist's own reports stay reachable through GET /api/discoveries/mine,
+ * A contributor's own reports stay reachable through GET /api/discoveries/mine,
  * which is accountId-scoped and is where report states belong.
  */
 const MY_REQUEST_TYPES = "('plant_addition','plant_contribution','plant_taxonomy','plant_change')";

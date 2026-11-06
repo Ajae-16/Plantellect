@@ -8,14 +8,14 @@
  * for a function declared inside this module's IIFE — no ordering makes a name
  * global.
  *
- * This is an AUDIT surface, not the work surface. The botanist queue is
+ * This is an AUDIT surface, not the work surface. The contributor queue is
  * /discoveries.html; what an admin needs here is to see what the community
  * decided — and, in the one case where it is genuinely necessary, to override it.
  *
  * The admin override exists because the quorum is unreachable below two active
- * botanists: /vote answers 409 there, so a small team would otherwise have no
+ * contributors: /vote answers 409 there, so a small team would otherwise have no
  * way to close a report at all. It is therefore offered on an OPEN report only.
- * Overriding one that a botanist has already resolved is not a judgement about
+ * Overriding one that a contributor has already resolved is not a judgement about
  * the species, it is a way to close a report nobody can act on.
  */
 
@@ -37,7 +37,7 @@
     let status = 'pending';
     let page = 1;
     let total = 0;
-    let activeBotanists = 0;
+    let activeContributors = 0;
     let threshold = 2;
 
     function byId(id) { return document.getElementById(id); }
@@ -86,16 +86,16 @@
             if (!response.ok) throw new Error('Failed to load discovery reports');
             const data = await response.json();
             total = data.total;
-            activeBotanists = data.activeBotanists;
+            activeContributors = data.activeContributors;
             threshold = data.notAPlantThreshold;
             setNotice('');
 
             // The electorate is named here too. An admin deciding whether to
             // override a verdict needs to know how many people it took.
             byId('discoveryQuorumNote').textContent =
-                `A report is rejected when ${threshold} of the ${activeBotanists} active botanist` +
-                `${activeBotanists === 1 ? '' : 's'} vote that it is not a plant.` +
-                (activeBotanists < 2
+                `A report is rejected when ${threshold} of the ${activeContributors} active contributor` +
+                `${activeContributors === 1 ? '' : 's'} vote that it is not a plant.` +
+                (activeContributors < 2
                     ? ' With fewer than two, voting is refused and this override is the only way to close a report.'
                     : '');
 
@@ -172,12 +172,12 @@
                 </a>`).join('')}</div>`
             : '<p class="admin-muted">No photos attached.</p>';
 
-        // Open + live claim: the report is with a botanist right now, and
+        // Open + live claim: the report is with a contributor right now, and
         // rejecting it under them is exactly what the quorum's own rule forbids.
         const claimLive = Boolean(row.claimedBy) && row.status === 'pending';
         const overrideControl = row.status === 'pending'
             ? (claimLive
-                ? `<span class="admin-muted">Claimed by ${escapeText(row.claimedByName || row.claimedBy)} — the override is withheld while a botanist is on it.</span>`
+                ? `<span class="admin-muted">Claimed by ${escapeText(row.claimedByName || row.claimedBy)} — the override is withheld while a contributor is on it.</span>`
                 : `<button type="button" class="admin-btn-secondary" data-discovery-override="${escapeText(row.id)}">Override: not a plant</button>
                    <div class="discovery-override" id="override-${escapeText(row.id)}" hidden>
                        <select id="overrideReason-${escapeText(row.id)}">

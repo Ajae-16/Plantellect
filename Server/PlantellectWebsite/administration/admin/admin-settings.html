@@ -98,6 +98,7 @@
             color: #2e7d32;
         }
         .confidence-panel { display: none; }
+        .confidence-subhead { margin: 1.25rem 0 0.25rem; font-size: 1rem; }
         .confidence-panel.active { display: block; }
 
         .approval-modes .admin-subtitle { font-size: 13px; margin: 0 0 12px; opacity: 0.75; }
@@ -227,6 +228,82 @@
             color: #c62828;
         }
         .admin-notice[hidden] { display: none; }
+
+        /* ---- drafts: Save / Cancel per section, undo per row, Save all / Cancel all ---- */
+        .sf-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(128, 128, 128, 0.2);
+        }
+        .sf-bar-status { flex: 1; font-size: 13px; font-weight: 600; color: #b26a00; min-width: 120px; }
+        .sf-bar .btn, .sf-all-bar .btn, .description-votes-editor .btn {
+            min-width: 84px; padding: 8px 16px; border-radius: 8px; font: inherit; font-size: 14px; font-weight: 600;
+            border: 1px solid rgba(45, 106, 26, 0.65); background: transparent; color: inherit; cursor: pointer;
+        }
+        .sf-bar .btn:hover:not(:disabled), .sf-all-bar .btn:hover:not(:disabled), .description-votes-editor .btn:hover:not(:disabled) { background: rgba(76, 175, 80, 0.14); }
+        .sf-bar .btn:disabled, .sf-all-bar .btn:disabled { opacity: 0.45; cursor: default; }
+        .sf-bar .btn.btn-primary, .sf-all-bar .btn.btn-primary { background: #2d6a1a; border-color: #2d6a1a; color: #fff; }
+        .sf-bar .btn.btn-primary:hover:not(:disabled), .sf-all-bar .btn.btn-primary:hover:not(:disabled) { background: #3a7f24; }
+        html[data-theme="dark"] .sf-bar .btn.btn-primary, html[data-theme="dark"] .sf-all-bar .btn.btn-primary { background: #3f8f2a; border-color: #3f8f2a; }
+        .sf-pill {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 9px;
+            border-radius: 999px;
+            background: rgba(230, 150, 30, 0.2);
+            color: #b26a00;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+        .sf-pill[hidden], .sf-bar-status[hidden], .sf-undo[hidden] { display: none; }
+        .sf-undo {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            border: 1px solid rgba(128, 128, 128, 0.35);
+            border-radius: 50%;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            vertical-align: middle;
+            flex: none;
+        }
+        .sf-undo:hover { background: rgba(230, 150, 30, 0.18); border-color: #e69a1e; }
+        .sf-undo:focus-visible { outline: 2px solid #4CAF50; outline-offset: 2px; }
+        .sf-undo .material-symbols-outlined { font-size: 18px; }
+        .sf-changed { border-color: #e69a1e !important; box-shadow: 0 0 0 1px rgba(230, 154, 30, 0.45); }
+        .confidence-tab.is-dirty::after { content: ' \2022'; color: #e69a1e; }
+        .description-votes-editor .dv-field input { margin-right: 8px; }
+
+        .sf-all-bar {
+            position: sticky;
+            bottom: 0;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 28px;
+            padding: 12px 16px;
+            border: 1px solid rgba(128, 128, 128, 0.3);
+            border-radius: 10px;
+            background: #f4f7f2;
+            box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.08);
+        }
+        .sf-all-bar.has-changes { border-color: #e69a1e; }
+        .sf-all-status { flex: 1; min-width: 160px; font-size: 13px; }
+        .sf-all-bar.has-changes .sf-all-status { font-weight: 600; color: #b26a00; }
+        .sf-all-status.is-error { color: #c62828 !important; }
+        html[data-theme="dark"] .sf-all-bar { background: #1f261c; }
+        html[data-theme="dark"] .sf-bar-status, html[data-theme="dark"] .sf-pill,
+        html[data-theme="dark"] .sf-all-bar.has-changes .sf-all-status { color: #f0b45a; }
     </style>
 </head>
 <body>
@@ -260,7 +337,6 @@
                 <a href="/admin/dashboard" title="Dashboard">
                     <span class="material-symbols-outlined">home</span>
                     <span class="nav-link-text">Dashboard</span>
-                    <span class="nav-badge" id="navBadgeDashboard" hidden>0</span>
                 </a>
 
                 <a href="/admin/users" data-perm="create_user" title="Users">
@@ -306,9 +382,11 @@
                 <a href="#confidenceSection" class="admin-tab settings-tab" data-target="confidenceSection">Confidence</a>
                 <a href="#approvalModesSection" class="admin-tab settings-tab" data-target="approvalModesSection">Approval Modes</a>
                 <a href="#discoveriesSection" class="admin-tab settings-tab" data-target="discoveriesSection">Discoveries</a>
+                <a href="#descriptionVotesSection" class="admin-tab settings-tab" data-target="descriptionVotesSection">Description Votes</a>
                 <a href="#plantImagesSection" class="admin-tab settings-tab" data-target="plantImagesSection">Plant Photos</a>
                 <a href="#mlRequestSection" class="admin-tab settings-tab" data-target="mlRequestSection">ML Request</a>
                 <a href="#spamQuotasSection" class="admin-tab settings-tab" data-target="spamQuotasSection">Spam Quotas</a>
+                <a href="#datasetAuditSection" class="admin-tab settings-tab" data-target="datasetAuditSection">Dataset Audit</a>
             </nav>
 
             <div class="plants-container">
@@ -373,16 +451,32 @@
                     </details>
                 </section>
 
+                <!-- Description votes. Self-contained: javascript/admin/admin-description-vote-settings.js
+                     talks to GET/POST /admin/api/description-votes/settings on its own. -->
+                <section class="admin-section" id="descriptionVotesSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Description Votes</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">Thumbs up / down on contributor descriptions. Every signed-in user can vote, with no limit. Lowering the hide number hides descriptions that already have that many downvotes.</p>
+                            <div class="description-votes-editor"></div>
+                            <p class="admin-notice" id="descriptionVotesNotice" hidden></p>
+                        </div>
+                    </details>
+                </section>
+
                 <!-- Plant photo limit. Self-contained: javascript/admin/admin-plant-images.js
                      talks to GET/POST /admin/api/settings (key plantImages) on its own. -->
                 <section class="admin-section" id="plantImagesSection">
                     <details class="collapse">
                         <summary class="collapse-summary">
-                            <h2>Plant Photo Limit</h2>
+                            <h2>Plant Photos</h2>
                             <span class="collapse-chevron" aria-hidden="true"></span>
                         </summary>
                         <div class="collapse-body">
-                            <p class="admin-subtitle">How many photos one botanist submission may carry. Applies to new plants and to contributions, and takes effect on the next upload.</p>
+                            <p class="admin-subtitle">How many photos one contributor submission may carry (applies to new plants and to contributions, from the next upload), and how many photos the admin plant editor loads per page.</p>
                             <div class="plant-images-editor"></div>
                             <p class="admin-notice" id="plantImagesNotice" hidden></p>
                         </div>
@@ -404,7 +498,7 @@
                     </details>
                 </section>
 
-                <!-- 6. Spam Quotas (read-only) -->
+                <!-- 6. Spam Quotas -->
                 <section class="admin-section" id="spamQuotasSection">
                     <details class="collapse">
                         <summary class="collapse-summary">
@@ -412,11 +506,33 @@
                             <span class="collapse-chevron" aria-hidden="true"></span>
                         </summary>
                         <div class="collapse-body">
-                            <p class="admin-subtitle">Read-only view of per-role limits. Edit these on a separate Role Limits page.</p>
+                            <p class="admin-subtitle">Per-role limits. Press Save to apply edits; an empty box uses the default.</p>
                             <div class="spam-quotas-editor"></div>
                         </div>
                     </details>
                 </section>
+
+                <!-- 7. Dataset Audit (the same values as the quick row on the Dataset page) -->
+                <section class="admin-section" id="datasetAuditSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Dataset Audit</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">The model that compares photos in the Dataset audit and the Other plant tab, and how alike two photos must be to be flagged. These are the same values as the quick row on the Dataset page. A change applies from the next audit.</p>
+                            <div class="dataset-audit-editor"></div>
+                            <p class="admin-notice" id="datasetAuditNotice" hidden></p>
+                        </div>
+                    </details>
+                </section>
+            </div>
+
+            <!-- Bottom bar: acts on every section that has unsaved edits (javascript/admin/settings-forms.js) -->
+            <div class="sf-all-bar" id="sfAllBar">
+                <span class="sf-all-status" aria-live="polite">No unsaved changes.</span>
+                <button type="button" class="btn" id="sfCancelAll" disabled>Cancel all</button>
+                <button type="button" class="btn btn-primary" id="sfSaveAll" disabled>Save all</button>
             </div>
         </main>
     </div>
@@ -428,7 +544,9 @@
     <!-- Shared topbar: scroll tracking + tab clicks (replaces initSettingsTopbar) -->
     <script src="/javascript/admin/admin-topbar.js"></script>
 
+    <script src="/javascript/admin/settings-forms.js"></script>
     <script src="/javascript/admin/admin-plant-images.js"></script>
+    <script src="/javascript/admin/admin-description-vote-settings.js"></script>
 
     <script type="module">
         import { initSettingsPage, addTopbarTab, initAdminUser } from '/javascript/admin/admin-settings.js';

@@ -65,4 +65,6 @@ class NetworkModule(context: Context) {
     val recordApi: RecordApi = retrofit.create(RecordApi::class.java)
     val discoveryApi: DiscoveryApi = retrofit.create(DiscoveryApi::class.java)
     val botanistApi: BotanistApi = retrofit.create(BotanistApi::class.java)
+    val votesApi: VotesApi = retrofit.create(VotesApi::class.java)
+    val profileApi: ProfileApi = retrofit.create(ProfileApi::class.java)
 }

@@ -55,8 +55,14 @@ interface ScanExtrasApi {
 @Serializable
 data class ContributeOffer(
     val token: String,
-    @SerialName("expires_at") val expiresAt: String? = null
-)
+    @SerialName("expires_at") val expiresAt: String? = null,
+    /** "species", or "other_plant": a plant the model has no class for (the photo is filed with no plant yet). */
+    val kind: String = "species",
+    /** The server's own confidence for this offer (0..1), for the offer sentence only. */
+    val confidence: Double? = null
+) {
+    val isOtherPlant: Boolean get() = kind == "other_plant"
+}
 
 /** GET /api/discoveries/mine/summary */
 data class ReportSummary(

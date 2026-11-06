@@ -309,7 +309,7 @@ html[data-theme="dark"] .plant-badge-herbal-flower {
     color: var(--color-library-green);
 }
 
-html[data-theme="dark"] .badge-botanist,
+html[data-theme="dark"] .badge-contributor,
 html[data-theme="dark"] .plant-badge-herbal {
     color: #5fd08f;
 }

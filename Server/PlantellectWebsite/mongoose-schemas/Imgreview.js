@@ -41,10 +41,10 @@ const REVIEW_DECISIONS = [
     // at?" is a query and not an inference from a timestamp. Auto mode NEVER denies
     // anything, so there is deliberately no auto_rejected here.
     'auto_approved',
-    // A single botanist's "not a plant" verdict, and any botanist overriding one.
+    // A single contributor's "not a plant" verdict, and any contributor overriding one.
     'disqualified',
     'disqualification_overridden',
-    // A claim freed explicitly (admin, or a botanist acting on a dead claim).
+    // A claim freed explicitly (admin, or a contributor acting on a dead claim).
     'claim_released',
     // An admin closed a report by the quorum path being unreachable.
     'admin_override',

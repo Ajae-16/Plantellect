@@ -26,6 +26,11 @@ data class RecordUiState(
     val mineEnd: Boolean = false,
 
     val maxPhotos: Int = UploadLimits.MAX_CONTRIBUTION_PHOTOS,
+    /** Largest single photo the server accepts, once /limits has answered. */
+    val maxPhotoBytes: Long? = null,
+    val allowedPhotoTypes: List<String> = emptyList(),
+    /** Level (kingdom ... species) -> values already in the library, for autocomplete. */
+    val taxonomySuggestions: Map<String, List<String>> = emptyMap(),
     /** Deduplicated: one entry per type, e.g. "Herbal (1)". */
     val types: List<RecTypeName> = emptyList(),
     val results: List<RecPlantItem> = emptyList(),
@@ -45,7 +50,32 @@ class RecordPlantViewModel(private val repo: RecordRepository) : ViewModel() {
     private var requestsPage = 0
     private var searchJob: Job? = null
 
-    init { viewModelScope.launch { loadTypesNow() } }
+    init {
+        viewModelScope.launch { loadTypesNow() }
+        viewModelScope.launch { loadLimitsNow() }
+        viewModelScope.launch { loadSuggestionsNow() }
+    }
+
+    /** Re-reads the live photo limits; the admin can change them while the app is open. */
+    fun refreshLimits() { viewModelScope.launch { loadLimitsNow() } }
+
+    fun refreshTaxonomySuggestions() { viewModelScope.launch { loadSuggestionsNow() } }
+
+    private suspend fun loadLimitsNow() {
+        val limits = (repo.limits() as? ApiResult.Success)?.value ?: return   // no permission yet: keep the defaults
+        _ui.update { s ->
+            s.copy(
+                maxPhotos = repo.maxPhotos,
+                maxPhotoBytes = limits.maxSizeBytes ?: s.maxPhotoBytes,
+                allowedPhotoTypes = if (limits.allowedMimeTypes.isNotEmpty()) limits.allowedMimeTypes else s.allowedPhotoTypes
+            )
+        }
+    }
+
+    private suspend fun loadSuggestionsNow() {
+        val values = (repo.taxonomySuggestions() as? ApiResult.Success)?.value ?: return
+        _ui.update { it.copy(taxonomySuggestions = values) }
+    }
 
     // ---- existing API (unchanged) -------------------------------------------
 

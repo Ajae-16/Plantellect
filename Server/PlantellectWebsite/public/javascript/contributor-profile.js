@@ -1,11 +1,11 @@
 /**
- * Botanist / administrator profile page.
+ * Contributor / administrator profile page.
  *
- * Renders one account from GET /api/botanists/:accountId. The id comes from the
+ * Renders one account from GET /api/contributors/:accountId. The id comes from the
  * ?accountId query parameter, which is what the plant profile links to.
  *
  * The same page serves two kinds of account. profile.role decides which:
- *   botanist             the original profile
+ *   user                 a contributor: what this member added to the library
  *   admin / superadmin   an administrator profile (reviewing statistics)
  *
  * An administrator profile is only returned to an administrator. Everyone else
@@ -43,9 +43,9 @@ function setHidden(id, hidden) {
 /** Shows only the message, so a failed or restricted load never shows stale "—" stats. */
 function showUnavailable(message) {
     document.body.classList.add('profile-unavailable');
-    setText('botanistName', message);
-    setText('botanistBio', '');
-    setText('botanistAvatar', '—');
+    setText('profileName', message);
+    setText('profileBio', '');
+    setText('profileAvatar', '—');
     const grid = document.getElementById('contributionGrid');
     if (grid) grid.innerHTML = '';
     setHidden('reportedSection', true);
@@ -78,10 +78,10 @@ function renderPlantCard(c, role) {
 }
 
 /**
- * The verified-contributions grid, filtered to role = 'contributor'.
+ * The contributions grid, filtered to role = 'contributor'.
  *
- * The label is part of the claim: a species this botanist REPORTED is not one
- * they verified, so rendering both under one heading would assert something
+ * The label is part of the claim: a species this member REPORTED is not one
+ * they recorded, so rendering both under one heading would assert something
  * false. The reported grid below is a separate grid over role = 'reporter' for
  * the same reason.
  *
@@ -125,31 +125,31 @@ const ADMIN_ROLE_LABELS = {
     superadmin: 'Superadministrator'
 };
 
-/** The original botanist layout. */
-function renderBotanist(profile) {
+/** The contributor layout: what this member has added to the library. */
+function renderContributor(profile) {
     const metrics = profile.metrics || {};
 
-    setText('roleBadgeIcon', 'verified');
-    setText('roleBadgeText', 'Verified Plant Expert & Botanist');
-    setText('metricLabelPlants', 'Verified Plants');
+    setText('roleBadgeIcon', 'volunteer_activism');
+    setText('roleBadgeText', 'Community Contributor');
+    setText('metricLabelPlants', 'Plants Contributed');
     setText('metricLabelReported', 'Species Reported');
-    setText('metricLabelSpecialization', 'Specialization');
+    setText('metricLabelThird', 'Member Since');
     setText('contributionsIcon', 'eco');
-    setText('contributionsTitle', 'Verified Plant Contributions');
+    setText('contributionsTitle', 'Plant Contributions');
 
-    setText('botanistPlantCount', metrics.verifiedPlants || 0);
-    setText('botanistSpecialization', profile.specialization || '—');
+    setText('profilePlantCount', metrics.verifiedPlants || 0);
+    setText('profileThirdMetric', formatJoined(profile.joinedAt));
 
     // Per-plant CNN accuracy is not persisted anywhere, so the metric is hidden
-    // for botanists instead of showing a permanent dash.
+    // for contributors instead of showing a permanent dash.
     setHidden('metricAccuracyItem', true);
 
     // A reported species is credited, so the number counts it — and only it.
-    // It is deliberately NOT added into verifiedPlants: the two are different
-    // claims and the metrics row must not blur them.
-    setText('botanistReportedCount', metrics.reportedPlants || 0);
+    // It is deliberately NOT added into the contributed count: the two are
+    // different claims and the metrics row must not blur them.
+    setText('profileReportedCount', metrics.reportedPlants || 0);
 
-    renderContributions(profile.contributions, 'Contributed', 'No verified contributions yet.');
+    renderContributions(profile.contributions, 'Contributed', 'No contributions yet.');
     renderReported(profile.reported);
 }
 
@@ -162,16 +162,16 @@ function renderAdministrator(profile) {
     setText('metricLabelPlants', 'Plants Reviewed');
     setText('metricLabelReported', 'Requests Approved');
     setText('metricLabelAccuracy', 'Requests Denied');
-    setText('metricLabelSpecialization', 'Member Since');
+    setText('metricLabelThird', 'Member Since');
     setText('contributionsIcon', 'fact_check');
     setText('contributionsTitle', 'Plants Reviewed');
 
     setHidden('metricAccuracyItem', false);
 
-    setText('botanistPlantCount', metrics.reviewedPlants || 0);
-    setText('botanistReportedCount', metrics.approvedRequests || 0);
-    setText('botanistAccuracy', metrics.deniedRequests || 0);
-    setText('botanistSpecialization', formatJoined(profile.joinedAt));
+    setText('profilePlantCount', metrics.reviewedPlants || 0);
+    setText('profileReportedCount', metrics.approvedRequests || 0);
+    setText('profileAccuracy', metrics.deniedRequests || 0);
+    setText('profileThirdMetric', formatJoined(profile.joinedAt));
 
     renderContributions(profile.contributions, 'Reviewed', 'No reviewed plants yet.');
 
@@ -179,7 +179,7 @@ function renderAdministrator(profile) {
     setHidden('reportedSection', true);
 }
 
-async function loadBotanistProfile() {
+async function loadContributorProfile() {
     const params = new URLSearchParams(window.location.search);
     const accountId = params.get('accountId') || params.get('id');
 
@@ -190,7 +190,7 @@ async function loadBotanistProfile() {
 
     let profile;
     try {
-        const response = await fetch(`/api/botanists/${encodeURIComponent(accountId)}`, { credentials: 'include' });
+        const response = await fetch(`/api/contributors/${encodeURIComponent(accountId)}`, { credentials: 'include' });
         if (response.status === 404) {
             // Missing, deleted, or an administrator profile this visitor may not see.
             showUnavailable(UNAVAILABLE);
@@ -199,7 +199,7 @@ async function loadBotanistProfile() {
         if (!response.ok) throw new Error('Failed to load profile');
         profile = await response.json();
     } catch (err) {
-        console.error('Load botanist profile error:', err);
+        console.error('Load contributor profile error:', err);
         showUnavailable('Could not load profile. Check your connection and try again.');
         return;
     }
@@ -211,12 +211,14 @@ async function loadBotanistProfile() {
 
     const name = profile.name || 'Unnamed account';
     document.title = `${name} - Plantellect`;
-    setText('botanistName', name);
-    setText('botanistAvatar', initialsFor(name));
-    setText('botanistBio', profile.bio || 'No biography recorded yet.');
+    setText('profileName', name);
+    setText('profileAvatar', initialsFor(name));
+    // An empty bio hides itself (.contributor-bio:empty), so a member who never
+    // wrote one does not get a placeholder sentence.
+    setText('profileBio', profile.bio || '');
 
-    if (profile.role === 'botanist') {
-        renderBotanist(profile);
+    if (profile.role === 'user') {
+        renderContributor(profile);
     } else if (profile.role === 'admin' || profile.role === 'superadmin') {
         renderAdministrator(profile);
     } else {
@@ -224,4 +226,4 @@ async function loadBotanistProfile() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', loadBotanistProfile);
+document.addEventListener('DOMContentLoaded', loadContributorProfile);

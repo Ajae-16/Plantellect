@@ -4,9 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.plantellect.mobileplantellect.data.logic.*
 import com.plantellect.mobileplantellect.data.remote.dto.*
+import com.plantellect.mobileplantellect.data.repository.DescriptionVoteRepository
+import com.plantellect.mobileplantellect.data.repository.PlantProfileRepository
 import com.plantellect.mobileplantellect.data.repository.PlantRepository
-import com.plantellect.mobileplantellect.ui.screen.cardName
-import com.plantellect.mobileplantellect.ui.screen.cardScientific
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -46,7 +46,11 @@ sealed interface PlantDetailState {
     data class Error(val message: String) : PlantDetailState
 }
 
-class LibraryViewModel(private val repo: PlantRepository) : ViewModel() {
+class LibraryViewModel(
+    private val repo: PlantRepository,
+    private val profiles: PlantProfileRepository,
+    private val votes: DescriptionVoteRepository
+) : ViewModel() {
     private val _ui = MutableStateFlow(LibraryUiState())
     val ui: StateFlow<LibraryUiState> = _ui.asStateFlow()
 
@@ -103,6 +107,24 @@ class LibraryViewModel(private val repo: PlantRepository) : ViewModel() {
     /** For PredictionDto.imageUrl from a scan result. */
     fun absoluteUrl(path: String?): String? = repo.absoluteUrl(path)
 
+    // ---- one plant's full profile and the votes on its descriptions ----------------------
+
+    /** Photo addresses from the server are paths like /resource/plant-images/display/...; this makes them absolute. */
+    fun resolveUrl(path: String?): String? = profiles.resolveUrl(path)
+
+    /** One plant's public profile, cached. [force] skips the cache. 404 comes back as [ProfileLoad.NotFound]. */
+    suspend fun profile(plantId: String, force: Boolean = false): ProfileLoad = profiles.load(plantId, force)
+
+    /** The plant's first photo, for a card whose list row carries none. Null when it has no photo. */
+    suspend fun heroUrl(plantId: String): String? = profiles.heroUrl(plantId)
+
+    /** Null when the votes could not be read. */
+    suspend fun voteSummary(plantId: String): VoteSummary? = votes.summary(plantId)
+    suspend fun voteUp(plantId: String, descriptionId: String): VoteResult = votes.up(plantId, descriptionId)
+    suspend fun voteDown(plantId: String, descriptionId: String, reasonCode: String, note: String?): VoteResult =
+        votes.down(plantId, descriptionId, reasonCode, note)
+    suspend fun voteRetract(plantId: String, descriptionId: String): VoteResult = votes.retract(plantId, descriptionId)
+
     private fun pageSlice(page: Int): List<PlantSummaryDto> =
         all.drop((page - 1) * PAGE_SIZE).take(PAGE_SIZE)
 
@@ -115,9 +137,9 @@ class LibraryViewModel(private val repo: PlantRepository) : ViewModel() {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return this
         fun fields(p: PlantSummaryDto): List<String> = when (by) {
-            SearchBy.COMMON -> listOf(p.cardName)
-            SearchBy.SCIENTIFIC -> listOf(p.cardScientific.orEmpty())
-            SearchBy.ALL -> listOf(p.cardName, p.cardScientific.orEmpty())
+            SearchBy.COMMON -> listOf(p.name)
+            SearchBy.SCIENTIFIC -> listOf(p.scientificName.orEmpty())
+            SearchBy.ALL -> listOf(p.name, p.scientificName.orEmpty())
         }.map { it.lowercase() }
 
         fun rank(p: PlantSummaryDto): Int {

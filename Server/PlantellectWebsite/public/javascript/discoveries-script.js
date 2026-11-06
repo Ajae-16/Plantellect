@@ -31,7 +31,7 @@ const REASON_LABELS = {
 /** Readable role names. The role itself (card.reporterRole) comes from the server. */
 const ROLE_LABELS = {
     user: 'User',
-    botanist: 'Botanist',
+    contributor: 'Contributor',
     admin: 'Admin',
     superadmin: 'Superadmin',
     system: 'System'
@@ -91,7 +91,7 @@ function renderReporterRole(card) {
     return `<span class="reporter-role role-${escapeHtml(card.reporterRole)}">${escapeHtml(label)}</span>`;
 }
 
-/** The report's own photos, from the botanist route. */
+/** The report's own photos, from the contributor route. */
 function renderPhotos(card) {
     if (!card.images || card.images.length === 0) {
         return card.photosPurged
@@ -101,7 +101,10 @@ function renderPhotos(card) {
     return `<div class="discovery-photos">${card.images.map((image) => `
         <a href="${escapeHtml(image.url)}" target="_blank" rel="noopener">
             <img src="${escapeHtml(image.url)}" alt="Photo from this report">
-        </a>`).join('')}</div>`;
+        </a>`).join('')}</div>
+        ${card.images.some((image) => image.allowContribution)
+            ? '<p class="discovery-muted">The reporter allows these photos as contribution images, so you can attach them to the record.</p>'
+            : '<p class="discovery-muted">For identifying the plant only: the reporter did not allow these photos as contribution images.</p>'}`;
 }
 
 /** What the model guessed, as a hint. Never pre-fills anything. */
@@ -163,7 +166,7 @@ function renderActions(card) {
 }
 
 /**
- * What you may JUDGE the report to be, for every botanist.
+ * What you may JUDGE the report to be, for every contributor.
  *
  * Kept out of renderActions on purpose. A verdict is not a task: it is an opinion
  * about a photo, and the person best placed to hold one is often NOT the person
@@ -173,7 +176,7 @@ function renderActions(card) {
  * want.
  *
  * Visibility is not permission. Recording a verdict still requires holding the
- * claim (disqualifyDiscovery guards on claimedBy), so a botanist who reveals this
+ * claim (disqualifyDiscovery guards on claimedBy), so a contributor who reveals this
  * menu without a claim gets the reason list, the reason for the requirement, and a
  * 409 that says the same thing — rather than a button that was never there.
  */
@@ -209,7 +212,7 @@ function disqualifyHint(card) {
         return 'Recording the verdict hands the report back to the queue and releases your claim, so the rest of the team can vote on it.';
     }
     if (isReporterOf(card)) {
-        return 'You filed this report, so you cannot claim it or record a verdict on it. Another botanist has to.';
+        return 'You filed this report, so you cannot claim it or record a verdict on it. Another contributor has to.';
     }
     return 'You have to claim this report before you can record a verdict &mdash; a verdict must belong to somebody responsible for the report. Claim it, or ask the holder to release it.';
 }
@@ -270,7 +273,7 @@ async function load() {
         if (quorum) {
             quorum.hidden = false;
             quorum.textContent = `A "not a plant" verdict closes a report when ${data.notAPlantThreshold} of the ` +
-                `${data.activeBotanists} active botanist${data.activeBotanists === 1 ? '' : 's'} agree. ` +
+                `${data.activeContributors} active contributor${data.activeContributors === 1 ? '' : 's'} agree. ` +
                 'You do not need to hold the claim to vote.';
         }
 
@@ -289,7 +292,7 @@ async function load() {
     } catch (err) {
         list.innerHTML = '';
         if (err.status === 403) {
-            setNotice('The discoveries queue is for botanists. Your account can file a report from the Scan page instead.', 'warning');
+            setNotice('The discoveries queue is for contributors. Your account can file a report from the Scan page instead.', 'warning');
         } else {
             setNotice(err.message, 'warning');
         }
@@ -317,7 +320,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Identity comes from sidebar.js's single /api/auth/me fetch. This page used
     // to make its own call in a try/catch that turned every failure into
     // myAccountId = null — and then, having never rendered the header either,
-    // showed a botanist a queue with the nav still saying SIGN IN.
+    // showed a contributor a queue with the nav still saying SIGN IN.
     const me = await window.plantAuth.ready;
     myAccountId = (me && me.accountId) || null;
     document.addEventListener('click', (event) => {

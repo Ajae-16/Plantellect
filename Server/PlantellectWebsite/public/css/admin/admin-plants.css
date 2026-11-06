@@ -39,7 +39,7 @@
 }
 
 /* Plant-requests cards get a leaf-icon avatar so they read distinctly
-   from the plain role-request cards on the dashboard. */
+   from the plain request cards. */
 #plantRequestsList .pending-request-card {
     align-items: center;
 }

@@ -44,6 +44,19 @@ app.use(session({
 // exact path of a generated WebP is served; see config/public-images.js.
 app.use(settings.plantImages.publicUrlBase, publicImages.publicImageHandler());
 
+// The website is for administrators, everyone else is sent to the app download page.
+// Pages only (the root and *.html): /api, /admin and the css / js / resource files are
+// not touched. Mounted BEFORE express.static and the '/' route so those never serve a
+// page to a visitor first. See middleware/site-gate.js.
+app.use(require('./middleware/site-gate').siteGate());
+
+// The profile page was renamed when the botanist role was retired. Old links and
+// bookmarks land on the new page with their query string intact.
+app.get('/botanist-profile.html', (req, res) => {
+    const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    res.redirect(301, '/contributor-profile.html' + query);
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
@@ -51,22 +64,30 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/auth', require('./routes/auth'));
+// The signed-in user's own bio, password and profile photo (mobile app).
+app.use('/api/profile', require('./routes/profile'));
 // plant-changes first: /:plantId/editable and /:plantId/changes each have two
 // segments, so they cannot shadow /mine, /lookup, /limits or /types.
 app.use('/api/plants', require('./routes/plant-changes'));
+// Thumbs up / down on a plant's descriptions. Two-segment paths again, so no clash with /mine etc.
+app.use('/api/plants', require('./routes/description-votes'));
 app.use('/api/plants', require('./routes/plants'));
 // A separate router from routes/plants.js on purpose: these are a distinct
 // feature with a distinct permission model, and keeping them apart means the
 // two image-route rule sets (owner-only for a reporter's own photo, record_plant
-// for the botanist view) can never be confused. A claim in routes/plants.js
+// for the contributor view) can never be confused. A claim in routes/plants.js
 // would also put /count and /images/:imageId behind /:plantId.
 app.use('/api/discoveries', require('./routes/discoveries'));
-app.use('/api/botanists', require('./routes/botanists'));
+const contributorsRouter = require('./routes/contributors');
+app.use('/api/contributors', contributorsRouter);
+// The old path, kept so a client built before the rename (the mobile app, a saved
+// link) keeps working. Same router, same rules. Remove once nothing calls it.
+app.use('/api/botanists', contributorsRouter);
 app.use('/api/ml', require('./routes/ml'));
 app.use('/admin/api/ml/usage', require('./routes/ml-usage'));
 app.use('/admin', require('./routes/admin'));
 app.use('/admin', require('./routes/admin-dataset'));
-app.use('/admin', require('./routes/role-requests'));
+app.use('/admin', require('./routes/admin-description-feedback'));
 
 app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
@@ -83,13 +104,15 @@ async function startServer() {
     await runSeed();
     
 
-    for (const dir of [settings.certificates.storageDir, settings.plantImages.storageDir]) {
+    for (const dir of [settings.plantImages.storageDir]) {
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
     }
     // plants/ and discoveries/, each with pending, approved and denied.
     require('./config/image-files').ensureImageTree();
+    // administration/inventory/user-images (profile photos) and its temporary landing folder.
+    require('./config/profile-mysql').ensureUserImageTree();
     // public/resource/plant-images/{thumbnail,display}, then reconcile it with the
     // database: delete files with no visible record, regenerate missing
     // copies and copies whose hash no longer matches. It never throws: a failure is
@@ -98,6 +121,8 @@ async function startServer() {
     publicImages.ensurePublicTree();
     await maintenance.runReconcile();
     maintenance.scheduleNightly();
+    // Dataset page, several admins at once: sweeps lapsed "working on this" markers and prunes the old change log.
+    require('./config/dataset-sync').startHousekeeping();
 
     const PORT = settings.server.port;
     app.listen(PORT, '0.0.0.0', () => {

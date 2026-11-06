@@ -82,6 +82,10 @@
             <!-- Empty on load. Filled by scan.js. -->
             <div id="scanResults" class="scan-results" hidden></div>
 
+            <!-- Scan contribution choice (Help improve the ML / Record it / Skip). Empty and hidden unless
+                 /api/ml/predict sent a contribute_offer for the photo on screen. Filled by scan.js. -->
+            <section id="scanContribute" class="scan-contribute" aria-labelledby="scanContributeTitle" hidden></section>
+
         </div>
 
         <details id="discoveryReportCard" class="scan-discovery-card" hidden>
@@ -98,31 +102,57 @@
             </summary>
             <p class="scan-hint">
                 If this really is a plant but the model could not name it, tell us.
-                A botanist picks it up from the Discoveries queue and records it for you.
+                Your scanned photo is used for the report, so there is no need to take another one.
+                A contributor picks it up from the Discoveries queue and records it for you.
             </p>
 
             <form id="discoveryReportForm" novalidate>
-                <!-- The server requires a note OR at least one photo. This is
-                     the client half of the same rule, so the user finds out
-                     before submitting rather than from a 400. -->
-                <p id="discoveryReportRequirement" class="scan-hint">
-                    Add a note or at least one photo &mdash; one of the two is required.
-                </p>
+                <!-- The photo you just scanned (or the last one, kept on this device for a few days).
+                     No upload field: the report is made from the scan. -->
+                <div id="reportPhotoBox" class="report-photo-box" hidden>
+                    <img id="reportPhotoImg" alt="Your scanned photo">
+                    <div>
+                        <p class="report-photo-title">Using your scanned photo</p>
+                        <p class="scan-hint" id="reportPhotoMeta"></p>
+                    </div>
+                </div>
 
-                <label for="reportNote">What do you see?</label>
-                <textarea id="reportNote" name="note" rows="3"
-                          placeholder="Leaves in pairs, thorny pods, growing on a stone wall&hellip;"></textarea>
+                <p id="reportNoPhoto" class="scan-hint" hidden>
+                    Scan a photo above and it will be used here. No scan available on this account?
+                    Choose one photo instead:
+                </p>
+                <input type="file" id="reportPickInput" accept="image/jpeg,image/png,image/webp" hidden>
+                <button type="button" id="reportPickBtn" class="btn scan-btn-secondary report-pick-btn" hidden>Choose one photo</button>
+
+                <!-- Tick what you see; the choices are simply added to the note as text. -->
+                <fieldset class="report-checklist">
+                    <legend>What do you see?</legend>
+                    <div id="reportChecklist"></div>
+                </fieldset>
+
+                <label for="reportNote">Anything else? (optional)</label>
+                <textarea id="reportNote" name="note" rows="2"
+                          placeholder="Anything specific: leaf shape, smell, size, what it grows on&hellip;"></textarea>
+                <p class="scan-hint report-note-preview" id="reportNotePreview" aria-live="polite"></p>
 
                 <label for="reportLocation">Where did you find it? (optional)</label>
                 <input type="text" id="reportLocation" name="location" autocomplete="off"
                        placeholder="Campus, beside the north gate">
 
-                <label for="reportImages">Photos (up to 3)</label>
-                <input type="file" id="reportImages" name="images" multiple
-                       accept="image/jpeg,image/png,image/webp">
-                <p class="scan-hint" id="reportFileHint"></p>
+                <!-- The scan is only a temporary copy on this device. Ticking this lets the photo
+                     stay as a contribution image. Whether it counts as Plant or Other plant is
+                     decided later from the species, not by the person ticking. No description needed. -->
+                <label class="report-contribute" for="reportContribute">
+                    <input type="checkbox" id="reportContribute">
+                    <span>
+                        <strong>Also use this photo as a contribution image</strong>
+                        <small>Otherwise it is only used to identify the plant and is removed with the report.
+                        If ticked, a contributor can attach it to the plant once it is named, as a plant photo
+                        (or as Other plant when the model does not list that species yet). No description needed.</small>
+                    </span>
+                </label>
 
-                <button type="submit" class="btn scan-btn-primary" id="discoveryReportSubmit">Send to a botanist</button>
+                <button type="submit" class="btn scan-btn-primary" id="discoveryReportSubmit">Send to a contributor</button>
                 <p id="discoveryReportResult" class="scan-hint" hidden></p>
             </form>
         </details>

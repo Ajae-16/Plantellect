@@ -41,7 +41,7 @@ function normalizeName(value) {
 
 /**
  * For free-text descriptions (uses, benefits, caution notes). Unlike normalizeName it KEEPS
- * line breaks, because a botanist's Enter key is a paragraph or bullet break, and the
+ * line breaks, because a contributor's Enter key is a paragraph or bullet break, and the
  * formatting marks (**bold**, ==highlight==, \\n ...) read by public/javascript/richtext.js.
  * It still tidies: CRLF -> LF, trailing spaces, runs of 3+ blank lines -> one blank line.
  */
@@ -65,7 +65,7 @@ function normalizeScientificName(value) {
 // ---------------------------------------------------------------------------
 
 /**
- * The sentinel for a taxonomy level the botanist did not supply. It has to read
+ * The sentinel for a taxonomy level the contributor did not supply. It has to read
  * as a gap: 'Lamiaceae' reads as a fact nobody will correct, 'Unspecified'
  * does not. kingdom and phylum default to the two values that are right for
  * every plant in this project, so they never carry the sentinel.

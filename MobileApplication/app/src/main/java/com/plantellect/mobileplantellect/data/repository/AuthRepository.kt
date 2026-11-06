@@ -1,23 +1,14 @@
 package com.plantellect.mobileplantellect.data.repository
 
-import android.content.ContentResolver
-import android.net.Uri
-import android.provider.OpenableColumns
 import com.plantellect.mobileplantellect.data.local.SessionStore
 import com.plantellect.mobileplantellect.data.logic.*
 import com.plantellect.mobileplantellect.data.remote.AuthApi
 import com.plantellect.mobileplantellect.data.remote.PersistentCookieJar
 import com.plantellect.mobileplantellect.data.remote.dto.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
-import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 
 sealed interface AuthState {
     data object Unknown : AuthState
@@ -30,8 +21,7 @@ class AuthRepository(
     private val api: AuthApi,
     private val caller: ApiCaller,
     private val store: SessionStore,
-    private val cookies: PersistentCookieJar,
-    private val resolver: ContentResolver
+    private val cookies: PersistentCookieJar
 ) {
     private val _state = MutableStateFlow<AuthState>(AuthState.Unknown)
     val state: StateFlow<AuthState> = _state.asStateFlow()
@@ -68,33 +58,21 @@ class AuthRepository(
     }
 
     /** A successful register also signs the user in: the server sets the session cookie. */
-    suspend fun register(form: RegisterForm, certificate: Uri?): ApiResult<RegisterResponse> {
-        fun text(v: String): RequestBody = v.toRequestBody("text/plain".toMediaType())
-        val fields = buildMap<String, RequestBody> {
-            put("email", text(form.email.trim()))
-            put("username", text(form.username.trim()))
-            put("password", text(form.password))
-            put("role", text(form.role.wire))
-            put("agreeTerms", text(form.agreeTerms.toString()))
-            put("agreeInfo", text(form.agreeInfo.toString()))
-            if (form.firstName.isNotBlank()) put("firstName", text(form.firstName.trim()))
-            if (form.lastName.isNotBlank()) put("lastName", text(form.lastName.trim()))
-        }
-        // The server discards a certificate sent with the plain 'user' role, so don't upload one.
-        val part = if (form.role == AccountRole.BOTANIST) {
-            certificate?.let {
-                try {
-                    readCertificate(it)
-                } catch (e: IllegalArgumentException) {
-                    return ApiResult.Failure(AppError.Http(400, e.message ?: "Could not use that certificate file."))
-                }
-            }
-        } else null
-        return caller.call { api.register(fields, part) }
+    suspend fun register(form: RegisterForm): ApiResult<RegisterResponse> {
+        val request = RegisterRequest(
+            email = form.email.trim(),
+            username = form.username.trim(),
+            password = form.password,
+            firstName = form.firstName.trim().takeIf { it.isNotBlank() },
+            lastName = form.lastName.trim().takeIf { it.isNotBlank() },
+            agreeTerms = form.agreeTerms,
+            agreeInfo = form.agreeInfo
+        )
+        return caller.call { api.register(request) }
             .also { if (it is ApiResult.Success) onSignedIn(it.value.toAccount()) }
     }
 
-    /** Re-reads roles/permissions, e.g. after an admin approves a botanist request. */
+    /** Re-reads roles/permissions from /me. */
     suspend fun refreshProfile(): ApiResult<AccountDto> =
         caller.call { api.me() }.also {
             when (it) {
@@ -114,6 +92,17 @@ class AuthRepository(
 
     fun onSessionExpired() = signedOutLocally()
 
+    /**
+     * After a bio / photo change: copy the new values into the signed-in account (and its cached copy), so every
+     * screen that shows the account updates without another /me call. A no-op while signed out.
+     */
+    fun updateAccount(transform: (AccountDto) -> AccountDto) {
+        val current = _state.value as? AuthState.SignedIn ?: return
+        val updated = transform(current.account)
+        store.saveAccount(updated)
+        _state.value = current.copy(account = updated)
+    }
+
     private fun onSignedIn(account: AccountDto) {
         store.saveAccount(account)
         _state.value = AuthState.SignedIn(account, verified = true)
@@ -123,36 +112,5 @@ class AuthRepository(
         cookies.clear()
         store.clear()
         _state.value = AuthState.SignedOut
-    }
-
-    /** Throws IllegalArgumentException with a user-facing message when the file can't be accepted. */
-    private suspend fun readCertificate(uri: Uri): MultipartBody.Part = withContext(Dispatchers.IO) {
-        val mime = resolver.getType(uri)
-        val ext = UploadLimits.CERTIFICATE_TYPES[mime]
-            ?: throw IllegalArgumentException("The certificate must be a PDF, JPG or PNG file.")
-
-        var displayName: String? = null
-        var size: Long? = null
-        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
-            if (c.moveToFirst()) {
-                displayName = c.getString(0)
-                if (!c.isNull(1)) size = c.getLong(1)
-            }
-        }
-        // Check the size BEFORE reading the whole file into memory.
-        if ((size ?: 0L) > UploadLimits.MAX_CERTIFICATE_BYTES) {
-            throw IllegalArgumentException("The certificate is too large (maximum 20 MB).")
-        }
-
-        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: throw IllegalArgumentException("Could not read the certificate file.")
-        if (bytes.size > UploadLimits.MAX_CERTIFICATE_BYTES) {
-            throw IllegalArgumentException("The certificate is too large (maximum 20 MB).")
-        }
-
-        // The server validates the extension of the file NAME as well as the mime type, so rebuild
-        // the name from the detected type instead of trusting whatever the picker returned.
-        val base = displayName?.substringBeforeLast('.', displayName!!)?.takeIf { it.isNotBlank() } ?: "certificate"
-        MultipartBody.Part.createFormData("certificate", base + ext, bytes.toRequestBody(mime!!.toMediaType()))
     }
 }

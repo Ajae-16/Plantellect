@@ -13,7 +13,9 @@ import com.plantellect.mobileplantellect.data.logic.ServerMonitor
 import com.plantellect.mobileplantellect.data.remote.NetworkModule
 import com.plantellect.mobileplantellect.data.remote.ScanExtrasApi
 import com.plantellect.mobileplantellect.data.repository.AuthRepository
+import com.plantellect.mobileplantellect.data.repository.DescriptionVoteRepository
 import com.plantellect.mobileplantellect.data.repository.DiscoveryRepository
+import com.plantellect.mobileplantellect.data.repository.PlantProfileRepository
 import com.plantellect.mobileplantellect.data.repository.PlantRepository
 import com.plantellect.mobileplantellect.data.repository.ProfileRepository
 import com.plantellect.mobileplantellect.data.repository.RecordRepository
@@ -35,7 +37,7 @@ class AppContainer(app: Application) {
     val connectivity = NetworkMonitor(app)
     val settings = SettingsStore(app)
     /** Answers "can we reach the server right now?" (refreshed every 10 s while the app is open). */
-    val serverMonitor = ServerMonitor(connectivity, network.okHttpClient, network.baseUrl)
+    val serverMonitor = ServerMonitor(connectivity, network.okHttpClient, network.baseUrl, settings.offlineMode)
 
     /**
      * "Help improve the ML" and the "Not identified?" report (contribute, summary, file, withdraw).
@@ -48,7 +50,7 @@ class AppContainer(app: Application) {
         .build()
         .create(ScanExtrasApi::class.java)
 
-    val auth = AuthRepository(network.authApi, caller, session, network.cookieJar, app.contentResolver)
+    val auth = AuthRepository(network.authApi, caller, session, network.cookieJar)
     val plants = PlantRepository(network.plantApi, caller, network.baseUrl)
     val scans = ScanRepository(
         context = app,
@@ -57,16 +59,20 @@ class AppContainer(app: Application) {
         caller = caller,
         classifier = classifier,
         network = connectivity,
-        server = serverMonitor
+        server = serverMonitor,
+        settings = settings
     )
     val records = RecordRepository(app, network.recordApi, caller, network.json, network.baseUrl)
     val discoveries = DiscoveryRepository(app, network.discoveryApi, caller, network.json, network.baseUrl)
-    val profiles = ProfileRepository(network.botanistApi, network.discoveryApi, caller)
+    val profiles = ProfileRepository(app, network.botanistApi, network.discoveryApi, network.profileApi, auth, caller, network.baseUrl)
+    /** One plant's full public profile (cached) and the thumbs up / down on its descriptions. */
+    val plantProfiles = PlantProfileRepository(network.plantApi, network.baseUrl)
+    val descriptionVotes = DescriptionVoteRepository(network.votesApi, caller)
 
     val viewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { AuthViewModel(auth, network.sessionExpired) }
-        initializer { ScanViewModel(scans) }
-        initializer { LibraryViewModel(plants) }
+        initializer { ScanViewModel(scans, settings) }
+        initializer { LibraryViewModel(plants, plantProfiles, descriptionVotes) }
         initializer { RecordPlantViewModel(records) }
         initializer { DiscoveryViewModel(discoveries) { auth.hasPermission("record_plant") } }
         initializer { ProfileViewModel(profiles) }

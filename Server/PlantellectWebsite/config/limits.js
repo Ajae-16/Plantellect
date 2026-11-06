@@ -12,7 +12,7 @@ const settings = require('./settings');
 // Default values from settings.js (fallback layer)
 const SETTINGS_DEFAULTS = {
     discoveries: {
-        maxClaimsPerBotanist: settings.discoveries.maxClaimsPerBotanist,
+        maxClaimPerUsers: settings.discoveries.maxClaimPerUsers,
         maxOpenReportsPerAccount: settings.discoveries.maxOpenReportsPerAccount,
         cancelGraceHours: settings.discoveries.cancelGraceHours,
         reportCooldownMinutes: settings.discoveries.reportCooldownMinutes,
@@ -30,22 +30,19 @@ const SETTINGS_DEFAULTS = {
 
 // Role-specific defaults (used when role_limits has no row)
 const ROLE_DEFAULTS = {
+    // `botanist` is retired: users claim discovery reports themselves.
     user: {
-        maxOpenReportsPerAccount: settings.discoveries.maxOpenReportsPerAccount,
-        rateLimitMax: settings.ml.rateLimitMax
-    },
-    botanist: {
-        maxClaimsPerBotanist: settings.discoveries.maxClaimsPerBotanist,
+        maxClaimPerUsers: settings.discoveries.maxClaimPerUsers,
         maxOpenReportsPerAccount: settings.discoveries.maxOpenReportsPerAccount,
         rateLimitMax: settings.ml.rateLimitMax
     },
     admin: {
-        maxClaimsPerBotanist: settings.discoveries.maxClaimsPerBotanist,
+        maxClaimPerUsers: settings.discoveries.maxClaimPerUsers,
         maxOpenReportsPerAccount: settings.discoveries.maxOpenReportsPerAccount,
         rateLimitMax: settings.ml.rateLimitMax
     },
     superadmin: {
-        maxClaimsPerBotanist: settings.discoveries.maxClaimsPerBotanist,
+        maxClaimPerUsers: settings.discoveries.maxClaimPerUsers,
         maxOpenReportsPerAccount: settings.discoveries.maxOpenReportsPerAccount,
         rateLimitMax: settings.ml.rateLimitMax
     }
@@ -104,7 +101,7 @@ function validateObject(obj, schema, source) {
 
 // Schemas for validation
 const DISCOVERIES_SCHEMA = {
-    maxClaimsPerBotanist: { type: 'number', min: 1, max: 1000 },
+    maxClaimPerUsers: { type: 'number', min: 1, max: 1000 },
     maxOpenReportsPerAccount: { type: 'number', min: 1, max: 1000 },
     cancelGraceHours: { type: 'number', min: 0, max: 8760 }, // up to 1 year
     reportCooldownMinutes: { type: 'number', min: 0, max: 10080 }, // up to 1 week

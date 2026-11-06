@@ -233,7 +233,7 @@ async function perceptualHash(masterBuffer) {
 
 /**
  * True when a PENDING or APPROVED photo already has these exact upload bytes. A denied
- * photo does not count, so a botanist can upload a corrected attempt again. With
+ * photo does not count, so a contributor can upload a corrected attempt again. With
  * includeDiscoveries, a photo in a still-pending discovery report counts too.
  * `executor` is a mysql2 pool or connection, injected so this file never loads the
  * database layer.
@@ -270,6 +270,7 @@ async function removeQuietly(file) {
  *   options.detect          type detector (tests only)
  *   options.fetchImpl       fetch (tests only)
  *   options.isDuplicate     async (hash) => boolean
+ *   options.describeDuplicate  async (hash, name) => { message, reason } | null, optional: a clearer refusal for a held photo
  *   options.seenHashes      Set, shared across one request, to catch the same photo twice
  */
 async function ingestFile(file, options = {}) {
@@ -292,6 +293,15 @@ async function ingestFile(file, options = {}) {
             }
         }
         if (options.isDuplicate && await options.isDuplicate(contentHash)) {
+            // A caller may name WHY the photo is held (describeDuplicate), so the person gets a clear
+            // sentence instead of the generic one. A hook that fails or says nothing changes nothing.
+            let named = null;
+            if (options.describeDuplicate) {
+                try { named = await options.describeDuplicate(contentHash, name); } catch (err) { named = null; }
+            }
+            if (named && typeof named.message === 'string' && named.message) {
+                throw new IngestError(named.message, 409, named.reason || 'duplicate');
+            }
             throw new IngestError(
                 `"${name}" has already been submitted. Choose a different photo.`, 409, 'duplicate'
             );
@@ -365,7 +375,8 @@ function ingestUploads({ executor, includeDiscoveries = false, options = {} } = 
                 ...options,
                 isDuplicate: executor ? (hash) => hashIsTaken(executor, hash, { includeDiscoveries }) : undefined
             });
-            if (result.error) return res.status(result.code).json({ error: result.error });
+            // `reason` is additive: the pages that only read `error` are unaffected.
+            if (result.error) return res.status(result.code).json({ error: result.error, reason: result.reason });
             return next();
         } catch (err) {
             for (const file of files) await removeQuietly(file.path);

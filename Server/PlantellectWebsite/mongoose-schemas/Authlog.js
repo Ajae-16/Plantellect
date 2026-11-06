@@ -24,9 +24,22 @@ const AUTHLOG_ACTIONS = [
     // Dataset page: an audit started, photos moved to / back from quarantine, a cluster reviewed or grouped,
     // a part row added, a species promoted or un-promoted. metadata.action says which.
     'dataset_changed',
-    // Admin plant modal: a photo shown, hidden, or made the primary photo.
-    // metadata.action is 'hide' | 'show' | 'primary', with plantId and imageId.
-    'photo_visibility_changed'
+    // Admin plant modal: a photo shown, hidden, made the primary photo, archived or unarchived.
+    // metadata.action is 'hide' | 'show' | 'primary' | 'archive' | 'unarchive', with plantId and
+    // imageId (and archiveReason for 'archive').
+    'photo_visibility_changed',
+    // Dashboard "Description feedback" card: an admin made a voted description the primary,
+    // restored a hidden one, dismissed the alert, or took it out. metadata.action says which.
+    'description_feedback_changed',
+    // Users page: an admin created an account or edited one's email, username or name.
+    // metadata carries targetAccountId (and the field names changed, never the values).
+    'user_created',
+    'user_updated',
+    // Mobile profile API (routes/profile.js). Never stores the passwords themselves.
+    // profile_updated metadata: { field: 'bio' | 'photo', ... }
+    'password_changed',
+    'password_change_failed',
+    'profile_updated'
 ];
 
 const authlogSchema = new mongoose.Schema(

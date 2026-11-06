@@ -152,14 +152,6 @@
                                 </div>
                             </div>
 
-                            <div class="container-input">
-                                <p>Select Your Role:</p>
-                                <div class="container-row">
-                                    <button type="button" class="role-btn" id="roleUserBtn" onclick="selectRole('user')">USER</button>
-                                    <button type="button" class="role-btn" id="roleExpertBtn" onclick="selectRole('botanist')">BOTANIST</button>
-                                </div>
-                            </div>
-
                             <!-- Terms and Conditions trigger and checkboxes -->
                             <div class="container-input terms-section">
                                 <button type="button" id="openTermsModal" class="terms-link">
@@ -176,24 +168,6 @@
                                         <input type="checkbox" id="agreeInfo" disabled>
                                         <span>I agree to the usage of my information</span>
                                     </label>
-                                </div>
-                            </div>
-
-                            <!-- Certificate upload with preview -->
-                            <div class="container-input certificate-attachment">
-                                <div class="input-group">
-                                    <label for="registerCertificate" class="custom-file-upload">Upload Certificate</label>
-                                    <input type="file" id="registerCertificate" accept=".pdf,.jpg,.jpeg,.png" required>
-                                </div>
-
-                                <div class="certificate-preview" id="certificatePreview" aria-live="polite">
-                                    <img class="certificate-preview-thumb" id="certificateThumb" alt="Certificate preview" title="Click to enlarge">
-                                    <span class="material-symbols-outlined certificate-preview-icon">picture_as_pdf</span>
-                                    <div class="certificate-preview-info">
-                                        <span class="certificate-preview-name" id="certificateName"></span>
-                                        <span class="certificate-preview-size" id="certificateSize"></span>
-                                    </div>
-                                    <button type="button" class="certificate-remove-btn" id="certificateRemove" aria-label="Remove certificate">&times;</button>
                                 </div>
                             </div>
                         </div>
@@ -287,9 +261,6 @@
             <button class="success-redirect-btn error-btn" onclick="closeErrorModal()">Try Again</button>
         </div>
     </div>
-
-    <!-- Full-size certificate viewer -->
-    <div class="certificate-lightbox" id="certificateLightbox"><img alt="Certificate full size"></div>
 
     <script src="javascript/logout.js"></script>
     <script src="javascript/sidebar.js"></script>

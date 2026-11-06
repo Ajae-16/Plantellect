@@ -1,4 +1,3 @@
-let selectedRole = 'user';
 let usernameValid = false;
 let passwordValid = false;
 let passwordsMatch = false;
@@ -24,27 +23,6 @@ function switchToLogin(event) {
     container.classList.remove('active');
     document.title = 'Plantellect - Sign In';
     history.replaceState(null, '', 'auth.html#login');
-}
-
-function selectRole(role) {
-    selectedRole = role;
-    document.querySelectorAll('.role-btn').forEach(btn => btn.classList.remove('active'));
-    const btnId = role === 'botanist' ? 'roleExpertBtn' : 'roleUserBtn';
-    const btn = document.getElementById(btnId);
-    if (btn) btn.classList.add('active');
-
-    const certBlock = document.querySelector('.certificate-attachment');
-    const certInput = document.getElementById('registerCertificate');
-    if (certBlock && certInput) {
-        if (role === 'botanist') {
-            certBlock.style.display = 'block';
-            certInput.required = true;
-        } else {
-            certBlock.style.display = 'none';
-            certInput.required = false;
-            clearCertificate(); // a plain user has no certificate, drop any preview
-        }
-    }
 }
 
 function togglePasswordVisibility(inputId, iconId) {
@@ -179,107 +157,6 @@ function updateTermsProgress() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Certificate preview                                                 */
-/* ------------------------------------------------------------------ */
-
-const CERT_MAX_BYTES = 5 * 1024 * 1024; // keep in sync with the server upload limit
-let certObjectUrl = null;
-
-function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-}
-
-function clearCertificate() {
-    const input = document.getElementById('registerCertificate');
-    const label = document.querySelector('label[for="registerCertificate"]');
-    const preview = document.getElementById('certificatePreview');
-    const thumb = document.getElementById('certificateThumb');
-
-    if (certObjectUrl) {
-        URL.revokeObjectURL(certObjectUrl);
-        certObjectUrl = null;
-    }
-    if (input) input.value = '';
-    if (thumb) thumb.removeAttribute('src');
-    if (preview) preview.classList.remove('visible', 'is-pdf');
-    if (label) label.textContent = 'Upload Certificate';
-}
-
-function handleCertificateChange() {
-    const input = document.getElementById('registerCertificate');
-    const label = document.querySelector('label[for="registerCertificate"]');
-    const preview = document.getElementById('certificatePreview');
-    const thumb = document.getElementById('certificateThumb');
-    const nameEl = document.getElementById('certificateName');
-    const sizeEl = document.getElementById('certificateSize');
-
-    const file = input.files && input.files[0];
-
-    // Reset the preview but keep the chosen file
-    if (certObjectUrl) {
-        URL.revokeObjectURL(certObjectUrl);
-        certObjectUrl = null;
-    }
-    if (thumb) thumb.removeAttribute('src');
-    if (preview) preview.classList.remove('visible', 'is-pdf');
-
-    if (!file) {
-        if (label) label.textContent = 'Upload Certificate';
-        return;
-    }
-
-    if (file.size > CERT_MAX_BYTES) {
-        showError('That file is larger than 5 MB. Please choose a smaller one.');
-        clearCertificate();
-        return;
-    }
-
-    nameEl.textContent = file.name;
-    nameEl.title = file.name;
-    sizeEl.textContent = formatFileSize(file.size);
-    label.textContent = 'Change certificate';
-
-    if (/^image\//.test(file.type)) {
-        certObjectUrl = URL.createObjectURL(file);
-        thumb.src = certObjectUrl;
-    } else {
-        preview.classList.add('is-pdf'); // PDF: show the icon instead of a thumbnail
-    }
-    preview.classList.add('visible');
-}
-
-function initCertificatePreview() {
-    const input = document.getElementById('registerCertificate');
-    const removeBtn = document.getElementById('certificateRemove');
-    const thumb = document.getElementById('certificateThumb');
-    const lightbox = document.getElementById('certificateLightbox');
-
-    if (!input) return;
-
-    input.addEventListener('change', handleCertificateChange);
-
-    if (removeBtn) {
-        removeBtn.addEventListener('click', clearCertificate);
-    }
-
-    if (thumb && lightbox) {
-        thumb.addEventListener('click', function () {
-            if (!thumb.src) return;
-            lightbox.querySelector('img').src = thumb.src;
-            lightbox.classList.add('visible');
-        });
-        lightbox.addEventListener('click', function () {
-            lightbox.classList.remove('visible');
-        });
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') lightbox.classList.remove('visible');
-        });
-    }
-}
-
-/* ------------------------------------------------------------------ */
 /* Login / register                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -329,7 +206,6 @@ async function handleRegister(event) {
     const password = document.getElementById('registerPassword').value;
     const firstName = document.getElementById('registerFirstName').value.trim();
     const lastName = document.getElementById('registerLastName').value.trim();
-    const certFile = document.getElementById('registerCertificate').files[0];
 
     const checkbox1 = document.getElementById('agreeTerms');
     const checkbox2 = document.getElementById('agreeInfo');
@@ -347,11 +223,6 @@ async function handleRegister(event) {
     const confirmPassword = document.getElementById('registerConfirmPassword').value;
     if (password !== confirmPassword) {
         showError('Passwords do not match');
-        return;
-    }
-
-    if (selectedRole === 'botanist' && !certFile) {
-        showError('Certificate is required for Botanist registration');
         return;
     }
 
@@ -380,23 +251,19 @@ async function handleRegister(event) {
     }
 
     try {
-        const formData = new FormData();
-        formData.append('email', email);
-        formData.append('username', username);
-        formData.append('password', password);
-        formData.append('firstName', firstName);
-        formData.append('lastName', lastName);
-        formData.append('role', selectedRole);
-        formData.append('agreeTerms', checkbox1 && checkbox1.checked ? 'true' : 'false');
-        formData.append('agreeInfo', checkbox2 && checkbox2.checked ? 'true' : 'false');
-        if (certFile) {
-            formData.append('certificate', certFile);
-        }
-
         const response = await fetch('/api/auth/register', {
             method: 'POST',
             credentials: 'include',
-            body: formData
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email,
+                username,
+                password,
+                firstName,
+                lastName,
+                agreeTerms: !!(checkbox1 && checkbox1.checked),
+                agreeInfo: !!(checkbox2 && checkbox2.checked)
+            })
         });
 
         const data = await response.json();
@@ -406,15 +273,11 @@ async function handleRegister(event) {
             if (typeof clearSidebarCache === 'function') {
                 clearSidebarCache();
             }
-            if (data.pending === true) {
-                showSuccess('Your request is pending admin approval');
-            } else {
-                showSuccess('Account created successfully!');
-                setTimeout(() => {
-                    closeErrorModal();
-                    switchToLogin();
-                }, 1500);
-            }
+            showSuccess('Account created successfully!');
+            setTimeout(() => {
+                closeErrorModal();
+                switchToLogin();
+            }, 1500);
         } else {
             showError(data.error || 'Sign up failed. Please try again.');
         }
@@ -504,9 +367,6 @@ function initAuthPage() {
         checkbox2.addEventListener('change', updateSignupButtonState);
     }
 
-    // Certificate upload preview
-    initCertificatePreview();
-
     const registerPassword = document.getElementById('registerPassword');
     const confirmPassword = document.getElementById('registerConfirmPassword');
 
@@ -560,8 +420,6 @@ function initAuthPage() {
             signupBtn.setAttribute('aria-disabled', ready ? 'false' : 'true');
         }
     }
-
-    selectRole('user');
 
     if (typeof ensureSidebar === 'function') {
         ensureSidebar();

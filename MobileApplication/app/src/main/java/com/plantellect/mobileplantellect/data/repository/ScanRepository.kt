@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.plantellect.mobileplantellect.data.local.LocalPlantClassifier
 import com.plantellect.mobileplantellect.data.local.LocalResult
+import com.plantellect.mobileplantellect.data.local.SettingsStore
 import com.plantellect.mobileplantellect.data.logic.*
 import com.plantellect.mobileplantellect.data.remote.ExtrasResult
 import com.plantellect.mobileplantellect.data.remote.MlApi
@@ -14,6 +15,7 @@ import com.plantellect.mobileplantellect.data.remote.ScanExtrasApi
 import com.plantellect.mobileplantellect.data.remote.dto.PredictResponse
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -25,7 +27,12 @@ import org.json.JSONObject
 import retrofit2.Response
 import java.io.IOException
 
-enum class OnDeviceReason { NO_CONNECTION, SERVER_UNREACHABLE }
+enum class OnDeviceReason {
+    NO_CONNECTION,
+    SERVER_UNREACHABLE,
+    /** Settings > Scanning > Offline mode is on: the person chose to scan on the phone only. */
+    OFFLINE_MODE
+}
 
 sealed interface ScanOutcome {
     /**
@@ -51,9 +58,25 @@ class ScanRepository(
     private val caller: ApiCaller,
     private val classifier: LocalPlantClassifier,
     private val network: NetworkMonitor,
-    private val server: ServerMonitor
+    private val server: ServerMonitor,
+    private val settings: SettingsStore
 ) {
-    suspend fun scan(uri: Uri, topK: Int = 5, skipLocalGate: Boolean = false): ScanOutcome =
+    /**
+     * Two modes, chosen in Settings > Scanning:
+     *  - Offline mode ON: the phone's model answers and the server is never contacted.
+     *  - Offline mode OFF (default): the server is preferred. When it is found unreachable (before sending, or
+     *    because the request fails at connection level), the scan waits [SERVER_RETRY_WAIT_SECONDS] seconds and tries
+     *    the server again, up to [SERVER_RETRIES] times, and only then falls back to the phone's model.
+     *
+     * [onRetryWait] reports the seconds left while waiting (so the screen can say "Retrying in 7 s") and null
+     * once the wait is over.
+     */
+    suspend fun scan(
+        uri: Uri,
+        topK: Int = 5,
+        skipLocalGate: Boolean = false,
+        onRetryWait: (Int?) -> Unit = {}
+    ): ScanOutcome =
         withContext(Dispatchers.Default) {
             val bitmap = try {
                 ImagePreparer.load(context, uri)
@@ -61,11 +84,14 @@ class ScanRepository(
                 return@withContext ScanOutcome.Failed(AppError.Unexpected("Could not read that photo"))
             }
 
+            val offlineOnly = settings.offlineMode.value
+
             // Ask the monitor, never the network stack: when the server can't be reached we must not
             // spend a 15 s connect timeout finding that out. Only the very first scan after launch can
             // find the monitor still undecided; then one short probe (max ~5 s) settles it.
-            if (server.status.value == ServerStatus.CHECKING) server.checkNow()
-            val reachable = server.isReachable
+            // Offline mode never asks: the server is not touched at all.
+            if (!offlineOnly && server.status.value == ServerStatus.CHECKING) server.checkNow()
+            var reachable = !offlineOnly && server.isReachable
 
             val local = classifier.classify(bitmap, variant = classifier.preferredVariantForOnline(reachable))
 
@@ -73,40 +99,71 @@ class ScanRepository(
                 !local.looksLikePlant && local.best.confidence >= NOT_PLANT_MIN_CONFIDENCE
             ) return@withContext ScanOutcome.NotAPlant(local)
 
-            if (!reachable) {
+            if (offlineOnly) {
+                return@withContext local?.let { ScanOutcome.OnDevice(it, OnDeviceReason.OFFLINE_MODE) }
+                    ?: ScanOutcome.Failed(
+                        AppError.Unexpected("The on-device model is not available. Turn off Offline mode to scan with the server.")
+                    )
+            }
+
+            fun fallback(error: AppError): ScanOutcome {
                 val reason = if (network.hasNetwork()) OnDeviceReason.SERVER_UNREACHABLE else OnDeviceReason.NO_CONNECTION
-                return@withContext local?.let { ScanOutcome.OnDevice(it, reason) }
-                    ?: ScanOutcome.Failed(AppError.Network)
+                return local?.let { ScanOutcome.OnDevice(it, reason) } ?: ScanOutcome.Failed(error)
             }
 
             val jpeg = ImagePreparer.toJpeg(bitmap)
-            val image = MultipartBody.Part.createFormData(
-                "image", "scan.jpg", jpeg.toRequestBody("image/jpeg".toMediaType())
-            )
             val k = topK.coerceIn(1, UploadLimits.MAX_TOP_K).toString().toRequestBody("text/plain".toMediaType())
 
-            // One attempt only. The server charges quota per attempt, and a dropped connection is
-            // answered faster by the on-device result than by waiting for a retry.
-            when (val r = caller.call { api.predict(image, k) }) {
-                is ApiResult.Success -> ScanOutcome.Server(r.value, local, uploadedJpeg = jpeg)
-                is ApiResult.Failure -> {
-                    val e = r.error
-                    when {
-                        e is AppError.Http && e.code == 429 ->
-                            ScanOutcome.RateLimited(e.retryAfterSeconds, e.message)
-                        e is AppError.Network -> {
-                            server.reportFailure()   // the next scans skip the server until a probe succeeds
-                            local?.let { ScanOutcome.OnDevice(it, OnDeviceReason.SERVER_UNREACHABLE) }
-                                ?: ScanOutcome.Failed(e)
+            var retriesUsed = 0
+            while (true) {
+                if (!reachable) {
+                    // Detected offline. Out of retries -> the phone's answer; otherwise wait, then look again.
+                    if (retriesUsed >= SERVER_RETRIES) return@withContext fallback(AppError.Network)
+                    retriesUsed++
+                    try {
+                        for (left in SERVER_RETRY_WAIT_SECONDS downTo 1) {
+                            onRetryWait(left)
+                            delay(1_000L)
                         }
-                        // A server that answers 5xx is not usable right now; 400/401/403 are shown as-is.
-                        e is AppError.Http && e.code >= 500 ->
-                            local?.let { ScanOutcome.OnDevice(it, OnDeviceReason.SERVER_UNREACHABLE) }
-                                ?: ScanOutcome.Failed(e)
-                        else -> ScanOutcome.Failed(e)
+                    } finally {
+                        onRetryWait(null)
+                    }
+                    // The person may have turned Offline mode on while we waited.
+                    if (settings.offlineMode.value) {
+                        return@withContext local?.let { ScanOutcome.OnDevice(it, OnDeviceReason.OFFLINE_MODE) }
+                            ?: ScanOutcome.Failed(AppError.Network)
+                    }
+                    reachable = server.checkNow()
+                    continue
+                }
+
+                // A request body can only be sent once, so each attempt builds its own part.
+                val image = MultipartBody.Part.createFormData(
+                    "image", "scan.jpg", jpeg.toRequestBody("image/jpeg".toMediaType())
+                )
+                when (val r = caller.call { api.predict(image, k) }) {
+                    is ApiResult.Success -> return@withContext ScanOutcome.Server(r.value, local, uploadedJpeg = jpeg)
+                    is ApiResult.Failure -> {
+                        val e = r.error
+                        when {
+                            e is AppError.Http && e.code == 429 ->
+                                return@withContext ScanOutcome.RateLimited(e.retryAfterSeconds, e.message)
+                            // The connection failed, or a proxy answered for a dead Node server: the request
+                            // never produced a result, so it is safe to wait and try again.
+                            e is AppError.Network || (e is AppError.Http && e.code in 502..504) -> {
+                                server.reportFailure()   // the next scans skip the server until a probe succeeds
+                                reachable = false
+                            }
+                            // Any other 5xx may have been charged against the quota: don't repeat it.
+                            e is AppError.Http && e.code >= 500 -> return@withContext fallback(e)
+                            // 400/401/403 are shown as-is.
+                            else -> return@withContext ScanOutcome.Failed(e)
+                        }
                     }
                 }
             }
+            @Suppress("UNREACHABLE_CODE")
+            ScanOutcome.Failed(AppError.Network)
         }
 
     // ====================================================================== "Help improve the ML"
@@ -226,7 +283,11 @@ class ScanRepository(
         ExtrasResult.Refused("Something went wrong. Please try again.", "server_error", 0)
     }
 
-    private companion object {
-        const val NOT_PLANT_MIN_CONFIDENCE = 0.85f
+    companion object {
+        private const val NOT_PLANT_MIN_CONFIDENCE = 0.85f
+        /** How long a scan waits after finding the server unreachable before it looks again. */
+        const val SERVER_RETRY_WAIT_SECONDS = 10
+        /** How many times it waits and retries before using the phone's answer. */
+        const val SERVER_RETRIES = 1
     }
 }

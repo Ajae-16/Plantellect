@@ -8,6 +8,8 @@ const { resolveScientificNames, consumeScanQuota, scanWindowRetryAfterSeconds, g
 const { handleUploadError } = require('../config/upload');
 const { logMlScan } = require('../mongoose-schemas/Mlscan.js');
 const { evaluate, isSpecies } = require('../config/ml-confidence');
+const { createOffer } = require('../config/contribute-offer');
+const { contributeScanPhoto } = require('../config/scan-contribution');
 const settings = require('../config/settings');
 const { publicUrls } = require('../config/public-images');
 const router = express.Router();
@@ -243,9 +245,11 @@ router.post('/predict', requirePermission('scan_plant'), upload.single('image'),
         // problem must not fail a scan.
         const modelId = (raw && raw.model_id) || '';
         let verdict = null;
+        let mlConfig = null; // this model's saved settings; also read for the contribute offer below
         if (response.ok && raw && Array.isArray(raw.predictions)) {
             try {
-                verdict = evaluate(raw.predictions, await getMlConfidence(modelId));
+                mlConfig = await getMlConfidence(modelId);
+                verdict = evaluate(raw.predictions, mlConfig);
             } catch (err) {
                 console.error('Confidence evaluation failed (serving unchanged):', err.message);
             }
@@ -255,6 +259,22 @@ router.post('/predict', requirePermission('scan_plant'), upload.single('image'),
         // Logged after attachPlantLinks so each prediction carries the plantId
         // that makes the species-gap signal possible.
         const { data, linksResolved } = await attachPlantLinks(raw);
+
+        // Scan contributions: a signed, short-lived offer, only when every rule in
+        // config/contribute-offer.js holds. Built from the server's own prediction list and the
+        // bytes just uploaded; nothing the browser sent is used. Nothing is stored.
+        const offer = response.ok && data && Array.isArray(data.predictions)
+            ? createOffer({
+                verdict,
+                predictions: data.predictions,
+                modelId,
+                mlConfig,
+                accountId: req.session.accountId,
+                imageBuffer: req.file.buffer,
+                secret: settings.session.secret
+            })
+            : null;
+
         await logMlScan({
             ...logBase,
             status: response.ok ? 'ok' : 'error',
@@ -262,6 +282,7 @@ router.post('/predict', requirePermission('scan_plant'), upload.single('image'),
             modelVersion: (data && data.model_version) || '',
             inferenceMs: (data && data.inference_ms) ?? null,
             linksResolved,
+            contributeOffered: Boolean(offer),
             // null while mode is 'off'. In 'log' mode this is recorded but never shown.
             verdict: verdict && {
                 mode: verdict.mode,
@@ -312,6 +333,16 @@ router.post('/predict', requirePermission('scan_plant'), upload.single('image'),
             }
         }
 
+        // Additive: a client that does not know this field ignores it. Absent unless offered.
+        if (offer && data) {
+            data.contribute_offer = {
+                token: offer.token,
+                expires_at: new Date(offer.expiresAt).toISOString(),
+                kind: offer.kind,                 // 'species' or 'other_plant' (a plant the model has no class for)
+                confidence: offer.confidence      // the server's own number, for the card's sentence only
+            };
+        }
+
         res.status(response.status).json(data);
     } catch (err) {
         // Failures are logged too, so the feed can show failure rates.
@@ -321,6 +352,32 @@ router.post('/predict', requirePermission('scan_plant'), upload.single('image'),
         }
         console.error('ML proxy error:', err);
         res.status(502).json({ error: 'ML service unavailable' });
+    }
+});
+
+// Scan contributions: the photo plus the token /predict handed out. Private and training-only; the rules
+// live in config/scan-contribution.js. Same permission and upload limits as /predict. The scan quota is
+// not charged: an offer exists only because of a scan that was, and the daily caps bound the rest.
+// The body carries the photo and the token and nothing else; confidence, plant and model are in the token.
+router.post('/contribute', requirePermission('scan_plant'), upload.single('image'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No image uploaded', reason: 'no_photo' });
+    }
+    try {
+        const result = await contributeScanPhoto({
+            accountId: req.session.accountId,
+            token: req.body && req.body.token,
+            file: { buffer: req.file.buffer, originalname: req.file.originalname, mimetype: req.file.mimetype },
+            secret: settings.session.secret,
+            getMlConfig: getMlConfidence
+        });
+        if (result.error) {
+            return res.status(result.code).json({ error: result.error, reason: result.reason });
+        }
+        res.status(201).json({ ok: true, plantId: result.plantId });
+    } catch (err) {
+        console.error('Scan contribution error:', err);
+        res.status(500).json({ error: 'The photo could not be saved. Please try again.', reason: 'server_error' });
     }
 });
 

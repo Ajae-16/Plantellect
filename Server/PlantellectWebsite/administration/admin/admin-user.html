@@ -47,7 +47,6 @@
                 <a href="/admin/dashboard" title="Dashboard">
                     <span class="material-symbols-outlined">home</span>
                     <span class="nav-link-text">Dashboard</span>
-                    <span class="nav-badge" id="navBadgeDashboard" hidden>0</span>
                 </a>
 
                 <a href="/admin/users" class="active" data-perm="create_user" title="Users">
@@ -84,7 +83,7 @@
 
         <main class="admin-main">
             <h1>Users and Roles</h1>
-            <p class="admin-subtitle">Manage Administrators, Botanists and Standard Accounts</p>
+            <p class="admin-subtitle">Manage Administrators and Member Accounts</p>
 
             <!-- Plain link to another page, so this page needs the topbar CSS but not admin-topbar.js -->
             <nav class="admin-topbar" id="usersTopbar" aria-label="Users sections">
@@ -102,16 +101,6 @@
                         <span class="role-box-text">
                             <span class="role-box-label">Administrators</span>
                             <span class="role-box-count" id="countAdmin">0</span>
-                        </span>
-                    </button>
-
-                    <button class="role-box role-box--botanist" data-role="botanist" type="button">
-                        <span class="role-box-icon" aria-hidden="true">
-                            <span class="material-symbols-outlined">potted_plant</span>
-                        </span>
-                        <span class="role-box-text">
-                            <span class="role-box-label">Botanists</span>
-                            <span class="role-box-count" id="countBotanist">0</span>
                         </span>
                     </button>
 
@@ -157,11 +146,13 @@
                                 <option value="active">Active</option>
                                 <option value="inactive">Inactive</option>
                             </select>
+                            <button type="button" class="user-btn user-btn--primary" id="addUserBtn" hidden>
+                                <span class="material-symbols-outlined">person_add</span> Add user
+                            </button>
                             <select id="roleFilter" class="filter-select" hidden aria-label="Filter by role">
                                 <option value="all">Roles</option>
                                 <option value="admin">Admin</option>
                                 <option value="superadmin">Superadmin</option>
-                                <option value="botanist">Botanist</option>
                                 <option value="user">General User</option>
                             </select>
                         </div>
@@ -197,6 +188,58 @@
         </main>
     </div>
 
+    <!-- Add / view / edit one account. One dialog, three modes (see openUserDialog). -->
+    <dialog class="user-dialog" id="userDialog" aria-labelledby="userDialogTitle">
+        <form id="userForm" novalidate>
+            <h2 id="userDialogTitle">User</h2>
+            <p class="user-dialog-hint" id="userDialogHint"></p>
+            <div class="user-dialog-error" id="userDialogError" role="alert" hidden></div>
+
+            <div class="user-form-grid">
+                <div class="user-field">
+                    <label for="ufFirstName">First name</label>
+                    <input id="ufFirstName" type="text" maxlength="100" autocomplete="off">
+                </div>
+                <div class="user-field">
+                    <label for="ufLastName">Last name</label>
+                    <input id="ufLastName" type="text" maxlength="100" autocomplete="off">
+                </div>
+                <div class="user-field">
+                    <label for="ufUsername">Username</label>
+                    <input id="ufUsername" type="text" maxlength="100" minlength="6" autocomplete="off" required>
+                </div>
+                <div class="user-field">
+                    <label for="ufEmail">Email</label>
+                    <input id="ufEmail" type="email" maxlength="255" autocomplete="off" required>
+                </div>
+                <div class="user-field" id="ufPasswordField" hidden>
+                    <label for="ufPassword">Temporary password</label>
+                    <input id="ufPassword" type="password" minlength="6" maxlength="72" autocomplete="new-password">
+                </div>
+                <div class="user-field" id="ufRoleField" hidden>
+                    <label for="ufRole">Role</label>
+                    <select id="ufRole">
+                        <option value="user">General User</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </div>
+
+            <dl class="user-meta" id="userMeta" hidden>
+                <div><dt>Role</dt><dd id="umRole"></dd></div>
+                <div><dt>Status</dt><dd id="umStatus"></dd></div>
+                <div><dt>Created</dt><dd id="umCreated"></dd></div>
+                <div><dt>Last sign-in</dt><dd id="umLastLogin"></dd></div>
+            </dl>
+
+            <div class="user-dialog-actions">
+                <button type="button" class="user-btn" id="userDialogClose">Close</button>
+                <button type="button" class="user-btn" id="userDialogEdit" hidden>Edit</button>
+                <button type="submit" class="user-btn user-btn--primary" id="userDialogSave" hidden>Save</button>
+            </div>
+        </form>
+    </dialog>
+
     <!-- home.js calls checkAuth(), which lives in auth.js, so auth.js loads first -->
     <script src="/javascript/auth.js"></script>
     <script src="/javascript/home.js"></script>
@@ -221,7 +264,6 @@
 
         const filterLabels = {
             admin: 'Administrators',
-            botanist: 'Botanists',
             user: 'General Users',
             active: 'Active Accounts'
         };
@@ -253,7 +295,6 @@
         function updateCounts(counts) {
             if (!counts) return;
             document.getElementById('countAdmin').textContent = counts.admin;
-            document.getElementById('countBotanist').textContent = counts.botanist;
             document.getElementById('countUsers').textContent = counts.user;
             document.getElementById('countActive').textContent = counts.active;
         }
@@ -298,7 +339,7 @@
 
         /**
          * Role dropdown for one row (replaces the old Make admin button).
-         *  - Everyone with change_role can switch an account between General User and Botanist.
+         *  - Everyone with change_role can change another account's role.
          *  - Only a viewer holding admin_promote (the superadmin) is offered "Admin", and only
          *    that viewer can change an account that is already an admin or superadmin.
          *  - Your own account and the machine "system" account get no dropdown.
@@ -316,8 +357,7 @@
             const locked = targetPrivileged && !canPromote;
 
             const options = [
-                { value: 'user', label: 'General User' },
-                { value: 'botanist', label: 'Botanist' }
+                { value: 'user', label: 'General User' }
             ];
             if (canPromote) options.push({ value: 'admin', label: 'Admin' });
             // Show the current role even when it is not one you may assign (e.g. Superadmin).
@@ -351,6 +391,10 @@
 
             const viewBtn = actionButton('btn-view', 'view', 'visibility', 'View details', 'data-id="' + id + '"');
 
+            const editBtn = canEditUser(u)
+                ? actionButton('btn-edit', 'view', 'edit', 'Edit user', 'data-id="' + id + '"')
+                : '';
+
             let suspendBtn = '';
             if (hasPermission('archive_user') && notSelf) {
                 const isActive = u.status === 'active';
@@ -371,7 +415,7 @@
                 '<td><span class="badge badge-' + escapeHtml(u.role) + '">' + escapeHtml(roleLabel(u.role)) + '</span></td>' +
                 '<td><span class="badge badge-' + escapeHtml(u.status) + '">' + capitalize(u.status) + '</span></td>' +
                 '<td class="user-actions"><div class="action-group">' +
-                    viewBtn + suspendBtn + roleSelect +
+                    viewBtn + editBtn + suspendBtn + roleSelect +
                 '</div></td>' +
             '</tr>';
         }
@@ -409,6 +453,12 @@
         }
 
         function wireRowActions() {
+            document.querySelectorAll('.btn-view').forEach(btn => {
+                btn.addEventListener('click', () => openUserDialog('view', btn.dataset.id));
+            });
+            document.querySelectorAll('.btn-edit').forEach(btn => {
+                btn.addEventListener('click', () => openUserDialog('edit', btn.dataset.id));
+            });
             document.querySelectorAll('.btn-toggle-status').forEach(btn => {
                 btn.addEventListener('click', () => toggleAccount(btn.dataset.id, { status: btn.dataset.status === 'active' ? 'inactive' : 'active' }));
             });
@@ -491,6 +541,148 @@
             div.textContent = String(str == null ? '' : str);
             return div.innerHTML;
         }
+
+        // ---------------------------------------------------------
+        // Add / view / edit one account (the dialog at the bottom of the page).
+        // The server re-checks every rule here; this only keeps the UI honest.
+        // ---------------------------------------------------------
+        const userDialog = document.getElementById('userDialog');
+        const userForm = document.getElementById('userForm');
+        const userFields = {
+            firstName: document.getElementById('ufFirstName'),
+            lastName: document.getElementById('ufLastName'),
+            username: document.getElementById('ufUsername'),
+            email: document.getElementById('ufEmail'),
+            password: document.getElementById('ufPassword'),
+            role: document.getElementById('ufRole')
+        };
+        let dialogMode = 'view';   // 'create' | 'view' | 'edit'
+        let dialogUserId = null;
+
+        /** Edit is offered unless the server would refuse it: system account, or another admin without admin_promote. */
+        function canEditUser(u) {
+            if (!hasPermission('edit_user') || u.role === 'system') return false;
+            const privileged = u.role === 'admin' || u.role === 'superadmin';
+            return u.id === currentAccountId || !privileged || hasPermission('admin_promote');
+        }
+
+        function showDialogError(message) {
+            const box = document.getElementById('userDialogError');
+            box.textContent = message || '';
+            box.hidden = !message;
+        }
+
+        function formatDate(value) {
+            return value ? new Date(value).toLocaleString() : 'Never';
+        }
+
+        function setDialogMode(mode, user) {
+            dialogMode = mode;
+            const editable = mode !== 'view';
+            ['firstName', 'lastName', 'username', 'email'].forEach(function (k) {
+                userFields[k].readOnly = !editable;
+            });
+            document.getElementById('ufPasswordField').hidden = mode !== 'create';
+            document.getElementById('ufRoleField').hidden = !(mode === 'create' && hasPermission('admin_promote'));
+            document.getElementById('userMeta').hidden = mode === 'create';
+            document.getElementById('userDialogSave').hidden = !editable;
+            document.getElementById('userDialogSave').textContent = mode === 'create' ? 'Create account' : 'Save changes';
+            document.getElementById('userDialogEdit').hidden = !(mode === 'view' && user && canEditUser(user));
+            document.getElementById('userDialogClose').textContent = editable ? 'Cancel' : 'Close';
+            document.getElementById('userDialogTitle').textContent =
+                mode === 'create' ? 'Add user' : (mode === 'edit' ? 'Edit user' : 'User details');
+            document.getElementById('userDialogHint').textContent =
+                mode === 'create'
+                    ? 'The account is active straight away. Share the temporary password securely; the person can change it later.'
+                    : (mode === 'edit' ? 'Role and status are changed from the table.' : '');
+        }
+
+        function fillDialog(u) {
+            userFields.firstName.value = u.firstName || '';
+            userFields.lastName.value = u.lastName || '';
+            userFields.username.value = u.username || '';
+            userFields.email.value = u.email || '';
+            document.getElementById('umRole').textContent = roleLabel(u.role);
+            document.getElementById('umStatus').textContent = capitalize(u.status);
+            document.getElementById('umCreated').textContent = formatDate(u.createdAt);
+            document.getElementById('umLastLogin').textContent = formatDate(u.lastLoginAt);
+        }
+
+        async function openUserDialog(mode, accountId) {
+            showDialogError('');
+            userForm.reset();
+            dialogUserId = accountId || null;
+
+            if (mode === 'create') {
+                setDialogMode('create');
+                userDialog.showModal();
+                userFields.firstName.focus();
+                return;
+            }
+            try {
+                const response = await fetch('/admin/api/users/' + encodeURIComponent(accountId), { credentials: 'include' });
+                if (response.status === 401) { window.location.href = '/auth.html'; return; }
+                const data = await response.json().catch(function () { return {}; });
+                if (!response.ok) throw new Error(data.error || 'Failed to load the account');
+                fillDialog(data);
+                setDialogMode(mode === 'edit' && !canEditUser(data) ? 'view' : mode, data);
+                userDialog.showModal();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        async function submitUserDialog(e) {
+            e.preventDefault();
+            showDialogError('');
+            const body = {
+                firstName: userFields.firstName.value,
+                lastName: userFields.lastName.value,
+                username: userFields.username.value,
+                email: userFields.email.value
+            };
+            let url = '/admin/api/users';
+            let method = 'POST';
+            if (dialogMode === 'create') {
+                body.password = userFields.password.value;
+                if (hasPermission('admin_promote')) body.role = userFields.role.value;
+            } else {
+                url += '/' + encodeURIComponent(dialogUserId);
+                method = 'PATCH';
+            }
+
+            const saveBtn = document.getElementById('userDialogSave');
+            saveBtn.disabled = true;
+            try {
+                const response = await fetch(url, {
+                    method: method,
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (response.status === 401) { window.location.href = '/auth.html'; return; }
+                const data = await response.json().catch(function () { return {}; });
+                if (!response.ok) {
+                    showDialogError(data.error || 'Could not save the account');
+                    return;
+                }
+                userDialog.close();
+                loadUsers();
+            } catch (err) {
+                showDialogError('Network error. Try again.');
+            } finally {
+                saveBtn.disabled = false;
+            }
+        }
+
+        userForm.addEventListener('submit', submitUserDialog);
+        document.getElementById('userDialogClose').addEventListener('click', function () { userDialog.close(); });
+        document.getElementById('userDialogEdit').addEventListener('click', function () {
+            showDialogError('');
+            setDialogMode('edit');
+            userFields.firstName.focus();
+        });
+        document.getElementById('addUserBtn').addEventListener('click', function () { openUserDialog('create'); });
 
         // Box click -> switch filter + expand detail panel
         const detailPanel = document.getElementById('roleDetailPanel');
@@ -614,6 +806,8 @@
                 e.preventDefault();
                 logoutUser();
             });
+
+            document.getElementById('addUserBtn').hidden = !hasPermission('create_user');
 
             loadUsers();
             loadNavBadges();

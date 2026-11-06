@@ -6,7 +6,6 @@ plant identification (/predict) stays responsive.
 """
 import asyncio
 import os
-import threading
 from typing import List
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -16,21 +15,19 @@ import lookalike
 
 router = APIRouter(prefix="/lookalike", tags=["lookalike"])
 
-EMBEDDER_KIND = os.getenv("LOOKALIKE_EMBEDDER", os.getenv("DATASET_EMBEDDER", "auto"))
+EMBEDDER_KIND = os.getenv("LOOKALIKE_EMBEDDER", "")     # empty: follow the embedder chosen on the dataset page
+INDEX_DIR = os.getenv("DATASET_INDEX_DIR", "")
 
 _slot = asyncio.Semaphore(1)
-_embedder = None
-_embedder_lock = threading.Lock()
 
 
 def _get_embedder():
-    """Loaded on first use, so the service starts fast and a missing TensorFlow only affects this route."""
-    global _embedder
-    with _embedder_lock:
-        if _embedder is None:
-            from dataset_tools.fingerprint import make_embedder
-            _embedder = make_embedder(EMBEDDER_KIND)
-        return _embedder
+    """Loaded on first use, so the service starts fast and a missing TensorFlow only affects this route. It is the
+    same object the dataset page's Other plant tools use (dataset_tools/holder.py), so a saved model is loaded once."""
+    from dataset_tools.holder import holder
+    from dataset_tools.vectors import read_choice
+    kind = EMBEDDER_KIND or (read_choice(INDEX_DIR, os.getenv("DATASET_EMBEDDER", "auto")) if INDEX_DIR else os.getenv("DATASET_EMBEDDER", "auto"))
+    return holder.get(kind)
 
 
 async def _read_all(files):
