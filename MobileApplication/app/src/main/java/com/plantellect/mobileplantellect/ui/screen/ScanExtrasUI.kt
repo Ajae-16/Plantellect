@@ -67,7 +67,7 @@ fun ContributionCard(
 
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
@@ -98,7 +98,7 @@ fun ContributionCard(
 
             if (asking) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onHelp, enabled = !sending, modifier = Modifier.weight(1f)) {
+                    PlantButton(onClick = onHelp, enabled = !sending, modifier = Modifier.weight(1f)) {
                         if (sending) {
                             CircularProgressIndicator(
                                 modifier = Modifier.padding(end = 8.dp).size(18.dp),
@@ -108,7 +108,7 @@ fun ContributionCard(
                         }
                         Text(if (sending) "Sending…" else "Help improve")
                     }
-                    OutlinedButton(onClick = onClose, enabled = !sending, modifier = Modifier.weight(1f)) {
+                    PlantOutlinedButton(onClick = onClose, enabled = !sending, modifier = Modifier.weight(1f)) {
                         Text("Skip")
                     }
                 }
@@ -125,11 +125,11 @@ fun ContributionCard(
                             color = colors.onSurfaceVariant,
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(onClick = { confirmHide = true }, enabled = !sending) { Text("Don't show this again") }
+                        PlantTextButton(onClick = { confirmHide = true }, enabled = !sending) { Text("Don't show this again") }
                     }
                 }
             } else {
-                OutlinedButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+                PlantOutlinedButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Close") }
             }
         }
     }
@@ -140,12 +140,12 @@ fun ContributionCard(
             title = { Text("Always help improve") },
             text = { Text("You can always turn on \"Help improve\" in Settings under Privacy, so your scans are contributed without asking.") },
             confirmButton = {
-                TextButton(onClick = {
+                PlantTextButton(onClick = {
                     confirmHide = false
                     onHideHint()
                 }) { Text("Got it") }
             },
-            dismissButton = { TextButton(onClick = { confirmHide = false }) { Text("Cancel") } }
+            dismissButton = { PlantTextButton(onClick = { confirmHide = false }) { Text("Cancel") } }
         )
     }
 }
@@ -199,7 +199,7 @@ fun NotIdentifiedCard(
 
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
@@ -240,7 +240,7 @@ fun NotIdentifiedCard(
                     }
                     // Only while we still know which report this is. The server refuses with 409 when too late.
                     if (ui.requestId != null) {
-                        OutlinedButton(
+                        PlantOutlinedButton(
                             onClick = onWithdraw,
                             enabled = !ui.withdrawing,
                             modifier = Modifier.fillMaxWidth()
@@ -319,7 +319,7 @@ fun NotIdentifiedCard(
                         )
                     }
 
-                    Button(
+                    PlantButton(
                         onClick = { onSend(note, location, allowContribution) },
                         enabled = !atCap && !ui.sending,
                         modifier = Modifier.fillMaxWidth()

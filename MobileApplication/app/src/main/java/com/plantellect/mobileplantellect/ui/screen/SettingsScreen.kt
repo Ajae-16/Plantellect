@@ -50,18 +50,24 @@ fun SettingsScreen() {
     PlantellectPage {
         PageHeading("Preferences", "Settings", "Make Plantellect look and work the way you like.")
 
-        SectionTitle("Appearance")
-        PlantSurface(Modifier.fillMaxWidth()) {
+        FoldSection(
+            title = "Appearance",
+            summary = when (themeMode) {
+                ThemeMode.SYSTEM -> "System default"
+                ThemeMode.LIGHT -> "Light"
+                ThemeMode.DARK -> "Dark"
+            }
+        ) {
             Theme("System default", "Follow your phone's light or dark setting.", ThemeMode.SYSTEM)
-            Theme("Light", "Bright and fresh.", ThemeMode.LIGHT)
-            Theme("Dark", "Easier on the eyes at night.", ThemeMode.DARK)
             HorizontalDivider(color = divider)
-
+            Theme("Light", "Bright and fresh.", ThemeMode.LIGHT)
+            HorizontalDivider(color = divider)
+            Theme("Dark", "Easier on the eyes at night.", ThemeMode.DARK)
         }
 
-        SectionTitle("Typography")
-        PlantSurface(Modifier.fillMaxWidth()) {
-            TypeCombo.entries.forEach { combo ->
+        FoldSection(title = "Typography", summary = typeCombo.title) {
+            TypeCombo.entries.forEachIndexed { i, combo ->
+                if (i > 0) HorizontalDivider(color = divider)
                 OptionRow(
                     combo.title, combo.blurb,
                     Modifier.selectable(
@@ -107,6 +113,16 @@ fun SettingsScreen() {
                 OptionRow("Server connection", connectionText(serverStatus)) {}
             }
         }
+
+        // Sign out also lives here; the sidebar keeps only its icon so it can list just the seven pages.
+        LocalAppNav.current?.let { nav ->
+            SectionTitle("Account")
+            PlantOutlinedButton(
+                onClick = nav.signOut,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) { Text("Sign out") }
+        }
     }
 
     if (confirmContribute) {
@@ -115,12 +131,12 @@ fun SettingsScreen() {
             title = { Text("Help improve") },
             text = { Text("The photo you scanned will be used for training.") },
             confirmButton = {
-                TextButton(onClick = {
+                PlantTextButton(onClick = {
                     settings.setAutoContribute(true)
                     confirmContribute = false
                 }) { Text("Turn on") }
             },
-            dismissButton = { TextButton(onClick = { confirmContribute = false }) { Text("Cancel") } }
+            dismissButton = { PlantTextButton(onClick = { confirmContribute = false }) { Text("Cancel") } }
         )
     }
 }

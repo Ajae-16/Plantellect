@@ -44,9 +44,25 @@ enum class TypeCombo(
     val caption: RoleFont,
     val label: RoleFont
 ) {
-    /** The look the app shipped with: the phone's own fonts, no font files needed. */
+    /**
+     * The app's own look: just two typefaces. Playfair Display gives the page and section headings a botanical,
+     * field-guide feel; Open Sans carries everything you read and tap (card titles, text, buttons, tags) in one
+     * clear, friendly voice. Open Sans ships in every weight used here, so nothing is faked.
+     */
     DEFAULT(
-        "Plantellect", "The original look: serif headings with simple, friendly text.",
+        "Plantellect", "Playfair Display headings with Open Sans text. Botanical, clear and calm.",
+        h4 = f(AppFont.PLAYFAIR_DISPLAY, FontWeight.Bold),
+        h5 = f(AppFont.PLAYFAIR_DISPLAY, FontWeight.Bold),
+        h6 = f(AppFont.PLAYFAIR_DISPLAY, FontWeight.SemiBold),
+        subtitle = f(AppFont.OPEN_SANS, FontWeight.SemiBold),
+        body = f(AppFont.OPEN_SANS),
+        caption = f(AppFont.OPEN_SANS),
+        label = f(AppFont.OPEN_SANS, FontWeight.SemiBold)
+    ),
+
+    /** The look the app first shipped with: the phone's own fonts, no font files needed. */
+    SYSTEM(
+        "System", "Your phone's own serif headings with simple, friendly text.",
         h4 = f(AppFont.SYSTEM_SERIF, FontWeight.Bold),
         h5 = f(AppFont.SYSTEM_SERIF, FontWeight.Bold),
         h6 = f(AppFont.SYSTEM_SERIF, FontWeight.SemiBold),

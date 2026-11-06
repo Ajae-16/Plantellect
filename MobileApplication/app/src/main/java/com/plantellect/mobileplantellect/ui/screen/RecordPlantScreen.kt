@@ -697,7 +697,7 @@ private fun TypeEditor(
     types: List<RecTypeName>, typeName: String, other: String, errors: SnapshotStateMap<String, String>,
     nameKey: String, otherKey: String, onName: (String) -> Unit, onOther: (String) -> Unit
 ) {
-    val options = types.map { it.typeName to "${it.typeName} (${it.plantCount ?: 0} plant${if (it.plantCount == 1) "" else "s"})" } +
+    val options = types.map { it.typeName to it.typeName } +
             (OTHER to "Others")
     val shown = when {
         typeName == OTHER -> "Others"
@@ -799,7 +799,7 @@ private fun PreviewDialog(src: RecordPreview, onClose: () -> Unit) {
                         is RecordPreview.Remote -> RemoteImage(src.url, 2048, fill, ContentScale.Fit)
                     }
                 }
-                TextButton(onClose, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
+                PlantTextButton(onClose, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
                     Text("Close", color = MaterialTheme.extraColors.onOverlay)
                 }
             }
@@ -827,9 +827,9 @@ private fun PhotoSection(
     }
     if (showTitle) RecordSectionTitle("Photos")
     Hint("Up to $max photos (${photos.size} added). Tap a photo to preview it. They are reviewed before anything is published.")
-    OutlinedButton({ launcher.launch("image/*") }, shape = MaterialTheme.shapes.small) { Text("Add photos") }
+    PlantOutlinedButton({ launcher.launch("image/*") }, shape = MaterialTheme.shapes.small) { Text("Add photos") }
     if (photos.isNotEmpty()) {
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        HScroll {
             photos.toList().forEach { u ->
                 Box(Modifier.size(96.dp)) {
                     LocalImage(u, 256, Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).clickable { onPreview(u) }, ContentScale.Crop)
@@ -852,7 +852,7 @@ private fun PlantPicker(
     if (chosenLabel != null) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(chosenLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            TextButton(onClear) { Text("Change") }
+            PlantTextButton(onClear) { Text("Change") }
         }
         return
     }
@@ -940,7 +940,7 @@ private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordFo
                                 "second copy, so your text and photos can go to that plant as a contribution.",
                         style = MaterialTheme.typography.bodyMedium
                     )
-                    OutlinedButton({
+                    PlantOutlinedButton({
                         // Carry the draft across, then open the contribution for that plant.
                         val n = s.desc; val c = f.contrib.desc
                         if (n.uses.isNotBlank() && c.uses.isBlank()) c.uses = n.uses
@@ -1009,7 +1009,7 @@ private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordFo
             s.photosPanel, { s.photosPanel = !s.photosPanel }
         ) { PhotoSection(s.desc.photos, ui.maxPhotos, { f.preview = RecordPreview.Local(it) }, { f.problem = it }, showTitle = false) }
 
-        Button(
+        PlantButton(
             onClick = {
                 s.errors.clear(); f.problem = null; vm.clearMessages()
                 val errs = validateNew(s, ui.types)
@@ -1020,7 +1020,7 @@ private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordFo
                 } else vm.submitNew(newFields(s, ui.types), s.desc.photos.toList())
             },
             enabled = !ui.busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp), shape = MaterialTheme.shapes.small
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = MaterialTheme.shapes.small
         ) { Text(if (ui.busy) "Submitting…" else "Submit for review") }
     }
 }
@@ -1102,7 +1102,7 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
                 if (plant.hasPendingTaxonomyRequest == true) {
                     Hint("A taxonomy update for this plant is already waiting for review.")
                 } else {
-                    TextButton({ c.taxOpen = !c.taxOpen }) { Text(if (c.taxOpen) "Cancel taxonomy update" else "Request a taxonomy update") }
+                    PlantTextButton({ c.taxOpen = !c.taxOpen }) { Text(if (c.taxOpen) "Cancel taxonomy update" else "Request a taxonomy update") }
                 }
                 if (c.taxOpen) {
                     TAX.forEach { t ->
@@ -1112,7 +1112,7 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
                     }
                     Field("Reason (optional)", c.taxReason, "taxReason", c.errors, minLines = 2) { c.taxReason = it }
                     ErrorText(c.errors["tax"], "tax")
-                    Button(
+                    PlantButton(
                         onClick = {
                             c.errors.clear(); f.problem = null; vm.clearMessages()
                             val changed = linkedMapOf<String, String>()
@@ -1132,7 +1132,7 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
             }
         }
 
-        Button(
+        PlantButton(
             onClick = {
                 c.errors.clear(); f.problem = null; vm.clearMessages()
                 val errs = validateContribution(plant, c.desc)
@@ -1143,7 +1143,7 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
                 } else vm.submitContribution(plant.id, contributionFields(c.desc), c.desc.photos.toList())
             },
             enabled = !ui.busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp), shape = MaterialTheme.shapes.small
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = MaterialTheme.shapes.small
         ) { Text(if (ui.busy) "Submitting…" else "Submit contribution") }
     }
 }
@@ -1247,14 +1247,14 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
             }
         }
 
-        Button(
+        PlantButton(
             onClick = {
                 s.errors.clear(); f.problem = null; vm.clearMessages()
                 if (!s.baseOn && !s.descOn) {
                     s.errors["c.pick"] = "Tick what you want to change: the plant info, your description, or both."
                     f.problem = "Nothing to send yet."
                     f.focus.request("c.pick")
-                    return@Button
+                    return@PlantButton
                 }
                 val errs = linkedMapOf<String, String>()
                 val body = linkedMapOf<String, JsonObject>()
@@ -1267,7 +1267,7 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
                 } else vm.submitChange(d.id, buildJsonObject { body.forEach { (k, v) -> put(k, v) } })
             },
             enabled = !ui.busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp), shape = MaterialTheme.shapes.small
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = MaterialTheme.shapes.small
         ) { Text(if (ui.busy) "Sending…" else "Send change request") }
     }
 }
@@ -1286,9 +1286,9 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
             title = { Text("Withdraw submission?") },
             text = { Text("Reviewers will no longer see it, and its photos will not be published.") },
             confirmButton = {
-                TextButton({ withdrawId = null; vm.withdraw(id) }) { Text("Withdraw", color = MaterialTheme.colorScheme.error) }
+                PlantTextButton({ withdrawId = null; vm.withdraw(id) }) { Text("Withdraw", color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton({ withdrawId = null }) { Text("Cancel") } }
+            dismissButton = { PlantTextButton({ withdrawId = null }) { Text("Cancel") } }
         )
     }
 
@@ -1343,7 +1343,7 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
 
                     // Each photo has its own status: the admin decides them one by one.
                     r.images?.takeIf { it.isNotEmpty() }?.let { imgs ->
-                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HScroll {
                             imgs.forEach { img ->
                                 val url = vm.absoluteUrl(img.url)
                                 Column(Modifier.width(96.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1368,11 +1368,11 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         // Photos can still be added to an approved species later.
                         if (r.status == "approved" && r.requestType == "plant_addition" && r.targetPlantId != null) {
-                            OutlinedButton({ vm.selectContribPlant(r.targetPlantId); f.tab = 1 }) { Text("Add photos") }
+                            PlantOutlinedButton({ vm.selectContribPlant(r.targetPlantId); f.tab = 1 }) { Text("Add photos") }
                         }
                         // Only while nobody has decided it yet.
                         if (r.status == "pending") {
-                            OutlinedButton({ withdrawId = r.id }, enabled = !ui.busy) { Text("Withdraw submission") }
+                            PlantOutlinedButton({ withdrawId = r.id }, enabled = !ui.busy) { Text("Withdraw submission") }
                         }
                     }
                 }
@@ -1380,7 +1380,7 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
         }
 
         if (!ui.requestsEnd && ui.requests.isNotEmpty()) {
-            OutlinedButton({ vm.loadRequests(reset = false) }, enabled = !ui.requestsLoading) {
+            PlantOutlinedButton({ vm.loadRequests(reset = false) }, enabled = !ui.requestsLoading) {
                 Text(if (ui.requestsLoading) "Loading…" else "Load more")
             }
         }
@@ -1420,17 +1420,13 @@ fun RecordPlantScreen() {
     CompositionLocalProvider(LocalErrorFocus provides f.focus) {
         PlantellectPage {
             PageHeading(
-                "Botanist", "Record a plant",
+                null, "Record Plant",
                 "Add new species, contribute to existing ones, or request a correction. Every submission is reviewed."
             )
 
             PlantSurface(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryScrollableTabRow(selectedTabIndex = f.tab, edgePadding = 8.dp, containerColor = Color.Transparent) {
-                        listOf("New plant", "Add to existing", "Request change", "My submissions").forEachIndexed { i, label ->
-                            Tab(selected = f.tab == i, onClick = { f.tab = i }, text = { Text(label) })
-                        }
-                    }
+                    ScrollableTabStrip(listOf("New plant", "Add to existing", "Request change", "My submissions"), f.tab, { f.tab = it })
                     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         val errorText = f.problem ?: ui.error
                         val banner = errorText ?: ui.notice
@@ -1438,7 +1434,7 @@ fun RecordPlantScreen() {
                             Card(colors = CardDefaults.cardColors(containerColor = if (errorText != null) c.errorContainer else c.secondaryContainer)) {
                                 Row(Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(banner, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                                    TextButton({ f.problem = null; vm.clearMessages() }) { Text("Dismiss") }
+                                    PlantTextButton({ f.problem = null; vm.clearMessages() }) { Text("Dismiss") }
                                 }
                             }
                         }

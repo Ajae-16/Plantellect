@@ -350,11 +350,6 @@ fun ScanPlantScreen() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(colors.primaryContainer, colors.secondaryContainer, colors.background)
-                )
-            )
             .systemBarsPadding()
     ) {
         if (!hasCamPermission) {
@@ -799,7 +794,7 @@ private fun ScanningPanel(
                 color = colors.onSurfaceVariant
             )
         }
-        OutlinedButton(onClick = onCancel) { Text("Cancel") }
+        PlantOutlinedButton(onClick = onCancel) { Text("Cancel") }
     }
 }
 
@@ -825,7 +820,7 @@ private fun ResultCard(
     // Part of the page (no hovering elevation): the whole screen scrolls to read it.
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
@@ -1074,14 +1069,14 @@ private fun NotAPlantCard(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (canScanAnyway) {
-                Button(onClick = onScanAnyway, modifier = Modifier.weight(1f)) {
+                PlantButton(onClick = onScanAnyway, modifier = Modifier.weight(1f)) {
                     Text(if (debug) "Scan Anyway" else "Check anyway")
                 }
             }
             if (canScanAnyway) {
-                OutlinedButton(onClick = onRetake, modifier = Modifier.weight(1f)) { Text("Retake") }
+                PlantOutlinedButton(onClick = onRetake, modifier = Modifier.weight(1f)) { Text("Retake") }
             } else {
-                Button(onClick = onRetake, modifier = Modifier.weight(1f)) { Text("Retake") }
+                PlantButton(onClick = onRetake, modifier = Modifier.weight(1f)) { Text("Retake") }
             }
         }
     }
@@ -1117,8 +1112,8 @@ private fun ErrorCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Retry") }
-            OutlinedButton(onClick = onRetake, modifier = Modifier.weight(1f)) { Text("Retake") }
+            PlantButton(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Retry") }
+            PlantOutlinedButton(onClick = onRetake, modifier = Modifier.weight(1f)) { Text("Retake") }
         }
     }
 }
@@ -1134,7 +1129,7 @@ private fun NoticeCard(title: String, body: String) {
 
 @Composable
 private fun ScanAgainButton(onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = Modifier.fillMaxWidth()) { Text("Scan again") }
+    PlantButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) { Text("Scan again") }
 }
 
 @Composable
@@ -1152,7 +1147,7 @@ private fun BoxScope.PermissionScreen(onGrant: () -> Unit) {
             color = colors.onBackground,
             textAlign = TextAlign.Center
         )
-        Button(onClick = onGrant) {
+        PlantButton(onClick = onGrant) {
             Text("Grant Camera Permission")
         }
     }

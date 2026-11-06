@@ -1,19 +1,35 @@
 package com.plantellect.mobileplantellect.ui.screen
 
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.draw.alpha
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlin.math.abs
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -30,6 +46,7 @@ import com.plantellect.mobileplantellect.ui.theme.ContributorPalette
 import com.plantellect.mobileplantellect.ui.theme.contributor
 import com.plantellect.mobileplantellect.ui.theme.extraColors
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
+import kotlinx.coroutines.launch
 
 /**
  * The plant's profile, loaded from GET /api/plants/:plantId: photos, names, category and
@@ -38,6 +55,7 @@ import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
  * Every contributor shows their profile picture and a tappable, underlined name that opens
  * their profile ([onOpenBotanist]). Full screen over the library.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlantProfileDialog(
     plantId: String,
@@ -57,35 +75,91 @@ fun PlantProfileDialog(
     val votes = rememberVotes(client, vm, plantId, reloadKey = attempt)
     var viewing by remember { mutableStateOf<String?>(null) }
 
+    // The same sidebar as the rest of the app (this screen is its own window, so it gets its own copy).
+    val nav = LocalAppNav.current
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+
+    // Finger zoom: pinch to magnify, drag to move around while zoomed. Nothing is resized or re-laid out: the page is
+    // only magnified like a photo, so text and boxes keep their size and position.
+    val zoom = remember { FingerZoom() }
+
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = c.background) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
-                TextButton(onClose, Modifier.statusBarsPadding().padding(horizontal = 8.dp)) { Text("← Back to library") }
+            Box(Modifier.fillMaxSize().plantBackdrop()) {
+                val body: @Composable () -> Unit = {
+                    Column(Modifier.fillMaxSize()) {
+                        // Wraps onto a second line when the phone's font size leaves no room for all the controls.
+                        FlowRow(
+                            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            itemVerticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (nav != null) IconButton({ drawerScope.launch { drawerState.open() } }) {
+                                    Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                                }
+                                PlantTextButton(onClose) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Back")
+                                }
+                            }
+                            if (zoom.scale > 1.01f) PlantTextButton({ zoom.reset() }) { Text("Reset zoom") }
+                        }
 
-                when (val s = state) {
-                    ProfileLoad.Loading -> {
-                        PlantPhoto(heroUrl, fallbackName, Modifier.heroModifier(), maxPx = 1024)
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(fallbackName, style = MaterialTheme.typography.headlineSmall)
-                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().fingerZoom(zoom)) {
+                            Column(
+                                Modifier.fillMaxSize()
+                                    .graphicsLayer {
+                                        transformOrigin = TransformOrigin(0f, 0f)
+                                        scaleX = zoom.scale; scaleY = zoom.scale
+                                        translationX = zoom.tx; translationY = zoom.ty
+                                    }
+                                    .verticalScroll(rememberScrollState()).navigationBarsPadding()
+                            ) {
+                                when (val s = state) {
+                                    ProfileLoad.Loading -> {
+                                        PlantPhoto(heroUrl, fallbackName, Modifier.heroModifier(), maxPx = 1024)
+                                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            Text(fallbackName, style = MaterialTheme.typography.headlineSmall)
+                                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                                        }
+                                    }
+                                    ProfileLoad.NotFound -> Message(
+                                        "Plant not found",
+                                        "This plant is not published yet, or it has no approved description."
+                                    )
+                                    ProfileLoad.Failed -> Message("Could not load plant", "Check your connection and try again.") {
+                                        PlantButton({ attempt++ }) { Text("Try again") }
+                                    }
+                                    is ProfileLoad.Ready -> ProfileBody(
+                                        p = s.data, fallbackHero = heroUrl, votes = votes,
+                                        // A description just got hidden by down votes: draw the page again.
+                                        onHidden = { attempt++ },
+                                        onView = { viewing = it },
+                                        // The screen that shows this dialog hides it and brings it back when Back is pressed on the profile.
+                                        onOpenBotanist = { id -> onOpenBotanist(id) }
+                                    )
+                                }
+                            }
                         }
                     }
-                    ProfileLoad.NotFound -> Message(
-                        "Plant not found",
-                        "This plant is not published yet, or it has no approved description."
-                    )
-                    ProfileLoad.Failed -> Message("Could not load plant", "Check your connection and try again.") {
-                        Button({ attempt++ }) { Text("Try again") }
-                    }
-                    is ProfileLoad.Ready -> ProfileBody(
-                        p = s.data, fallbackHero = heroUrl, votes = votes,
-                        // A description just got hidden by down votes: draw the page again.
-                        onHidden = { attempt++ },
-                        onView = { viewing = it },
-                        // Close this dialog first, then go to the profile screen.
-                        onOpenBotanist = { id -> onClose(); onOpenBotanist(id) }
-                    )
                 }
+                if (nav != null) {
+                    ModalNavigationDrawer(
+                        drawerState = drawerState,
+                        drawerContent = {
+                            PlantellectDrawerSheet(
+                                permissions = nav.permissions,
+                                currentRoute = null,
+                                // Pick a page: close the sidebar and this profile, then go there.
+                                onGo = { route -> drawerScope.launch { drawerState.close() }; onClose(); nav.go(route) },
+                                onSignOut = { drawerScope.launch { drawerState.close() }; onClose(); nav.signOut() }
+                            )
+                        }
+                    ) { body() }
+                } else body()
             }
         }
     }
@@ -93,8 +167,137 @@ fun PlantProfileDialog(
     viewing?.let { url -> PhotoZoomDialog(url, fallbackName) { viewing = null } }
 }
 
+private const val MAX_FINGER_ZOOM = 4f
+
+/** How much the plant page is magnified and where it is moved to. 1 = normal; nothing else changes size. */
+private class FingerZoom {
+    var scale by mutableStateOf(1f)
+    var tx by mutableStateOf(0f)
+    var ty by mutableStateOf(0f)
+
+    fun reset() { scale = 1f; tx = 0f; ty = 0f }
+
+    /** Keeps the magnified page covering the whole viewport (no empty edges). */
+    fun clamp(width: Float, height: Float) {
+        tx = tx.coerceIn(width * (1f - scale), 0f)
+        ty = ty.coerceIn(height * (1f - scale), 0f)
+    }
+}
+
+/**
+ * Two fingers pinch to magnify (up to 4x) and move together to shift the view. With one finger, while magnified,
+ * a sideways drag moves the view left and right; up and down still scrolls the page. At normal size one finger
+ * is left alone so the page scrolls and taps work as usual.
+ */
+private fun Modifier.fingerZoom(z: FingerZoom): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        var totalDx = 0f
+        var panning = false
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val down = event.changes.filter { it.pressed }
+            if (down.size >= 2) {
+                val a = down[0]; val b = down[1]
+                val now = (a.position - b.position).getDistance()
+                val before = (a.previousPosition - b.previousPosition).getDistance()
+                if (before > 0f && now > 0f) {
+                    val centroid = (a.position + b.position) / 2f
+                    val previous = (a.previousPosition + b.previousPosition) / 2f
+                    val newScale = (z.scale * now / before).coerceIn(1f, MAX_FINGER_ZOOM)
+                    val ratio = newScale / z.scale
+                    // The point between the fingers stays under them while the page grows.
+                    z.tx = centroid.x - (centroid.x - z.tx) * ratio + (centroid.x - previous.x)
+                    z.ty = centroid.y - (centroid.y - z.ty) * ratio + (centroid.y - previous.y)
+                    z.scale = newScale
+                    z.clamp(size.width.toFloat(), size.height.toFloat())
+                }
+                event.changes.forEach { it.consume() }
+            } else if (down.size == 1 && z.scale > 1f) {
+                val ch = down[0]
+                val d = ch.position - ch.previousPosition
+                totalDx += d.x
+                if (!panning && abs(totalDx) > viewConfiguration.touchSlop && abs(d.x) >= abs(d.y)) panning = true
+                if (panning) {
+                    z.tx += d.x
+                    z.clamp(size.width.toFloat(), size.height.toFloat())
+                    ch.consume()
+                }
+            }
+        } while (event.changes.any { it.pressed })
+    }
+}
+
+/** The large photo: the width of the screen, a 16:11 box that grows with the phone (capped on tablets). */
 private fun Modifier.heroModifier(): Modifier =
-    fillMaxWidth().padding(horizontal = 16.dp).height(240.dp).clip(RoundedCornerShape(16.dp))
+    fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 180.dp, max = 420.dp)
+        .aspectRatio(16f / 11f).clip(RoundedCornerShape(16.dp))
+
+/** How long each large photo stays before the gallery moves to the next one. */
+private const val HERO_AUTO_SCROLL_MS = 4000L
+
+/**
+ * The large photo(s). One photo: just the photo. Two or more: swipe sideways between them, they also
+ * move on by themselves every [HERO_AUTO_SCROLL_MS] (paused while a finger is on it), with dots underneath.
+ * [selectedRequest] (photo number, tap count) lets the thumbnail strip jump to a photo.
+ */
+@Composable
+private fun HeroGallery(
+    images: List<String>,
+    fallback: String?,
+    name: String,
+    selectedRequest: Pair<Int, Int>,
+    onPageChange: (Int) -> Unit,
+    onView: (String) -> Unit
+) {
+    val urls = images.ifEmpty { listOfNotNull(fallback) }
+    if (urls.size <= 1) {
+        val u = urls.firstOrNull()
+        PlantPhoto(u, name, Modifier.heroModifier().clickable(enabled = u != null) { u?.let(onView) }, maxPx = 1024)
+        return
+    }
+    val pager = rememberPagerState(pageCount = { urls.size })
+    val dragged by pager.interactionSource.collectIsDraggedAsState()
+
+    // A thumbnail was tapped.
+    LaunchedEffect(selectedRequest) { if (selectedRequest.first in urls.indices) pager.animateScrollToPage(selectedRequest.first) }
+    // Tell the strip which photo is showing.
+    LaunchedEffect(pager.currentPage) { onPageChange(pager.currentPage) }
+    // Auto scroll: wait, move on, repeat. Restarts after every swipe, so it never fights the finger.
+    LaunchedEffect(pager.currentPage, dragged, urls.size) {
+        if (dragged) return@LaunchedEffect
+        delay(HERO_AUTO_SCROLL_MS)
+        pager.animateScrollToPage((pager.currentPage + 1) % urls.size)
+    }
+
+    Box(Modifier.fillMaxWidth()) {
+        HorizontalPager(
+            state = pager, modifier = Modifier.fillMaxWidth(), beyondViewportPageCount = 1,
+            pageSpacing = 0.dp
+        ) { page ->
+            PlantPhoto(
+                urls[page], name,
+                Modifier.heroModifier().clickable { onView(urls[page]) },
+                maxPx = 1024
+            )
+        }
+        Row(
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp)
+                .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(50))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            urls.indices.forEach { i ->
+                Box(
+                    Modifier.size(if (i == pager.currentPage) 8.dp else 6.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = if (i == pager.currentPage) 1f else 0.55f))
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun Message(title: String, body: String, action: (@Composable () -> Unit)? = null) {
@@ -123,20 +326,27 @@ private fun ProfileBody(
     onOpenBotanist: (String) -> Unit
 ) {
     val c = MaterialTheme.colorScheme
-    val hero = p.images.firstOrNull() ?: fallbackHero
+    var heroRequest by remember { mutableStateOf(-1 to 0) }
+    var heroShowing by remember { mutableStateOf(0) }
     val primary = p.descriptions.firstOrNull { it.isPrimary } ?: p.descriptions.firstOrNull()
     val others = p.descriptions.filter { it !== primary }
     val tox = p.toxicityLevel?.takeIf { it.isNotBlank() && it != "none" }
 
-    // Photos: the first one large, the rest as a strip. Tap to view full size.
-    PlantPhoto(hero, p.name, Modifier.heroModifier().clickable(enabled = hero != null) { hero?.let(onView) }, maxPx = 1024)
+    // Photos: the large photo swipes (and moves by itself) through all of them; the strip below jumps to one.
+    // Tap the large photo to view it full size.
+    HeroGallery(
+        images = p.images, fallback = fallbackHero, name = p.name,
+        selectedRequest = heroRequest, onPageChange = { heroShowing = it }, onView = onView
+    )
     if (p.images.size > 1) {
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            p.images.forEach { u ->
-                PlantPhoto(u, p.name, Modifier.size(72.dp).clip(RoundedCornerShape(10.dp)).clickable { onView(u) })
+        HScroll(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)) {
+            p.images.forEachIndexed { i, u ->
+                PlantPhoto(
+                    u, p.name,
+                    Modifier.size(72.dp).clip(RoundedCornerShape(10.dp))
+                        .alpha(if (i == heroShowing) 1f else 0.6f)
+                        .clickable { heroRequest = i to (heroRequest.second + 1); if (i == heroShowing) onView(u) }
+                )
             }
         }
     }
@@ -161,7 +371,7 @@ private fun ProfileBody(
         }
 
         if (primary != null && p.descriptions.size > 1 && primary.author != null) {
-            ContributorByline(primary, onOpenBotanist)
+            ContributorByline(primary, onOpenBotanist, onView)
         }
 
         // The primary description's thumbs, right under the byline (same place as the web).
@@ -200,7 +410,8 @@ private fun ProfileBody(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Avatar(
                             d.author, d.authorPhotoUrl, 32.dp, colors.accent, colors.fg,
-                            onClick = d.authorId?.let { id -> { onOpenBotanist(id) } }
+                            // Tap the picture to see it large; with no picture it opens the profile like the name does.
+                            onClick = d.authorPhotoUrl?.let { u -> { onView(u) } } ?: d.authorId?.let { id -> { onOpenBotanist(id) } }
                         )
                         PersonLink(
                             d.author ?: "A contributor", d.authorId, colors.fg,
@@ -226,9 +437,9 @@ private fun ProfileBody(
 
         HorizontalDivider()
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            PeopleRow("Recorded by", p.recordedBy, onOpenBotanist)
-            PeopleRow("Reviewed by", p.reviewedBy, onOpenBotanist)
-            PeopleRow("Reported by", p.reportedBy, onOpenBotanist)
+            PeopleRow("Recorded by", p.recordedBy, onOpenBotanist, onView)
+            PeopleRow("Reviewed by", p.reviewedBy, onOpenBotanist, onView)
+            PeopleRow("Reported by", p.reportedBy, onOpenBotanist, onView)
             Text("Quantity on record: ${p.quantity ?: "—"}", style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
         }
     }
@@ -243,14 +454,17 @@ private fun Section(title: String, body: String?, empty: String = "No informatio
     }
 }
 
-/** "Primary description by NAME" with the author's picture, in the first contributor color. NAME is a tappable link. */
+/** "Notable description by NAME" with the author's picture, in the first contributor color. NAME is a tappable link. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ContributorByline(d: ProfileDescription, onOpen: (String) -> Unit) {
+private fun ContributorByline(d: ProfileDescription, onOpen: (String) -> Unit, onView: (String) -> Unit) {
     val colors = MaterialTheme.extraColors.contributor(0)
     Surface(
-        shape = RoundedCornerShape(50),
+        // A pill when it fits on one line; the corners soften when a big font or a long name makes it wrap.
+        shape = RoundedCornerShape(24.dp),
         color = colors.bg,
-        border = BorderStroke(1.dp, colors.accent)
+        border = BorderStroke(1.dp, colors.accent),
+        modifier = Modifier.widthIn(max = 600.dp)
     ) {
         Row(
             Modifier.padding(start = 6.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
@@ -259,10 +473,18 @@ private fun ContributorByline(d: ProfileDescription, onOpen: (String) -> Unit) {
         ) {
             Avatar(
                 d.author, d.authorPhotoUrl, 32.dp, colors.accent, colors.fg,
-                onClick = d.authorId?.let { id -> { onOpen(id) } }
+                onClick = d.authorPhotoUrl?.let { u -> { onView(u) } } ?: d.authorId?.let { id -> { onOpen(id) } }
             )
-            Text("Primary description by", style = MaterialTheme.typography.labelLarge, color = colors.fg)
-            PersonLink(d.author.orEmpty(), d.authorId, colors.fg, MaterialTheme.typography.labelLarge, onOpen)
+            // Label and name flow together and wrap onto the next line instead of running off the screen.
+            FlowRow(
+                Modifier.weight(1f, fill = false),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+                itemVerticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Notable description by", style = MaterialTheme.typography.labelLarge, color = colors.fg)
+                PersonLink(d.author.orEmpty(), d.authorId, colors.fg, MaterialTheme.typography.labelLarge, onOpen)
+            }
         }
     }
 }
@@ -271,7 +493,7 @@ private fun ContributorByline(d: ProfileDescription, onOpen: (String) -> Unit) {
 @Composable
 private fun ContributorBox(colors: ContributorPalette, content: @Composable ColumnScope.(ContributorPalette) -> Unit) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.medium,
         color = colors.bg,
         contentColor = colors.fg,
         border = BorderStroke(1.dp, colors.accent),
@@ -301,7 +523,7 @@ private fun BoxSection(title: String, body: String, colors: ContributorPalette) 
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PeopleRow(label: String, people: List<ProfilePerson>, onOpen: (String) -> Unit) {
+private fun PeopleRow(label: String, people: List<ProfilePerson>, onOpen: (String) -> Unit, onView: (String) -> Unit) {
     if (people.isEmpty()) return
     val c = MaterialTheme.colorScheme
     val style = MaterialTheme.typography.bodySmall
@@ -318,7 +540,7 @@ private fun PeopleRow(label: String, people: List<ProfilePerson>, onOpen: (Strin
                 if (person.accountId != null) {
                     Avatar(
                         person.name, person.photoUrl, 24.dp, c.primary, c.onSurface,
-                        onClick = { onOpen(person.accountId) }
+                        onClick = person.photoUrl?.let { u -> { onView(u) } } ?: { onOpen(person.accountId) }
                     )
                     Spacer(Modifier.width(6.dp))
                 }

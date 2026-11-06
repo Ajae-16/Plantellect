@@ -88,7 +88,7 @@ private fun Banner(text: String, container: Color, content: Color, onDismiss: ()
     Surface(shape = RoundedCornerShape(12.dp), color = container, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(start = 14.dp, top = 4.dp, bottom = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = content)
-            TextButton(onDismiss) { Text("OK", color = content) }
+            PlantTextButton(onDismiss) { Text("OK", color = content) }
         }
     }
 }
@@ -114,6 +114,7 @@ private fun DiscoveryCardView(
     val votingClosed = card.claimedBy != null || card.recordRequestId != null
 
     Card(
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = c.surface),
         border = BorderStroke(1.dp, c.outlineVariant),
         modifier = Modifier.fillMaxWidth()
@@ -153,7 +154,7 @@ private fun DiscoveryCardView(
                     style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant
                 )
             } else {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HScroll {
                     card.images.forEach { img ->
                         PlantPhoto(vm.reportImageUrl(img.imageId), "Photo from this report", Modifier.size(120.dp).clip(RoundedCornerShape(12.dp)))
                     }
@@ -178,13 +179,13 @@ private fun DiscoveryCardView(
             // The reporter cannot claim or record their own report; the server enforces the same rule.
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (mine) {
-                    Button({ vm.resolve(id) }, enabled = !busy) { Text("Mark resolved") }
-                    if (card.resolvedBy == me) OutlinedButton({ vm.reopen(id) }, enabled = !busy) { Text("Undo resolve") }
-                    if (!isReporter) Button(onRecord, enabled = !busy) { Text("Record it") }
-                    OutlinedButton({ vm.unclaim(id) }, enabled = !busy) { Text("Release") }
+                    PlantButton({ vm.resolve(id) }, enabled = !busy) { Text("Mark resolved") }
+                    if (card.resolvedBy == me) PlantOutlinedButton({ vm.reopen(id) }, enabled = !busy) { Text("Undo resolve") }
+                    if (!isReporter) PlantButton(onRecord, enabled = !busy) { Text("Record it") }
+                    PlantOutlinedButton({ vm.unclaim(id) }, enabled = !busy) { Text("Release") }
                 } else if (card.claimable && !isReporter) {
                     // Someone who voted "not a plant" should not also take the report. Undo the vote to enable.
-                    Button({ vm.claim(id) }, enabled = !busy && !hasVoted) { Text("Claim") }
+                    PlantButton({ vm.claim(id) }, enabled = !busy && !hasVoted) { Text("Claim") }
                 }
 
                 // Beside Claim: a vote is an endorsement, so it does not need the claim.
@@ -193,7 +194,7 @@ private fun DiscoveryCardView(
                     Text("You reported this, so you can't vote on it.", style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
                 } else if (hasVoted) {
                     // Voted: shown differently, and tapping it takes the vote back (which enables Claim).
-                    FilledTonalButton(
+                    PlantTonalButton(
                         onClick = { onUnvote(id) },
                         enabled = !busy && !votingClosed,
                         colors = ButtonDefaults.filledTonalButtonColors(
@@ -206,15 +207,15 @@ private fun DiscoveryCardView(
                         Text("✓ You voted not a plant · ${card.voteCount}/${card.notAPlantThreshold} · Undo")
                     }
                 } else {
-                    OutlinedButton({ onVote(id) }, enabled = !votingClosed && !busy) {
+                    PlantOutlinedButton({ onVote(id) }, enabled = !votingClosed && !busy) {
                         Text("Vote not a plant · ${card.voteCount}/${card.notAPlantThreshold}")
                     }
                 }
 
                 if (card.disqualifiedBy != null)
-                    OutlinedButton({ vm.reinstate(id) }, enabled = !busy) { Text("Disagree? Reinstate") }
+                    PlantOutlinedButton({ vm.reinstate(id) }, enabled = !busy) { Text("Disagree? Reinstate") }
                 if (card.claimedBy != null && !mine)
-                    TextButton({ vm.release(id) }, enabled = !busy) { Text("Release claim") }
+                    PlantTextButton({ vm.release(id) }, enabled = !busy) { Text("Release claim") }
             }
 
             if (hasVoted && card.claimable && !mine && !isReporter) {

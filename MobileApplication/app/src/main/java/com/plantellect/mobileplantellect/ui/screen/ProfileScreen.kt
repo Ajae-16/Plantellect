@@ -169,7 +169,7 @@ fun ProfileScreen(
                         color = c.onSurface,
                         textAlign = TextAlign.Center
                     )
-                    Button(onClick = onSignIn) { Text("Sign in") }
+                    PlantButton(onClick = onSignIn) { Text("Sign in") }
                 }
             }
             return@PlantellectPage
@@ -202,14 +202,14 @@ fun ProfileScreen(
 
                     // ---- profile picture ----
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedButton(onClick = { pickPhoto() }, enabled = !edit.uploadingPhoto) {
+                        PlantOutlinedButton(onClick = { pickPhoto() }, enabled = !edit.uploadingPhoto) {
                             Text(if (account.photoUrl == null) "Add profile photo" else "Change photo")
                         }
-                        OutlinedButton(onClick = { useCamera() }, enabled = !edit.uploadingPhoto) {
+                        PlantOutlinedButton(onClick = { useCamera() }, enabled = !edit.uploadingPhoto) {
                             Text("Use camera")
                         }
                         if (account.photoUrl != null) {
-                            TextButton(onClick = { vm.removePhoto() }, enabled = !edit.uploadingPhoto) { Text("Remove") }
+                            PlantTextButton(onClick = { vm.removePhoto() }, enabled = !edit.uploadingPhoto) { Text("Remove") }
                         }
                     }
                     if (edit.uploadingPhoto) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -277,7 +277,7 @@ fun ProfileScreen(
         // ---- security: own only ----
         if (isOwn) {
             SectionTitle("Security")
-            OutlinedButton(onClick = { passwordNotice = null; vm.clearEditMessages(); showChangePassword = true }) {
+            PlantOutlinedButton(onClick = { passwordNotice = null; vm.clearEditMessages(); showChangePassword = true }) {
                 Text("Change password")
             }
             passwordNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.primary) }
@@ -298,11 +298,7 @@ fun ProfileScreen(
         }
         if (tabs.isNotEmpty()) {
             val selected = tab.coerceIn(0, tabs.lastIndex)
-            TabRow(selectedTabIndex = selected) {
-                tabs.forEachIndexed { i, (_, label) ->
-                    Tab(selected = selected == i, onClick = { tab = i }, text = { Text(label, maxLines = 1) })
-                }
-            }
+            ScrollableTabStrip(tabs.map { it.second }, selected, { tab = it })
             when (tabs[selected].first) {
                 "reports" -> MyReportsSection(s.total, s.loading, s.notice, s.reports, s.withdrawingId,
                     s.page, s.pageCount, s.pageSize, s.hasPrev, s.hasNext,
@@ -446,9 +442,9 @@ private fun MyReportsSection(
 
         if (total > pageSize) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = onPrev, enabled = hasPrev && !loading) { Text("Previous") }
+                PlantOutlinedButton(onClick = onPrev, enabled = hasPrev && !loading) { Text("Previous") }
                 Text("Page $page of $pageCount", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
-                OutlinedButton(onClick = onNext, enabled = hasNext && !loading) { Text("Next") }
+                PlantOutlinedButton(onClick = onNext, enabled = hasNext && !loading) { Text("Next") }
             }
         }
     }
@@ -492,11 +488,11 @@ private fun ReportCard(
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 report.plantUrl?.takeIf { it.isNotBlank() }?.let {
-                    Button(onClick = { onOpen(it) }) { Text("See the plant") }
+                    PlantButton(onClick = { onOpen(it) }) { Text("See the plant") }
                 }
                 // Offered only while waiting; the server's 409 says if it is too late.
                 if (report.state == "waiting") {
-                    OutlinedButton(onClick = onWithdraw, enabled = !withdrawing) {
+                    PlantOutlinedButton(onClick = onWithdraw, enabled = !withdrawing) {
                         Text(if (withdrawing) "Withdrawing…" else "Withdraw")
                     }
                 }
@@ -545,10 +541,10 @@ private fun ChangePasswordDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { confirming = true }, enabled = canSubmit) { Text("Change password") }
+            PlantButton(onClick = { confirming = true }, enabled = canSubmit) { Text("Change password") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            PlantTextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 
@@ -558,13 +554,13 @@ private fun ChangePasswordDialog(
             title = { Text("Confirm password change") },
             text = { Text("Are you sure you want to change your password?") },
             confirmButton = {
-                Button(onClick = {
+                PlantButton(onClick = {
                     confirming = false
                     onSubmit(current, next)
                 }) { Text("Yes, change it") }
             },
             dismissButton = {
-                TextButton(onClick = { confirming = false }) { Text("Go back") }
+                PlantTextButton(onClick = { confirming = false }) { Text("Go back") }
             }
         )
     }

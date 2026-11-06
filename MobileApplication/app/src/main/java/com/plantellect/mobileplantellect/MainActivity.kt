@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.EditNote
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -120,31 +122,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun GradientBackground(content: @Composable () -> Unit) {
     val c = MaterialTheme.colorScheme
-    Box(
-        Modifier.fillMaxSize().background(
-            Brush.linearGradient(
-                colors = listOf(c.primaryContainer, c.secondaryContainer, c.tertiaryContainer),
-                start = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY), end = Offset.Zero, tileMode = TileMode.Clamp
-            )
-        )
-    ) {
+    // The one background of the app (see plantBackdrop): every screen, the login page and the plant profile share it.
+    Box(Modifier.fillMaxSize().plantBackdrop()) {
         // Default text color for everything on the gradient: light in dark mode, dark in light mode.
         CompositionLocalProvider(LocalContentColor provides c.onBackground) { content() }
     }
 }
-
-/** requires = a permission string from the server; null means every signed-in user sees it. */
-private data class DrawerEntry(val label: String, val route: String, val icon: ImageVector, val requires: String? = null)
-
-private val drawerEntries = listOf(
-    DrawerEntry("Home", "home", Icons.Filled.Home),
-    DrawerEntry("Plant Library", "inventory", Icons.Filled.LocalFlorist),
-    DrawerEntry("Scan a Plant", "scan", Icons.Filled.CameraAlt),
-    DrawerEntry("Record a Plant", "record", Icons.Filled.EditNote, requires = "record_plant"),
-    DrawerEntry("Discoveries", "discoveries", Icons.Filled.Explore, requires = "record_plant"),   // NEW
-    DrawerEntry("Profile", "profile", Icons.Filled.Person),
-    DrawerEntry("Settings", "settings", Icons.Filled.Settings)
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -164,10 +147,14 @@ private fun AppShell(
     // Same instance Home and the Library use (it is scoped to the Activity).
     val libraryVm = libraryViewModel()
     var showSignOutDialog by remember { mutableStateOf(false) }
+    // True when your own profile was opened by tapping your name (it then gets a Back button);
+    // false when it was opened from the sidebar (no Back button).
+    var profileViaLink by rememberSaveable { mutableStateOf(false) }
     val c = MaterialTheme.colorScheme
 
     fun go(route: String) {
         scope.launch { drawerState.close() }
+        if (route == "profile") profileViaLink = false
         if (route == "home") navController.popBackStack("home", inclusive = false)
         else navController.navigate(route) {
             popUpTo("home") { saveState = true }
@@ -178,12 +165,20 @@ private fun AppShell(
 
     /**
      * Opens a person's profile. Your own name goes to your own Profile page; anyone else goes to
-     * "profile/{accountId}", the same screen in read-only mode. Back returns to where the name was tapped.
+     * "profile/{accountId}", the same screen in read-only mode. Both get a Back button that returns to where
+     * the name was tapped (a profile opened from the sidebar has no Back button).
      */
     fun openPerson(accountId: String) {
         scope.launch { drawerState.close() }
-        if (accountId == account.accountId) go("profile")
-        else navController.navigate("profile/$accountId") { launchSingleTop = true }
+        if (accountId == account.accountId) {
+            profileViaLink = true
+            navController.navigate("profile") { launchSingleTop = true }
+        } else navController.navigate("profile/$accountId") { launchSingleTop = true }
+    }
+
+    // Lets the plant profile (a separate full-screen window) show the same sidebar.
+    val appNav = remember(permissions) {
+        AppNav(permissions, go = { route -> go(route) }, signOut = { showSignOutDialog = true })
     }
 
     authUi.notice?.let { notice ->
@@ -191,7 +186,7 @@ private fun AppShell(
             onDismissRequest = { auth.consumeMessages() },
             title = { Text("Welcome to Plantellect") },
             text = { Text(notice) },
-            confirmButton = { TextButton({ auth.consumeMessages() }) { Text("OK") } }
+            confirmButton = { PlantTextButton({ auth.consumeMessages() }) { Text("OK") } }
         )
     }
 
@@ -206,42 +201,22 @@ private fun AppShell(
                     Text("Signing you out…")
                 } else Text("You'll need to sign in again to scan plants and manage your collection.")
             },
-            confirmButton = { TextButton({ auth.logout() }, enabled = !authUi.signingOut) { Text("Sign out", color = c.error) } },
-            dismissButton = { TextButton({ showSignOutDialog = false }, enabled = !authUi.signingOut) { Text("Cancel") } }
+            confirmButton = { PlantTextButton({ auth.logout() }, enabled = !authUi.signingOut) { Text("Sign out", color = c.error) } },
+            dismissButton = { PlantTextButton({ showSignOutDialog = false }, enabled = !authUi.signingOut) { Text("Cancel") } }
         )
     }
 
-    @Composable
-    fun DrawerItem(label: String, icon: ImageVector, selected: Boolean, color: Color = c.onSurface, onClick: () -> Unit) =
-        NavigationDrawerItem(
-            label = { Text(label, style = MaterialTheme.typography.labelLarge, color = color) },
-            icon = { Icon(icon, contentDescription = null, tint = color) },
-            selected = selected, onClick = onClick, shape = MaterialTheme.shapes.small,
-            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-        )
-
+    CompositionLocalProvider(LocalAppNav provides appNav) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = c.primaryContainer, modifier = Modifier.fillMaxWidth(0.7f).widthIn(max = 320.dp)) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    LogoMark(40.dp)
-                    Text("Plantellect", style = MaterialTheme.typography.headlineSmall, color = c.onSurface)
-                }
-                HorizontalDivider()
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-                    drawerEntries.filter { it.requires == null || it.requires in permissions }.forEach { e ->
-                        DrawerItem(e.label, e.icon, currentRoute == e.route) { go(e.route) }
-                    }
-                }
-                HorizontalDivider()
-                Column(Modifier.padding(vertical = 8.dp)) {
-                    DrawerItem("Sign out", Icons.AutoMirrored.Filled.Logout, false, c.error) {
-                        scope.launch { drawerState.close() }
-                        showSignOutDialog = true
-                    }
-                }
-            }
+            // Seven pages; Sign out is the icon at the top of the sheet.
+            PlantellectDrawerSheet(
+                permissions = permissions,
+                currentRoute = currentRoute,
+                onGo = { route -> go(route) },
+                onSignOut = { scope.launch { drawerState.close() }; showSignOutDialog = true }
+            )
         }
     ) {
         Scaffold(
@@ -263,48 +238,81 @@ private fun AppShell(
                 )
             }
         ) { innerPadding ->
-            // imePadding lifts every screen above the keyboard, so the field being typed in scrolls into view
-            // instead of sitting behind the keyboard (edge-to-edge mode ignores adjustResize).
-            NavHost(navController, startDestination = "home", modifier = Modifier.padding(innerPadding).imePadding()) {
-                composable("home") {
-                    HomeScreen(
-                        onNavigateToScan = { go("scan") },
-                        onNavigateToInventory = { go("inventory") },
-                        vm = libraryVm,
-                        onOpenBotanist = { id -> openPerson(id) }
-                    )
+            // imePadding lifts every screen above the keyboard (edge-to-edge mode ignores adjustResize), and the
+            // formatting bar of the description box being typed in is pinned right above the keyboard.
+            val richToolbar = remember { RichToolbarHost() }
+            CompositionLocalProvider(LocalRichToolbarHost provides richToolbar) {
+                Column(Modifier.padding(innerPadding).imePadding()) {
+                    Box(Modifier.weight(1f)) {
+                NavHost(navController, startDestination = "home", modifier = Modifier.fillMaxSize()) {
+                    composable("home") {
+                        HomeScreen(
+                            onNavigateToScan = { go("scan") },
+                            onNavigateToInventory = { go("inventory") },
+                            vm = libraryVm,
+                            onOpenBotanist = { id -> openPerson(id) }
+                        )
+                    }
+                    composable("inventory") { PlantInventoryScreen(vm = libraryVm, onOpenBotanist = { id -> openPerson(id) }) }
+                    composable("scan") { ScanPlantScreen() }
+                    composable("record") { RecordPlantScreen() }
+                    composable("discoveries") {
+                        DiscoveriesScreen(
+                            myAccountId = account.accountId,
+                            onRecord = { go("record") },
+                            // The reporter's name on each card opens their profile.
+                            onOpenBotanist = { id -> openPerson(id) }
+                        )
+                    }
+                    // Your own profile: identity, security, My reports, My contributions.
+                    // Back shows only when it was opened by tapping your name, not from the sidebar.
+                    composable("profile") {
+                        Column(Modifier.fillMaxSize()) {
+                            if (profileViaLink) BackBar { navController.popBackStack() }
+                            Box(Modifier.weight(1f)) {
+                                ProfileHost(
+                                    account = account, profileVm = profileVm, libraryVm = libraryVm, baseUrl = baseUrl,
+                                    viewAccountId = null, onOpenPerson = { id -> openPerson(id) }
+                                )
+                            }
+                        }
+                    }
+                    // Somebody else's profile: the same screen, read-only.
+                    composable(
+                        "profile/{accountId}",
+                        arguments = listOf(navArgument("accountId") { type = NavType.StringType })
+                    ) { entry ->
+                        Column(Modifier.fillMaxSize()) {
+                            // Back to wherever this profile was opened from (the plant, the list, a report).
+                            BackBar { navController.popBackStack() }
+                            Box(Modifier.weight(1f)) {
+                                ProfileHost(
+                                    account = account, profileVm = profileVm, libraryVm = libraryVm, baseUrl = baseUrl,
+                                    viewAccountId = entry.arguments?.getString("accountId"),
+                                    onOpenPerson = { id -> openPerson(id) }
+                                )
+                            }
+                        }
+                    }
+                    composable("settings") { SettingsScreen() }
                 }
-                composable("inventory") { PlantInventoryScreen(vm = libraryVm, onOpenBotanist = { id -> openPerson(id) }) }
-                composable("scan") { ScanPlantScreen() }
-                composable("record") { RecordPlantScreen() }
-                composable("discoveries") {
-                    DiscoveriesScreen(
-                        myAccountId = account.accountId,
-                        onRecord = { go("record") },
-                        // The reporter's name on each card opens their profile.
-                        onOpenBotanist = { id -> openPerson(id) }
-                    )
+                    }
+                    RichToolbarBar(richToolbar)
                 }
-                // Your own profile: identity, security, My reports, My contributions.
-                composable("profile") {
-                    ProfileHost(
-                        account = account, profileVm = profileVm, libraryVm = libraryVm, baseUrl = baseUrl,
-                        viewAccountId = null, onOpenPerson = { id -> openPerson(id) }
-                    )
-                }
-                // Somebody else's profile: the same screen, read-only.
-                composable(
-                    "profile/{accountId}",
-                    arguments = listOf(navArgument("accountId") { type = NavType.StringType })
-                ) { entry ->
-                    ProfileHost(
-                        account = account, profileVm = profileVm, libraryVm = libraryVm, baseUrl = baseUrl,
-                        viewAccountId = entry.arguments?.getString("accountId"),
-                        onOpenPerson = { id -> openPerson(id) }
-                    )
-                }
-                composable("settings") { SettingsScreen() }
             }
+        }
+    }
+    }
+}
+
+/** "← Back", shown above a profile that was opened from somewhere else (a plant, a list, a report). */
+@Composable
+private fun BackBar(onBack: () -> Unit) {
+    Row(Modifier.padding(horizontal = 8.dp)) {
+        PlantTextButton(onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Back")
         }
     }
 }
@@ -322,7 +330,9 @@ private fun ProfileHost(
     viewAccountId: String?,
     onOpenPerson: (String) -> Unit
 ) {
-    var openPlant by remember { mutableStateOf<String?>(null) }
+    var openPlant by rememberSaveable { mutableStateOf<String?>(null) }
+    var resumePlant by rememberSaveable { mutableStateOf<String?>(null) }   // plant to bring back after a profile
+    LaunchedEffect(Unit) { if (resumePlant != null) { openPlant = resumePlant; resumePlant = null } }
 
     ProfileScreen(
         account = account,
@@ -341,7 +351,7 @@ private fun ProfileHost(
             fallbackName = "Plant",
             heroUrl = null,
             vm = libraryVm,
-            onOpenBotanist = onOpenPerson,
+            onOpenBotanist = { person -> resumePlant = openPlant; openPlant = null; onOpenPerson(person) },
             onClose = { openPlant = null }
         )
     }

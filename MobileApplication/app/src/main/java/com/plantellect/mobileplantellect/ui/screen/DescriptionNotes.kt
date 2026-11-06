@@ -166,7 +166,7 @@ fun DescriptionVoteBar(
                 if (needSignIn()) return@VoteButton
                 if (st.myVote == "down") votes.retract(id, ::done) else panelOpen = !panelOpen
             }
-            TextButton(onClick = { tableOpen = !tableOpen }) {
+            PlantTextButton(onClick = { tableOpen = !tableOpen }) {
                 Text(if (tableOpen) "Hide votes" else "View votes", fontSize = 13.sp)
             }
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -186,7 +186,7 @@ fun DescriptionVoteBar(
             exit = shrinkVertically() + fadeOut()
         ) {
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = MaterialTheme.shapes.medium,
                 color = c.surface, contentColor = c.onSurface,
                 border = BorderStroke(1.dp, c.outlineVariant)
             ) {
@@ -216,7 +216,7 @@ fun DescriptionVoteBar(
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
+                        PlantButton(
                             enabled = !busy,
                             onClick = {
                                 val code = reason
@@ -228,7 +228,7 @@ fun DescriptionVoteBar(
                                 }
                             }
                         ) { Text("Send downvote") }
-                        TextButton(onClick = { panelOpen = false; message = null }) { Text("Cancel") }
+                        PlantTextButton(onClick = { panelOpen = false; message = null }) { Text("Cancel") }
                     }
                 }
             }

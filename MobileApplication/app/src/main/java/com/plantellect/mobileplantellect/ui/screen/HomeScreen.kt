@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.LocalFlorist
 import androidx.compose.material.icons.filled.Park
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -69,7 +70,10 @@ fun HomeScreen(
     onOpenBotanist: (String) -> Unit = {}
 ) {
     val ui by vm.ui.collectAsState()
-    var open by remember { mutableStateOf<Pair<String, String>?>(null) }   // plant id to name
+    var open by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }   // plant id to name
+    var resume by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }  // plant to bring back after a profile
+    // Back from a profile opened out of this plant: bring the plant back.
+    LaunchedEffect(Unit) { if (resume != null) { open = resume; resume = null } }
     val featured = remember(ui.items) { ui.items.take(10) }
     val more = remember(ui.items) { ui.items.drop(10).take(6) }
 
@@ -81,7 +85,7 @@ fun HomeScreen(
         ) {
             item {
                 Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Plantellect", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("Plantellect", style = MaterialTheme.typography.headlineMedium)
                     Text(
                         "Identify, learn and record plants.",
                         style = MaterialTheme.typography.bodyMedium,
@@ -92,15 +96,15 @@ fun HomeScreen(
 
             item {
                 Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionTile(Icons.Filled.CameraAlt, "Scan a plant", Modifier.weight(1f), onNavigateToScan)
-                    ActionTile(Icons.Filled.LocalFlorist, "Plant library", Modifier.weight(1f), onNavigateToInventory)
+                    ActionTile(Icons.Filled.CameraAlt, "Capture Plant", Modifier.weight(1f), onNavigateToScan)
+                    ActionTile(Icons.Filled.LocalFlorist, "Plant Library", Modifier.weight(1f), onNavigateToInventory)
                 }
             }
 
             item {
                 Text(
                     "Featured plants", Modifier.padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold
+                    style = MaterialTheme.typography.titleLarge
                 )
             }
 
@@ -131,7 +135,7 @@ fun HomeScreen(
                 item {
                     Text(
                         "More plants", Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold
+                        style = MaterialTheme.typography.titleLarge
                     )
                 }
                 items(more, key = { it.cardId }) { p ->
@@ -154,7 +158,8 @@ fun HomeScreen(
             fallbackName = name,
             heroUrl = null,
             vm = vm,
-            onOpenBotanist = onOpenBotanist,
+            // Remember the plant so Back on the profile returns to it.
+            onOpenBotanist = { person -> resume = open; open = null; onOpenBotanist(person) },
             onClose = { open = null }
         )
     }
@@ -164,7 +169,7 @@ fun HomeScreen(
 private fun ActionTile(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
     Card(
         modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(
@@ -385,107 +390,119 @@ fun PlantCard(
         0f, 1f, infiniteRepeatable(tween(16_000, easing = EaseInOut), RepeatMode.Reverse), label = "kenT"
     )
 
-    Card(
-        modifier
-            .height(310.dp)
-            .graphicsLayer {
-                val t = enter.value
-                alpha = t
-                translationY = (1f - t) * 24.dp.toPx()
-                val s = 0.96f + 0.04f * t
-                scaleX = s
-                scaleY = s
-            }
-            .combinedClickable(onClick = onClick, onLongClick = zoomPhoto),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = phB),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            // photo layer: artwork underneath, photo on top
-            Box(
-                Modifier.fillMaxSize().graphicsLayer {
-                    val k = ken.value
-                    val s = 1f + 0.09f * k
+    // The card grows with the phone's font size (up to 2x) instead of clipping its text: 310 dp at normal size.
+    CappedFontScale(2f) {
+      BoxWithConstraints(modifier) {
+        val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+        // Text and spacing follow the card's width (1.0 at ~340 dp) so narrow phones and tablets both look right.
+        val ts = (maxWidth.value / 340f).coerceIn(0.85f, 1.2f)
+        val pad = (12 * ts).dp
+        Card(
+            Modifier.fillMaxWidth()
+                .height((190 + 105 * fontScale).dp)
+                .graphicsLayer {
+                    val t = enter.value
+                    alpha = t
+                    translationY = (1f - t) * 24.dp.toPx()
+                    val s = 0.96f + 0.04f * t
                     scaleX = s
                     scaleY = s
-                    translationX = -0.015f * k * size.width
-                    translationY = -0.01f * k * size.height
                 }
-            ) {
-                PlaceholderArt(slug, phA, phB)
-                PlantCardPhoto(plantId, photoUrl, name, vm, Modifier.fillMaxSize())
-            }
-
-            // type + toxicity, top-left
-            FlowRow(
-                Modifier.align(Alignment.TopStart).fillMaxWidth().padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                if (info.type.isNotBlank()) {
-                    Surface(shape = RoundedCornerShape(50), color = extra.onOverlay.copy(alpha = 0.88f)) {
-                        Text(
-                            info.type.replaceFirstChar { it.uppercase() },
-                            Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
-                            color = phB, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.04.em, maxLines = 1
-                        )
-                    }
-                }
-                info.toxicity?.let { ToxicityChip(it) }
-            }
-
-            // name + details on the dark gradient
-            Column(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to extra.photoShade.copy(alpha = 0f),
-                            0.55f to extra.photoShade.copy(alpha = 0.78f),
-                            1f to extra.photoShade.copy(alpha = 0.94f)
-                        )
-                    )
-                    .padding(start = 16.dp, end = 16.dp, top = 64.dp, bottom = 16.dp)
-            ) {
-                Text(
-                    name.uppercase(),
-                    color = extra.onOverlay, fontSize = 17.sp, lineHeight = 21.sp,
-                    fontWeight = FontWeight.Bold, letterSpacing = 0.06.em,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(shadow = Shadow(extra.overlay.copy(alpha = 0.4f), Offset(0f, 2f), 3f))
-                )
+                .combinedClickable(onClick = onClick, onLongClick = zoomPhoto),
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(containerColor = phB),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                // photo layer: artwork underneath, photo on top
                 Box(
-                    Modifier.padding(top = 8.dp, bottom = 6.dp)
-                        .size(width = 28.dp, height = 3.dp)
-                        .background(extra.photoAccent, RoundedCornerShape(3.dp))
-                )
-                if (!scientificName.isNullOrBlank()) {
-                    Text(
-                        scientificName, color = extra.onOverlay.copy(alpha = 0.78f),
-                        fontSize = 13.sp, fontStyle = FontStyle.Italic,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (added != null) {
-                    Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Filled.CalendarToday, null, Modifier.size(14.dp),
-                            tint = extra.onOverlay.copy(alpha = 0.72f)
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text(added, color = extra.onOverlay.copy(alpha = 0.72f), fontSize = 12.sp)
+                    Modifier.fillMaxSize().graphicsLayer {
+                        val k = ken.value
+                        val s = 1f + 0.09f * k
+                        scaleX = s
+                        scaleY = s
+                        translationX = -0.015f * k * size.width
+                        translationY = -0.01f * k * size.height
                     }
+                ) {
+                    PlaceholderArt(slug, phA, phB)
+                    PlantCardPhoto(plantId, photoUrl, name, vm, Modifier.fillMaxSize())
                 }
-                if (!info.description.isNullOrBlank()) {
-                    Text(
-                        info.description,
-                        Modifier.padding(top = 8.dp),
-                        color = extra.onOverlay.copy(alpha = 0.9f), fontSize = 13.sp, lineHeight = 19.5.sp,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis
+
+                // type + toxicity, top-left
+                FlowRow(
+                    Modifier.align(Alignment.TopStart).fillMaxWidth().padding((8 * ts).dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (info.type.isNotBlank()) {
+                        Surface(shape = RoundedCornerShape(50), color = extra.onOverlay.copy(alpha = 0.88f)) {
+                            FitText(
+                                info.type.replaceFirstChar { it.uppercase() },
+                                fontSize = 10.sp, minFontSize = 7.sp,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                                color = phB, fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.04.em
+                            )
+                        }
+                    }
+                    info.toxicity?.let { ToxicityChip(it) }
+                }
+
+                // name + details on the dark gradient
+                Column(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to extra.photoShade.copy(alpha = 0f),
+                                0.55f to extra.photoShade.copy(alpha = 0.78f),
+                                1f to extra.photoShade.copy(alpha = 0.94f)
+                            )
+                        )
+                        .padding(start = pad, end = pad, top = 36.dp, bottom = pad)
+                ) {
+                    FitText(
+                        name.uppercase(),
+                        fontSize = (14 * ts).sp, minFontSize = 10.sp, lineHeightRatio = 1.2f,
+                        color = extra.onOverlay,
+                        fontWeight = FontWeight.Bold, letterSpacing = 0.06.em,
+                        maxLines = 2,
+                        style = TextStyle(shadow = Shadow(extra.overlay.copy(alpha = 0.4f), Offset(0f, 2f), 3f))
                     )
+                    Box(
+                        Modifier.padding(top = 4.dp, bottom = 3.dp)
+                            .size(width = 24.dp, height = 2.dp)
+                            .background(extra.photoAccent, RoundedCornerShape(3.dp))
+                    )
+                    if (!scientificName.isNullOrBlank()) {
+                        FitText(
+                            scientificName, fontSize = (11 * ts).sp, minFontSize = 8.sp,
+                            color = extra.onOverlay.copy(alpha = 0.78f), fontStyle = FontStyle.Italic,
+                            maxLines = 1
+                        )
+                    }
+                    if (added != null) {
+                        Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.CalendarToday, null, Modifier.size(11.dp),
+                                tint = extra.onOverlay.copy(alpha = 0.72f)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            FitText(added, fontSize = (10 * ts).sp, minFontSize = 7.sp, color = extra.onOverlay.copy(alpha = 0.72f))
+                        }
+                    }
+                    if (!info.description.isNullOrBlank()) {
+                        FitText(
+                            info.description,
+                            fontSize = (11 * ts).sp, minFontSize = 8.sp, lineHeightRatio = 1.3f,
+                            modifier = Modifier.padding(top = 4.dp),
+                            color = extra.onOverlay.copy(alpha = 0.9f),
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
+      }
     }
 }

@@ -180,7 +180,7 @@ private fun SignUpPanel(
         AuthField(f.confirm, edit { f.confirm = it }, "Confirm password", enabled = !busy, error = fieldErrors["confirm"], isPassword = true)
         Requirements(f.confirm.isNotEmpty()) { Requirement("Passwords match", f.confirm == f.password) }
 
-        TextButton({ showTerms = true }, Modifier.fillMaxWidth(), enabled = !busy) {
+        PlantTextButton({ showTerms = true }, Modifier.fillMaxWidth(), enabled = !busy) {
             Text("View Terms and Conditions & Information Usage", textAlign = TextAlign.Center)
         }
         if (!f.readTerms) Text("Read the terms to the end to unlock the checkboxes.", style = MaterialTheme.typography.bodySmall,
@@ -208,7 +208,7 @@ private fun AuthField(
     OutlinedTextField(
         value = value, onValueChange = onValueChange, modifier = modifier,
         label = { Text(label, maxLines = 1) },
-        trailingIcon = if (isPassword) ({ TextButton({ visible = !visible }) { Text(if (visible) "Hide" else "Show") } }) else null,
+        trailingIcon = if (isPassword) ({ PlantTextButton({ visible = !visible }) { Text(if (visible) "Hide" else "Show") } }) else null,
         singleLine = true, shape = MaterialTheme.shapes.small, enabled = enabled,
         isError = error != null, supportingText = error?.let { msg -> { Text(msg) } },
         visualTransformation = if (isPassword && !visible) PasswordVisualTransformation() else VisualTransformation.None,
@@ -223,7 +223,7 @@ private fun AuthField(
 
 @Composable
 private fun SubmitButton(text: String, busyText: String, busy: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    Button(onClick, Modifier.fillMaxWidth().height(54.dp), enabled = enabled, shape = MaterialTheme.shapes.small) {
+    PlantButton(onClick, Modifier.fillMaxWidth().heightIn(min = 54.dp), enabled = enabled, shape = MaterialTheme.shapes.small) {
         if (busy) {
             CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = MaterialTheme.colorScheme.onPrimary)
             Spacer(Modifier.width(12.dp))
@@ -236,7 +236,7 @@ private fun SubmitButton(text: String, busyText: String, busy: Boolean, enabled:
 private fun SwitchPrompt(question: String, action: String, enabled: Boolean, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth(), Arrangement.Center, Alignment.CenterVertically) {
         Text(question, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        TextButton(onClick, enabled = enabled) { Text(action) }
+        PlantTextButton(onClick, enabled = enabled) { Text(action) }
     }
 }
 
@@ -305,7 +305,7 @@ private fun TermsDialog(alreadyRead: Boolean, onReadToEnd: () -> Unit, onClose: 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (canClose) "You've read the terms." else "Scroll to the end to continue ($percent%)",
                         style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant, modifier = Modifier.weight(1f))
-                    Button(onClose, enabled = canClose) { Text("Close") }
+                    PlantButton(onClose, enabled = canClose) { Text("Close") }
                 }
             }
         }

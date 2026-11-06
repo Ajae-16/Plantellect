@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -72,7 +73,10 @@ import kotlin.math.roundToInt
 fun LibraryScreen(vm: LibraryViewModel, onOpenBotanist: (String) -> Unit = {}) {
     val ui by vm.ui.collectAsState()
     val gridState = rememberLazyGridState()
-    var open by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var open by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
+    var resume by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }   // plant to bring back after a profile
+    // Back from a profile opened out of this plant: bring the plant back.
+    LaunchedEffect(Unit) { if (resume != null) { open = resume; resume = null } }
 
     // false = filters hidden, true = filters shown. Change to true to start expanded.
     var filtersOpen by remember { mutableStateOf(false) }
@@ -89,7 +93,7 @@ fun LibraryScreen(vm: LibraryViewModel, onOpenBotanist: (String) -> Unit = {}) {
         OutlinedTextField(
             value = ui.query, onValueChange = vm::setQuery,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            singleLine = true, shape = RoundedCornerShape(16.dp),
+            singleLine = true, shape = MaterialTheme.shapes.small,
             placeholder = {
                 Text(
                     when (ui.searchBy) {
@@ -148,10 +152,7 @@ fun LibraryScreen(vm: LibraryViewModel, onOpenBotanist: (String) -> Unit = {}) {
         ) {
             Column {
                 // Search by: all / common / scientific
-                Row(
-                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                HScroll(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
                     SearchBy.entries.forEach {
                         FilterChip(ui.searchBy == it, { vm.setSearchBy(it) }, label = { Text(it.label) })
                     }
@@ -159,10 +160,7 @@ fun LibraryScreen(vm: LibraryViewModel, onOpenBotanist: (String) -> Unit = {}) {
 
                 // Plant type filter
                 if (ui.types.isNotEmpty()) {
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    HScroll(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)) {
                         FilterChip(ui.typeName == null, { vm.setType(null) }, label = { Text("All types") })
                         ui.types.forEach { t ->
                             FilterChip(
@@ -215,13 +213,13 @@ fun LibraryScreen(vm: LibraryViewModel, onOpenBotanist: (String) -> Unit = {}) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedButton(onClick = vm::prevPage, enabled = ui.hasPrev && !ui.loading) { Text("Previous") }
+                PlantOutlinedButton(onClick = vm::prevPage, enabled = ui.hasPrev && !ui.loading) { Text("Previous") }
                 Text(
                     "Page ${ui.page} of ${ui.pageCount}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                OutlinedButton(onClick = vm::nextPage, enabled = ui.hasNext && !ui.loading) { Text("Next") }
+                PlantOutlinedButton(onClick = vm::nextPage, enabled = ui.hasNext && !ui.loading) { Text("Next") }
             }
         }
     }
@@ -232,7 +230,8 @@ fun LibraryScreen(vm: LibraryViewModel, onOpenBotanist: (String) -> Unit = {}) {
             fallbackName = name,
             heroUrl = null,
             vm = vm,
-            onOpenBotanist = onOpenBotanist,
+            // Remember the plant so Back on the profile returns to it.
+            onOpenBotanist = { person -> resume = open; open = null; onOpenBotanist(person) },
             onClose = { open = null }
         )
     }
@@ -242,8 +241,7 @@ fun LibraryScreen(vm: LibraryViewModel, onOpenBotanist: (String) -> Unit = {}) {
 // The Library card: fixed-size grid version of the web card (.plant-grid .plant-card)
 // ---------------------------------------------------------------------------
 
-/** Every Library card is exactly this tall, whatever its content. */
-private val LibraryCardHeight = 236.dp
+/** Every Library card is exactly as tall as every other one: 252 dp at normal font size, taller with larger text. */
 
 /**
  * Same order as the web card (image, name, chips, date, note), but every part has a fixed slot,
@@ -271,82 +269,94 @@ fun LibraryPlantCard(
     // Long-press: the photo, big and zoomable. A tap still opens the plant.
     val zoomPhoto = rememberCardPhotoZoom(id, photoUrl, name, vm)
 
-    Card(
-        modifier.fillMaxWidth().height(LibraryCardHeight).combinedClickable(onClick = onClick, onLongClick = zoomPhoto),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = c.surface),
-        border = BorderStroke(1.dp, MaterialTheme.extraColors.forest.copy(alpha = 0.12f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(Modifier.fillMaxSize()) {
-            // image box: fixed 90 dp, soft green gradient behind the photo
-            Box(
-                Modifier.fillMaxWidth().height(90.dp)
-                    .background(Brush.linearGradient(listOf(MaterialTheme.extraColors.photoBackdropStart, MaterialTheme.extraColors.photoBackdropEnd)))
-            ) {
-                PlantCardPhoto(id, photoUrl, name, vm, Modifier.fillMaxSize())
-            }
+    // Every slot below grows with the phone's font size (up to 2x), so all cards stay equal and nothing is cut.
+    CappedFontScale(2f) {
+      BoxWithConstraints(modifier.fillMaxWidth()) {
+        val f = LocalDensity.current.fontScale
+        // The photo follows the card's width (90 dp on a normal phone), so wide phones and tablets get a taller photo.
+        val imageH = (maxWidth * 0.85f).coerceIn(100.dp, 220.dp)
+        // Text on the card shrinks a little when the card is narrow (small phones, split screen).
+        val ts = (maxWidth.value / 160f).coerceIn(0.85f, 1.2f)
+        Card(
+            Modifier.fillMaxWidth().height(imageH + 12.dp + (92 * f).dp).combinedClickable(onClick = onClick, onLongClick = zoomPhoto),
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(containerColor = c.surface),
+            border = BorderStroke(1.dp, MaterialTheme.extraColors.forest.copy(alpha = 0.12f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                // image box: fixed 90 dp, soft green gradient behind the photo
+                Box(
+                    Modifier.fillMaxWidth().height(imageH)
+                        .background(Brush.linearGradient(listOf(MaterialTheme.extraColors.photoBackdropStart, MaterialTheme.extraColors.photoBackdropEnd)))
+                ) {
+                    PlantCardPhoto(id, photoUrl, name, vm, Modifier.fillMaxSize())
+                }
 
-            // name: always one line
-            Text(
-                name.uppercase(),
-                Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp),
-                color = c.onSurface, fontSize = 13.sp, lineHeight = 16.sp,
-                fontWeight = FontWeight.Bold, letterSpacing = 0.017.em,
-                maxLines = 1, overflow = TextOverflow.Ellipsis
-            )
+                // name: always a two-line slot, so a long name wraps instead of being cut after one line
+                FitText(
+                    name.uppercase(),
+                    fontSize = (11 * ts).sp, minFontSize = 8.sp, lineHeightRatio = 1.2f,
+                    modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 5.dp, bottom = 2.dp),
+                    color = c.onSurface,
+                    fontWeight = FontWeight.Bold, letterSpacing = 0.017.em,
+                    minLines = 2, maxLines = 2
+                )
 
-            // chips: a fixed two-line slot (clipped), so wrapping never changes the card height
-            FlowRow(
-                Modifier.fillMaxWidth().height(40.dp).clipToBounds()
-                    .padding(start = 10.dp, end = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                if (info.type.isNotBlank()) PlantTypeChip(info.type, compact = true)
-                info.toxicity?.let { ToxicityChip(it, compact = true) }
-            }
+                // chips: a fixed two-line slot (clipped), so wrapping never changes the card height
+                FlowRow(
+                    Modifier.fillMaxWidth().height((20 * f).dp).clipToBounds()
+                        .padding(start = 8.dp, end = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    if (info.type.isNotBlank()) PlantTypeChip(info.type, compact = true)
+                    info.toxicity?.let { ToxicityChip(it, compact = true) }
+                }
 
-            // date: always reserves its slot
-            Row(
-                Modifier.fillMaxWidth().height(16.dp).padding(start = 10.dp, end = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (added != null) {
-                    Icon(Icons.Filled.CalendarToday, null, Modifier.size(11.dp), tint = c.onSurfaceVariant)
-                    Spacer(Modifier.width(3.dp))
-                    Text(added, color = c.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // date: always reserves its slot
+                Row(
+                    Modifier.fillMaxWidth().height((13 * f).dp).padding(start = 8.dp, end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (added != null) {
+                        Icon(Icons.Filled.CalendarToday, null, Modifier.size(9.dp), tint = c.onSurfaceVariant)
+                        Spacer(Modifier.width(3.dp))
+                        FitText(added, fontSize = (9 * ts).sp, minFontSize = 7.sp, color = c.onSurfaceVariant, modifier = Modifier.weight(1f, fill = false))
+                    }
+                }
+
+                // note: label + 2-line text, fills whatever is left
+                val harmful = info.toxicity != null && info.toxicity != "none"
+                val label = if (harmful) "⚠ Watch out" else "Benefits"
+                val text = if (harmful) "Handle with care." else info.benefits   // replaced by the recorded warning once the DTO field is wired
+
+                Column(
+                    Modifier.fillMaxWidth().weight(1f).clipToBounds()
+                        .padding(start = 8.dp, end = 8.dp, top = 1.dp)
+                ) {
+                    FitText(
+                        label.uppercase(),
+                        fontSize = (8 * ts).sp, minFontSize = 6.sp,
+                        color = if (harmful) c.error else MaterialTheme.extraColors.forest,
+                        fontWeight = FontWeight.Bold, letterSpacing = 0.06.em
+                    )
+                    FitText(
+                        if (text.isNullOrBlank()) "No details added yet." else text,
+                        fontSize = (10 * ts).sp, minFontSize = 7.sp, lineHeightRatio = 1.2f,
+                        modifier = Modifier.padding(top = 0.dp).fillMaxWidth(),
+                        color = when {
+                            text.isNullOrBlank() -> c.outline
+                            harmful -> c.error
+                            else -> c.onSurfaceVariant
+                        },
+                        fontStyle = if (text.isNullOrBlank()) FontStyle.Italic else FontStyle.Normal,
+                        maxLines = 2
+                    )
                 }
             }
-
-            // note: label + 2-line text, fills whatever is left
-            val harmful = info.toxicity != null && info.toxicity != "none"
-            val label = if (harmful) "⚠ Watch out" else "Benefits"
-            val text = if (harmful) "Handle with care." else info.benefits   // replaced by the recorded warning once the DTO field is wired
-
-            Column(
-                Modifier.fillMaxWidth().weight(1f).clipToBounds()
-                    .padding(start = 10.dp, end = 10.dp, top = 2.dp)
-            ) {
-                Text(
-                    label.uppercase(),
-                    color = if (harmful) c.error else MaterialTheme.extraColors.forest,
-                    fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.06.em, maxLines = 1
-                )
-                Text(
-                    if (text.isNullOrBlank()) "No details added yet." else text,
-                    Modifier.padding(top = 1.dp).fillMaxWidth(),
-                    color = when {
-                        text.isNullOrBlank() -> c.outline
-                        harmful -> c.error
-                        else -> c.onSurfaceVariant
-                    },
-                    fontStyle = if (text.isNullOrBlank()) FontStyle.Italic else FontStyle.Normal,
-                    fontSize = 11.sp, lineHeight = 14.sp,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis
-                )
-            }
         }
+      }
     }
 }
 
@@ -358,12 +368,11 @@ fun PlantTypeChip(type: String, compact: Boolean = false) {
         color = MaterialTheme.extraColors.forest.copy(alpha = 0.10f),
         border = BorderStroke(1.dp, MaterialTheme.extraColors.forest.copy(alpha = 0.25f))
     ) {
-        Text(
+        FitText(
             type.replaceFirstChar { it.uppercase() },
-            Modifier.padding(horizontal = if (compact) 6.dp else 10.dp, vertical = if (compact) 2.dp else 4.dp),
-            color = MaterialTheme.extraColors.onForestChip,
-            fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            fontSize = if (compact) 9.sp else 12.sp, minFontSize = 6.sp,
+            modifier = Modifier.padding(horizontal = if (compact) 5.dp else 10.dp, vertical = if (compact) 1.dp else 4.dp),
+            color = MaterialTheme.extraColors.onForestChip, fontWeight = FontWeight.SemiBold
         )
     }
 }
@@ -391,11 +400,11 @@ fun ToxicityChip(level: String, compact: Boolean = false) {
         else -> extra.toxUnknown.triple
     }
     Surface(shape = RoundedCornerShape(50), color = bg, border = BorderStroke(1.dp, border)) {
-        Text(
+        FitText(
             label,
-            Modifier.padding(horizontal = if (compact) 6.dp else 10.dp, vertical = if (compact) 2.dp else 4.dp),
-            color = fg, fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            fontSize = if (compact) 9.sp else 12.sp, minFontSize = 6.sp,
+            modifier = Modifier.padding(horizontal = if (compact) 5.dp else 10.dp, vertical = if (compact) 1.dp else 4.dp),
+            color = fg, fontWeight = FontWeight.SemiBold
         )
     }
 }

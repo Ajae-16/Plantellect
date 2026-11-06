@@ -70,9 +70,11 @@ fun PlantPhoto(
     scale: ContentScale = ContentScale.Crop, placeholder: Boolean = true
 ) {
     val client = (LocalContext.current.applicationContext as PlantellectApp).container.network.okHttpClient
-    val bmp by produceState<ImageBitmap?>(url?.let { photoCache.get(it) }, url) {
-        if (url.isNullOrBlank()) { value = null; return@produceState }
-        photoCache.get(url)?.let { value = it; return@produceState }
+    // Cached per size: a small copy (avatar, card) must not be reused for the big viewer.
+    val key = url?.let { "$it#$maxPx" }
+    val bmp by produceState<ImageBitmap?>(key?.let { photoCache.get(it) }, url, maxPx) {
+        if (url.isNullOrBlank() || key == null) { value = null; return@produceState }
+        photoCache.get(key)?.let { value = it; return@produceState }
         value = withContext(Dispatchers.IO) {
             runCatching {
                 val bytes = client.newCall(Request.Builder().url(url).build()).execute().use { r ->
@@ -80,7 +82,7 @@ fun PlantPhoto(
                 }
                 bytes?.let { decodePlantBitmap({ ByteArrayInputStream(it) }, maxPx) }
             }.getOrNull()
-        }?.also { photoCache.put(url, it) }
+        }?.also { photoCache.put(key, it) }
     }
 
     Box(modifier, contentAlignment = Alignment.Center) {

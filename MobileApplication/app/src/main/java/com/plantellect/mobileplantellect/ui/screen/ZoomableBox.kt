@@ -142,7 +142,7 @@ fun PhotoZoomDialog(url: String, name: String, onClose: () -> Unit) {
                         maxPx = 2048, scale = ContentScale.Fit, placeholder = false
                     )
                 }
-                TextButton(onClose, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
+                PlantTextButton(onClose, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
                     Text("Close", color = MaterialTheme.extraColors.onOverlay)
                 }
                 Text(
