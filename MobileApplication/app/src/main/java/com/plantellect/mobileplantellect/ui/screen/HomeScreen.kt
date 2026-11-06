@@ -13,7 +13,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
@@ -345,7 +347,7 @@ private fun PlaceholderArt(slug: String, phA: Color, phB: Color) {
  * The "Added ..." date comes from [addedAt] when the caller has it, otherwise from the
  * plant's profile (dateUploaded), read through [rememberCardInfo].
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun PlantCard(
     plantId: String,
@@ -365,6 +367,8 @@ fun PlantCard(
     val extra = MaterialTheme.extraColors
     val (phA, phB) = placeholderColors(slug, extra)
     val added = formatAdded(addedAt ?: info.addedIso)
+    // Long-press: the photo, big and zoomable. A tap still opens the plant.
+    val zoomPhoto = rememberCardPhotoZoom(plantId, photoUrl, name, vm)
 
     // pcIn: fade + rise 24 + scale .96 -> 1, 70 ms stagger, played once per card
     val enter = remember(plantId) { Animatable(if (plantId in entrancePlayed) 1f else 0f) }
@@ -392,7 +396,7 @@ fun PlantCard(
                 scaleX = s
                 scaleY = s
             }
-            .clickable(onClick = onClick),
+            .combinedClickable(onClick = onClick, onLongClick = zoomPhoto),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = phB),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)

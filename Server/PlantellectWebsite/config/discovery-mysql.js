@@ -1234,7 +1234,7 @@ async function castNotAPlantVote(requestId, accountId) {
         }
 
         const [rows] = await conn.query(
-            `SELECT ar.requestType, ar.status, ar.recordRequestId, ar.disqualifiedBy,
+            `SELECT ar.requestType, ar.status, ar.recordRequestId, ar.disqualifiedBy, ar.accountId AS reporterId,
                     ar.claimedBy, ar.claimedAt, holder.status AS holderStatus,
                     (SELECT rec.status FROM approval_requests rec WHERE rec.requestId = ar.recordRequestId) AS recordStatus
              FROM approval_requests ar
@@ -1247,6 +1247,12 @@ async function castNotAPlantVote(requestId, accountId) {
             return { error: 'Discovery report not found', code: 404 };
         }
         const report = rows[0];
+
+        // The person who filed the report cannot vote on it: a "not a plant" vote must come from someone else.
+        if (String(report.reporterId) === String(accountId)) {
+            await conn.rollback();
+            return { error: 'You cannot vote on your own report.', code: 403 };
+        }
 
         // OPEN means: pending, no submitted record, and no LIVE claim. Defining it
         // precisely is what stops the rule deadlocking — a contributor who claims and

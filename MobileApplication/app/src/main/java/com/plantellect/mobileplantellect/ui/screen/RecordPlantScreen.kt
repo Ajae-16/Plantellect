@@ -8,6 +8,9 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -20,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -29,8 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -105,6 +113,23 @@ private val CHANGE_LABELS = mapOf(
     "parts.color" to "Color", "parts.shape" to "Shape", "parts.texture" to "Texture"
 )
 
+/**
+ * "October 1, 2021, 12:00 PM" in the phone's time zone. Reads server ISO times ("2021-10-01T04:00:00.000Z"),
+ * MySQL times ("2021-10-01 04:00:00", taken as UTC) and epoch milliseconds; unreadable text is shown as is.
+ */
+private fun niceDateTime(value: String?): String {
+    if (value.isNullOrBlank()) return ""
+    val instant = runCatching { java.time.Instant.parse(value) }.getOrNull()
+        ?: runCatching { java.time.OffsetDateTime.parse(value).toInstant() }.getOrNull()
+        ?: runCatching {
+            java.time.LocalDateTime.parse(value.trim().replace(' ', 'T')).atZone(java.time.ZoneOffset.UTC).toInstant()
+        }.getOrNull()
+        ?: value.toLongOrNull()?.let { java.time.Instant.ofEpochMilli(it) }
+        ?: return value
+    return java.time.format.DateTimeFormatter.ofPattern("MMMM d, yyyy, h:mm a", java.util.Locale.ENGLISH)
+        .format(instant.atZone(java.time.ZoneId.systemDefault()))
+}
+
 private fun norm(s: String?) = (s ?: "").trim().replace(Regex("\\s+"), " ")
 /** Short one-line text for snippets and change summaries: the typed marks are removed. */
 private fun plain(s: String) = RichText.plain(s)
@@ -163,9 +188,21 @@ class NewState {
     val desc = DescState()
     val errors = mutableStateMapOf<String, String>()
 
+    /** The optional sections start folded away; they stay as the person left them while they fill the form in. */
+    var partsPanel by mutableStateOf(false)
+    var taxPanel by mutableStateOf(false)
+    var photosPanel by mutableStateOf(false)
+
     fun clear() {
         common = ""; sci = ""; typeName = ""; typeOther = ""; medicinal = false
         toxicity = ""; caution = ""; tax.clear(); desc.clear(); errors.clear()
+        partsPanel = false; taxPanel = false; photosPanel = false
+    }
+
+    /** Opens the optional section that holds a field with a problem, so the form can scroll to it. */
+    fun reveal(keys: Collection<String>) {
+        if (keys.any { it.startsWith("part.") }) partsPanel = true
+        if (keys.any { it.startsWith("tax.") }) taxPanel = true
     }
 }
 
@@ -176,6 +213,15 @@ class ContribState {
     val taxEdit = mutableStateMapOf<String, String>()
     var taxReason by mutableStateOf("")
     val errors = mutableStateMapOf<String, String>()
+
+    /** The optional sections (folded away until opened). [taxOpen] is the update editor inside the taxonomy one. */
+    var partsPanel by mutableStateOf(false)
+    var photosPanel by mutableStateOf(false)
+    var taxPanel by mutableStateOf(false)
+
+    fun reveal(keys: Collection<String>) {
+        if (keys.any { it.startsWith("part.") }) partsPanel = true
+    }
 }
 
 @Stable
@@ -196,9 +242,19 @@ class ChangeState {
     var descReason by mutableStateOf("")
     val errors = mutableStateMapOf<String, String>()
 
+    /** Optional sections, folded away until opened. */
+    var taxPanel by mutableStateOf(false)
+    var partsPanel by mutableStateOf(false)
+
     fun reset() {
         baseOn = false; descOn = false; base.clear(); tax.clear(); desc.clear()
         baseReason = ""; descReason = ""; descId = null; errors.clear()
+        taxPanel = false; partsPanel = false
+    }
+
+    fun reveal(keys: Collection<String>) {
+        if (keys.any { it.startsWith("c.tax.") }) taxPanel = true
+        if (keys.any { k -> PARTS.any { k == "cd.${it.key}" } }) partsPanel = true
     }
 
     /** Pre-fills every box with the plant's current values; unchanged or blank later means "no change". */
@@ -314,8 +370,9 @@ private fun validateParts(d: DescState): Map<String, String> {
 
 private fun validateNew(s: NewState, types: List<RecTypeName>): Map<String, String> {
     val e = linkedMapOf<String, String>()
-    if (s.common.isBlank()) e["common"] = "Enter the common name."
+    // Same order as the screen: scientific name, then common name, then plant type.
     if (s.sci.isBlank()) e["sci"] = "Enter the scientific name."
+    if (s.common.isBlank()) e["common"] = "Enter the common name."
     if (s.typeName == OTHER) {
         val o = norm(s.typeOther)
         if (o.isEmpty()) e["typeOther"] = "Type the plant type, or pick one from the list."
@@ -405,7 +462,13 @@ private fun readBase(s: ChangeState, d: RecEditable, types: List<RecTypeName>, e
     }
     if (changed == 0 && errors.isEmpty()) errors["c.base"] = "Edit at least one field, or untick \"Change the plant info\"."
     val reason = norm(s.baseReason)
-    if (reason.isEmpty()) errors["c.baseReason"] = "Say why the plant info needs changing."
+    if (reason.isEmpty()) {
+        // The reason box is the first thing in this section, so its message goes first (the form scrolls to the first one).
+        val rest = LinkedHashMap(errors)
+        errors.clear()
+        errors["c.baseReason"] = "Say why the plant info needs changing."
+        errors.putAll(rest)
+    }
     if (errors.isNotEmpty()) return null
     return buildJsonObject {
         simple.forEach { (k, v) -> put(k, v) }
@@ -417,6 +480,7 @@ private fun readBase(s: ChangeState, d: RecEditable, types: List<RecTypeName>, e
 
 /** The description half: only a description this botanist wrote. */
 private fun readDesc(s: ChangeState, d: RecEditable, errors: MutableMap<String, String>): JsonObject? {
+    val before = errors.keys.toSet()
     val description = d.descriptions.orEmpty().firstOrNull { it.descriptionId == s.descId }
     if (description == null) { errors["c.desc"] = "Choose which of your descriptions to change."; return null }
     val top = linkedMapOf<String, String>()
@@ -431,7 +495,13 @@ private fun readDesc(s: ChangeState, d: RecEditable, errors: MutableMap<String, 
     }
     if (changed == 0 && errors.isEmpty()) errors["c.desc"] = "Edit at least one field, or untick \"Change my description\"."
     val reason = norm(s.descReason)
-    if (reason.isEmpty()) errors["c.descReason"] = "Say why your description needs changing."
+    if (reason.isEmpty()) {
+        // Reason box first on screen: its message goes ahead of this half's other messages (but after the plant-info half's).
+        val mine = errors.filterKeys { it !in before }
+        mine.keys.forEach { errors.remove(it) }
+        errors["c.descReason"] = "Say why your description needs changing."
+        errors.putAll(mine)
+    }
     if (errors.isNotEmpty()) return null
     return buildJsonObject {
         put("descriptionId", description.descriptionId)
@@ -538,6 +608,78 @@ private fun ErrorText(text: String?, key: String? = null) {
     )
 }
 
+/** Heading for a block of the form: "Required" (cannot be left blank) or "Optional". */
+@Composable
+private fun FormGroupLabel(title: String, note: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            title.uppercase(),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+        )
+        Hint(note)
+    }
+}
+
+/**
+ * An optional part of the form that folds away. Closed it shows the [title] and a one-line [summary] of what is
+ * inside; tap it to open. The values live in the form state, so closing it loses nothing.
+ */
+@Composable
+private fun CollapsibleSection(
+    title: String,
+    summary: String?,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val c = MaterialTheme.colorScheme
+    val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "sectionArrow")
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, c.outlineVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable(onClickLabel = if (expanded) "Fold away $title" else "Open $title", onClick = onToggle)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleSmall, color = c.onSurface)
+                    if (!expanded && summary != null) {
+                        Text(summary, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                    }
+                }
+                Icon(
+                    Icons.Filled.ArrowDropDown,
+                    contentDescription = null,
+                    modifier = Modifier.graphicsLayer { rotationZ = rotation }
+                )
+            }
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    content = content
+                )
+            }
+        }
+    }
+}
+
+private const val PARTS_SUMMARY = "Height, width, color, shape, texture"
+
+/** "3 filled in" for a folded section that already holds something, else [empty]. */
+private fun filledSummary(values: Collection<String>, empty: String): String {
+    val n = values.count { it.isNotBlank() }
+    return if (n > 0) "$n filled in" else empty
+}
+
 /** Section header that says the description is required, and turns red when it is what's missing. */
 @Composable
 private fun DescriptionHeader(hasError: Boolean, text: String) {
@@ -560,7 +702,7 @@ private fun TypeEditor(
     val shown = when {
         typeName == OTHER -> "Others"
         typeName.isBlank() -> ""
-        else -> options.firstOrNull { it.first == typeName }?.second ?: typeName
+        else -> typeName
     }
     Dropdown("Plant type *", shown, options, errors[nameKey], nameKey) { onName(it); errors.remove(nameKey) }
     if (typeName == OTHER) Field("New plant type", other, otherKey, errors, onChange = onOther)
@@ -648,11 +790,14 @@ private fun RemoteImage(url: String, maxPx: Int, modifier: Modifier, scale: Cont
 private fun PreviewDialog(src: RecordPreview, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.extraColors.overlay.copy(alpha = 0.92f)) {
-            Box(Modifier.fillMaxSize().clickable(onClick = onClose)) {
+            Box(Modifier.fillMaxSize()) {
                 val fill = Modifier.fillMaxSize().padding(16.dp)
-                when (src) {
-                    is RecordPreview.Local -> LocalImage(src.uri, 2048, fill, ContentScale.Fit)
-                    is RecordPreview.Remote -> RemoteImage(src.url, 2048, fill, ContentScale.Fit)
+                // Pinch or double-tap to zoom; a tap on the un-zoomed photo closes it.
+                ZoomableBox(Modifier.fillMaxSize(), resetKey = src, onTap = onClose) {
+                    when (src) {
+                        is RecordPreview.Local -> LocalImage(src.uri, 2048, fill, ContentScale.Fit)
+                        is RecordPreview.Remote -> RemoteImage(src.url, 2048, fill, ContentScale.Fit)
+                    }
                 }
                 TextButton(onClose, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
                     Text("Close", color = MaterialTheme.extraColors.onOverlay)
@@ -663,7 +808,10 @@ private fun PreviewDialog(src: RecordPreview, onClose: () -> Unit) {
 }
 
 @Composable
-private fun PhotoSection(photos: SnapshotStateList<Uri>, max: Int, onPreview: (Uri) -> Unit, onProblem: (String) -> Unit) {
+private fun PhotoSection(
+    photos: SnapshotStateList<Uri>, max: Int, onPreview: (Uri) -> Unit, onProblem: (String) -> Unit,
+    showTitle: Boolean = true
+) {
     val cr = LocalContext.current.contentResolver
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         val problems = linkedSetOf<String>()
@@ -677,7 +825,7 @@ private fun PhotoSection(photos: SnapshotStateList<Uri>, max: Int, onPreview: (U
         }
         if (problems.isNotEmpty()) onProblem(problems.joinToString(" "))
     }
-    RecordSectionTitle("Photos")
+    if (showTitle) RecordSectionTitle("Photos")
     Hint("Up to $max photos (${photos.size} added). Tap a photo to preview it. They are reviewed before anything is published.")
     OutlinedButton({ launcher.launch("image/*") }, shape = MaterialTheme.shapes.small) { Text("Add photos") }
     if (photos.isNotEmpty()) {
@@ -710,29 +858,64 @@ private fun PlantPicker(
     }
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf("") }
-    LaunchedEffect(query, filter) { vm.search(query, filter.ifBlank { null }) }   // the VM debounces
+    var nameFilter by remember { mutableStateOf("") }   // "", "common" or "scientific"
+    var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(query, filter, nameFilter) { vm.search(query, filter.ifBlank { null }, nameFilter.ifBlank { null }) }   // the VM debounces
 
-    OutlinedTextField(
-        value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth().errorTarget(errorKey),
-        label = { Text("Find a plant") }, singleLine = true, isError = error != null,
-        supportingText = error?.let { { Text(it) } }, shape = MaterialTheme.shapes.small
-    )
+    // Filters first: type, then which name to match. The plant name box comes after them.
     Dropdown(
         "Type", filter.ifBlank { "All types" },
         listOf("" to "All types") + ui.types.map { it.typeName to it.typeName }
     ) { filter = it }
-    if (ui.results.isEmpty()) Hint("Nothing matched.")
-    ui.results.take(8).forEach { p ->
-        Column(Modifier.fillMaxWidth().clickable { onPick(p) }.padding(vertical = 8.dp)) {
-            Text(p.name, style = MaterialTheme.typography.titleSmall)
-            Text(
-                listOfNotNull(p.scientificName, p.typeLabel).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+    Dropdown(
+        "Search by", when (nameFilter) { "common" -> "Common name"; "scientific" -> "Scientific name"; else -> "Common or scientific name" },
+        listOf("" to "Common or scientific name", "common" to "Common name", "scientific" to "Scientific name")
+    ) { nameFilter = it }
+
+    // Suggestions are anchored to the name box and only exist while it has focus.
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    // Names only START WITH what was typed, so "j" lists names beginning with J (the server does the matching).
+    val shown = if (focused) ui.results.filter { p ->
+        val q = query.trim()
+        q.isEmpty() || when (nameFilter) {
+            "common" -> p.name.startsWith(q, ignoreCase = true)
+            "scientific" -> p.scientificName.orEmpty().startsWith(q, ignoreCase = true)
+            else -> p.name.startsWith(q, ignoreCase = true) || p.scientificName.orEmpty().startsWith(q, ignoreCase = true)
         }
-        HorizontalDivider()
+    } else emptyList()
+
+    Column(Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = query, onValueChange = { query = it },
+            modifier = Modifier.fillMaxWidth().errorTarget(errorKey).onFocusChanged { focused = it.isFocused },
+            label = { Text("Plant name") }, singleLine = true, isError = error != null,
+            supportingText = error?.let { { Text(it) } }, shape = MaterialTheme.shapes.small
+        )
+        if (focused) {
+            Surface(
+                Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small, tonalElevation = 3.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    if (shown.isEmpty()) Text(
+                        "Nothing matched.", Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    shown.take(8).forEach { p ->
+                        Column(Modifier.fillMaxWidth().clickable { focusManager.clearFocus(); onPick(p) }.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                            Text(p.name, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                listOfNotNull(p.scientificName, p.typeLabel).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        HorizontalDivider()
+                    }
+                    if (shown.size > 8) Hint("Showing the first 8. Keep typing to narrow it down.")
+                }
+            }
+        }
     }
-    if (ui.results.size > 8) Hint("Showing the first 8. Type to narrow it down.")
 }
 
 // ============================================================================
@@ -742,9 +925,11 @@ private fun PlantPicker(
 @Composable
 private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms) {
     val s = f.new
-    var taxOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Field("Common name *", s.common, "common", s.errors) { s.common = it }
+
+        // ------------------------------------------------------------ REQUIRED: cannot be left blank
+        FormGroupLabel("Required", "These must be filled in before you can submit.")
+
         Field("Scientific name *", s.sci, "sci", s.errors) { s.sci = it; if (ui.duplicate != null) vm.clearDuplicate() }
 
         ui.duplicate?.let { dup ->
@@ -773,9 +958,15 @@ private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordFo
             }
         }
 
-        RecordSectionTitle("Plant type")
-        TypeEditor(ui.types, s.typeName, s.typeOther, s.errors, "typeName", "typeOther",
-            onName = { s.typeName = it }, onOther = { s.typeOther = it })
+        // Common name and plant type share a line.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+            Box(Modifier.weight(1f)) { Field("Common name *", s.common, "common", s.errors) { s.common = it } }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                TypeEditor(ui.types, s.typeName, s.typeOther, s.errors, "typeName", "typeOther",
+                    onName = { s.typeName = it }, onOther = { s.typeOther = it })
+            }
+        }
+
         CheckRow("Medicinal plant", s.medicinal) { s.medicinal = it }
         CheckRow("Harmful plant", s.desc.isHarmful) {
             s.desc.isHarmful = it
@@ -783,22 +974,40 @@ private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordFo
         }
         if (s.desc.isHarmful) {
             ToxicityPicker(s.toxicity, s.errors["tox"], "tox") { s.toxicity = it; s.errors.remove("tox") }
-            RichField("Caution note", s.caution, "caution", s.errors, minLines = 2) { s.caution = it }
             RichField("Things to watch out for *", s.desc.harmful, "harmful", s.errors, minLines = 3) { s.desc.harmful = it }
+            RichField("Caution note (optional)", s.caution, "caution", s.errors, minLines = 2) { s.caution = it }
         }
-
-        TextButton({ taxOpen = !taxOpen }) { Text(if (taxOpen) "Hide taxonomy" else "Taxonomy (optional)") }
-        if (taxOpen) TAX.forEach { t -> Field(t.label, s.tax[t.key].orEmpty(), "tax.${t.key}", s.errors) { s.tax[t.key] = it } }
 
         DescriptionHeader(
             "uses" in s.errors,
-            "Required: fill in at least one of Uses, Benefits or Measurements. Names and photos alone are never published."
+            "Required: fill in at least one of Uses, Benefits or Measurements (Measurements are in the optional part below). " +
+                    "Names and photos alone are never published."
         )
         RichField("Uses", s.desc.uses, "uses", s.errors, minLines = 3) { s.desc.uses = it }
         RichField("Benefits", s.desc.benefits, "benefits", s.errors, minLines = 3) { s.desc.benefits = it }
-        RecordSectionTitle("Measurements")
-        PartsEditor(s.desc, s.errors)
-        PhotoSection(s.desc.photos, ui.maxPhotos, { f.preview = RecordPreview.Local(it) }) { f.problem = it }
+
+        // ------------------------------------------------------------ OPTIONAL: folded away until opened
+        HorizontalDivider()
+        FormGroupLabel("Optional", "Skip these, or tap one to open it and add more.")
+
+        CollapsibleSection(
+            "Measurements",
+            filledSummary(s.desc.parts.values, "$PARTS_SUMMARY. Counts as a description if Uses and Benefits are empty."),
+            s.partsPanel, { s.partsPanel = !s.partsPanel }
+        ) { PartsEditor(s.desc, s.errors) }
+
+        CollapsibleSection(
+            "Taxonomy",
+            filledSummary(s.tax.values, "Kingdom, phylum, class, order, family, genus, species"),
+            s.taxPanel, { s.taxPanel = !s.taxPanel }
+        ) { TAX.forEach { t -> Field(t.label, s.tax[t.key].orEmpty(), "tax.${t.key}", s.errors) { s.tax[t.key] = it } } }
+
+        CollapsibleSection(
+            "Photos",
+            if (s.desc.photos.isEmpty()) "Up to ${ui.maxPhotos} photos, reviewed before anything is published"
+            else "${s.desc.photos.size} added",
+            s.photosPanel, { s.photosPanel = !s.photosPanel }
+        ) { PhotoSection(s.desc.photos, ui.maxPhotos, { f.preview = RecordPreview.Local(it) }, { f.problem = it }, showTitle = false) }
 
         Button(
             onClick = {
@@ -806,6 +1015,7 @@ private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordFo
                 val errs = validateNew(s, ui.types)
                 if (errs.isNotEmpty()) {
                     s.errors.putAll(errs); f.problem = "Please fix the highlighted fields."
+                    s.reveal(errs.keys)   // a problem inside a folded section opens it
                     f.focus.request(errs.keys.first())
                 } else vm.submitNew(newFields(s, ui.types), s.desc.photos.toList())
             },
@@ -827,7 +1037,7 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
 
     // A newly chosen plant: start the taxonomy editor from its values, and drop caution text a safe type cannot have.
     LaunchedEffect(plant?.id) {
-        c.errors.clear(); c.taxOpen = false; c.taxReason = ""; c.taxEdit.clear()
+        c.errors.clear(); c.taxOpen = false; c.taxPanel = false; c.taxReason = ""; c.taxEdit.clear()
         if (plant != null) {
             TAX.forEach { t -> c.taxEdit[t.key] = plant.taxonomy?.get(t.level)?.takeIf { it != UNSPEC } ?: "" }
             if (plant.isSafeType == true) { c.desc.isHarmful = false; c.desc.harmful = "" }
@@ -835,55 +1045,19 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
     }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+        // ------------------------------------------------------------ REQUIRED: cannot be left blank
+        FormGroupLabel("Required", "Choose the plant, then add something about it.")
+
         PlantPicker(
             vm, ui, plant?.let { "Adding to: ${plantLabel(it.name, it.scientificName)}" }, c.errors["plant"], "plant",
             onPick = { p -> c.errors.remove("plant"); vm.selectContribPlant(p.id) },
             onClear = { vm.clearContribPlant() }
         )
 
-        if (plant != null) {
-            // Taxonomy belongs to the plant: read-only here, changed only by its own request.
-            RecordSectionTitle("Taxonomy")
-            TAX.forEach { t ->
-                Text("${t.label}: ${plant.taxonomy?.get(t.level).orEmpty().ifBlank { UNSPEC }}", style = MaterialTheme.typography.bodyMedium)
-            }
-            Hint("A contribution cannot change the taxonomy. Send a separate update request instead.")
-            if (plant.hasPendingTaxonomyRequest == true) {
-                Hint("A taxonomy update for this plant is already waiting for review.")
-            } else {
-                TextButton({ c.taxOpen = !c.taxOpen }) { Text(if (c.taxOpen) "Cancel taxonomy update" else "Request a taxonomy update") }
-            }
-            if (c.taxOpen) {
-                TAX.forEach { t ->
-                    Field(t.label, c.taxEdit[t.key].orEmpty(), "taxEdit.${t.key}", c.errors,
-                        placeholder = if (plant.taxonomy?.get(t.level) == UNSPEC) "Unspecified — add it" else null
-                    ) { c.taxEdit[t.key] = it; c.errors.remove("tax") }
-                }
-                Field("Reason (optional)", c.taxReason, "taxReason", c.errors, minLines = 2) { c.taxReason = it }
-                ErrorText(c.errors["tax"], "tax")
-                Button(
-                    onClick = {
-                        c.errors.clear(); f.problem = null; vm.clearMessages()
-                        val changed = linkedMapOf<String, String>()
-                        TAX.forEach { t ->
-                            val next = norm(c.taxEdit[t.key])
-                            val cur = plant.taxonomy?.get(t.level)?.takeIf { it != UNSPEC } ?: ""
-                            if (next.isNotEmpty() && next != cur) changed[t.key] = next
-                        }
-                        if (changed.isEmpty()) {
-                            c.errors["tax"] = "Change at least one level before sending an update."
-                            f.focus.request("tax")
-                        } else vm.submitTaxonomy(plant.id, changed, c.taxReason.trim())
-                    },
-                    enabled = !ui.busy, shape = MaterialTheme.shapes.small
-                ) { Text("Send taxonomy update") }
-            }
-            HorizontalDivider()
-        }
-
         DescriptionHeader(
             "uses" in c.errors,
-            "Required: add a description, some measurements, or at least one photo."
+            "Required: add a description, some measurements, or at least one photo (measurements and photos are in the optional part below)."
         )
         if (safe) {
             Hint("This plant's type is marked safe, so a caution on its own does not count.")
@@ -896,9 +1070,67 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
         }
         RichField("Uses", c.desc.uses, "uses", c.errors, minLines = 3) { c.desc.uses = it }
         RichField("Benefits", c.desc.benefits, "benefits", c.errors, minLines = 3) { c.desc.benefits = it }
-        RecordSectionTitle("Measurements")
-        PartsEditor(c.desc, c.errors)
-        PhotoSection(c.desc.photos, ui.maxPhotos, { f.preview = RecordPreview.Local(it) }) { f.problem = it }
+
+        // ------------------------------------------------------------ OPTIONAL: folded away until opened
+        HorizontalDivider()
+        FormGroupLabel("Optional", "Skip these, or tap one to open it and add more.")
+
+        CollapsibleSection(
+            "Measurements",
+            filledSummary(c.desc.parts.values, "$PARTS_SUMMARY. Counts as a description if Uses and Benefits are empty."),
+            c.partsPanel, { c.partsPanel = !c.partsPanel }
+        ) { PartsEditor(c.desc, c.errors) }
+
+        CollapsibleSection(
+            "Photos",
+            if (c.desc.photos.isEmpty()) "Up to ${ui.maxPhotos} photos. A photo alone counts as a contribution."
+            else "${c.desc.photos.size} added",
+            c.photosPanel, { c.photosPanel = !c.photosPanel }
+        ) { PhotoSection(c.desc.photos, ui.maxPhotos, { f.preview = RecordPreview.Local(it) }, { f.problem = it }, showTitle = false) }
+
+        if (plant != null) {
+            CollapsibleSection(
+                "Taxonomy",
+                "See where it sits, or ask for a correction",
+                c.taxPanel, { c.taxPanel = !c.taxPanel }
+            ) {
+                // Taxonomy belongs to the plant: read-only here, changed only by its own request.
+                TAX.forEach { t ->
+                    Text("${t.label}: ${plant.taxonomy?.get(t.level).orEmpty().ifBlank { UNSPEC }}", style = MaterialTheme.typography.bodyMedium)
+                }
+                Hint("A contribution cannot change the taxonomy. Send a separate update request instead.")
+                if (plant.hasPendingTaxonomyRequest == true) {
+                    Hint("A taxonomy update for this plant is already waiting for review.")
+                } else {
+                    TextButton({ c.taxOpen = !c.taxOpen }) { Text(if (c.taxOpen) "Cancel taxonomy update" else "Request a taxonomy update") }
+                }
+                if (c.taxOpen) {
+                    TAX.forEach { t ->
+                        Field(t.label, c.taxEdit[t.key].orEmpty(), "taxEdit.${t.key}", c.errors,
+                            placeholder = if (plant.taxonomy?.get(t.level) == UNSPEC) "Unspecified — add it" else null
+                        ) { c.taxEdit[t.key] = it; c.errors.remove("tax") }
+                    }
+                    Field("Reason (optional)", c.taxReason, "taxReason", c.errors, minLines = 2) { c.taxReason = it }
+                    ErrorText(c.errors["tax"], "tax")
+                    Button(
+                        onClick = {
+                            c.errors.clear(); f.problem = null; vm.clearMessages()
+                            val changed = linkedMapOf<String, String>()
+                            TAX.forEach { t ->
+                                val next = norm(c.taxEdit[t.key])
+                                val cur = plant.taxonomy?.get(t.level)?.takeIf { it != UNSPEC } ?: ""
+                                if (next.isNotEmpty() && next != cur) changed[t.key] = next
+                            }
+                            if (changed.isEmpty()) {
+                                c.errors["tax"] = "Change at least one level before sending an update."
+                                f.focus.request("tax")
+                            } else vm.submitTaxonomy(plant.id, changed, c.taxReason.trim())
+                        },
+                        enabled = !ui.busy, shape = MaterialTheme.shapes.small
+                    ) { Text("Send taxonomy update") }
+                }
+            }
+        }
 
         Button(
             onClick = {
@@ -906,6 +1138,7 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
                 val errs = validateContribution(plant, c.desc)
                 if (errs.isNotEmpty() || plant == null) {
                     c.errors.putAll(errs); f.problem = "Please fix the highlighted fields."
+                    c.reveal(errs.keys)   // a problem inside a folded section opens it
                     f.focus.request(errs.keys.firstOrNull() ?: "plant")
                 } else vm.submitContribution(plant.id, contributionFields(c.desc), c.desc.photos.toList())
             },
@@ -942,23 +1175,34 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
             else "Common name, scientific name, plant type and taxonomy. This is the plant's shared record."
         )
         if (s.baseOn) {
-            Field("Common name", s.base["commonName"].orEmpty(), "c.commonName", s.errors) { s.base["commonName"] = it; s.errors.remove("c.base") }
+            // Required first: the reason. Then the fields to edit, then the optional taxonomy.
+            Field("Why does the plant info need changing? *", s.baseReason, "c.baseReason", s.errors, minLines = 2) { s.baseReason = it }
             Field("Scientific name", s.base["scientificName"].orEmpty(), "c.scientificName", s.errors) { s.base["scientificName"] = it; s.errors.remove("c.base") }
-            RecordSectionTitle("This plant's type")
-            TypeEditor(ui.types, s.typeName, s.typeOther, s.errors, "c.typeName", "c.typeOther",
-                onName = { s.typeName = it; s.errors.remove("c.base") }, onOther = { s.typeOther = it })
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                Box(Modifier.weight(1f)) {
+                    Field("Common name", s.base["commonName"].orEmpty(), "c.commonName", s.errors) { s.base["commonName"] = it; s.errors.remove("c.base") }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TypeEditor(ui.types, s.typeName, s.typeOther, s.errors, "c.typeName", "c.typeOther",
+                        onName = { s.typeName = it; s.errors.remove("c.base") }, onOther = { s.typeOther = it })
+                }
+            }
             CheckRow("Medicinal plant", s.medicinal) { s.medicinal = it }
             CheckRow("Harmful plant", s.harmful) { s.harmful = it; if (!it) s.toxicity = "" }
             if (s.harmful) ToxicityPicker(s.toxicity, s.errors["c.tox"], "c.tox") { s.toxicity = it; s.errors.remove("c.tox") }
             RichField("Caution note", s.caution, "c.caution", s.errors, minLines = 2) { s.caution = it }
-            RecordSectionTitle("Taxonomy")
-            TAX.forEach { t ->
-                Field(t.label, s.tax[t.key].orEmpty(), "c.tax.${t.key}", s.errors,
-                    placeholder = if (d.taxonomy?.get(t.level) == UNSPEC) UNSPEC else null
-                ) { s.tax[t.key] = it; s.errors.remove("c.base") }
-            }
             ErrorText(s.errors["c.base"], "c.base")
-            Field("Why does the plant info need changing? *", s.baseReason, "c.baseReason", s.errors, minLines = 2) { s.baseReason = it }
+            CollapsibleSection(
+                "Taxonomy (optional)",
+                "Kingdom, phylum, class, order, family, genus, species",
+                s.taxPanel, { s.taxPanel = !s.taxPanel }
+            ) {
+                TAX.forEach { t ->
+                    Field(t.label, s.tax[t.key].orEmpty(), "c.tax.${t.key}", s.errors,
+                        placeholder = if (d.taxonomy?.get(t.level) == UNSPEC) UNSPEC else null
+                    ) { s.tax[t.key] = it; s.errors.remove("c.base") }
+                }
+            }
         }
 
         HorizontalDivider()
@@ -985,19 +1229,22 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
                     own.firstOrNull { it.descriptionId == id && it.hasPendingChange != true }?.let { s.loadDesc(d, it) }
                 }
             }
-            descFields(d).forEach { fld ->
-                if (fld.area) {
-                    RichField(fld.label, s.desc[fld.key].orEmpty(), "cd.${fld.key}", s.errors, minLines = 3) {
-                        s.desc[fld.key] = it; s.errors.remove("c.desc")
-                    }
-                } else {
+            // Required first: the reason. Then the text to edit, then the optional measurements.
+            Field("Why does your description need changing? *", s.descReason, "c.descReason", s.errors, minLines = 2) { s.descReason = it }
+            val fields = descFields(d)
+            fields.filter { !it.part }.forEach { fld ->
+                RichField(fld.label, s.desc[fld.key].orEmpty(), "cd.${fld.key}", s.errors, minLines = 3) {
+                    s.desc[fld.key] = it; s.errors.remove("c.desc")
+                }
+            }
+            ErrorText(s.errors["c.desc"], "c.desc")
+            CollapsibleSection("Measurements (optional)", PARTS_SUMMARY, s.partsPanel, { s.partsPanel = !s.partsPanel }) {
+                fields.filter { it.part }.forEach { fld ->
                     Field(fld.label, s.desc[fld.key].orEmpty(), "cd.${fld.key}", s.errors, numeric = fld.numeric) {
                         s.desc[fld.key] = it; s.errors.remove("c.desc")
                     }
                 }
             }
-            ErrorText(s.errors["c.desc"], "c.desc")
-            Field("Why does your description need changing? *", s.descReason, "c.descReason", s.errors, minLines = 2) { s.descReason = it }
         }
 
         Button(
@@ -1015,6 +1262,7 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
                 if (s.descOn) readDesc(s, d, errs)?.let { body["description"] = it }
                 if (errs.isNotEmpty()) {
                     s.errors.putAll(errs); f.problem = "Please fix the highlighted fields."
+                    s.reveal(errs.keys)   // a problem inside a folded section opens it
                     f.focus.request(errs.keys.first())
                 } else vm.submitChange(d.id, buildJsonObject { body.forEach { (k, v) -> put(k, v) } })
             },
@@ -1086,8 +1334,8 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
                     r.changeReason?.let { Hint("Reason: $it") }
 
                     Hint(
-                        "Submitted ${r.createdAt.orEmpty()}" +
-                                (r.reviewedAt?.let { " · reviewed $it" } ?: "") +
+                        "Submitted ${niceDateTime(r.createdAt)}" +
+                                (r.reviewedAt?.let { " · reviewed ${niceDateTime(it)}" } ?: "") +
                                 (r.reviewerLabel?.let { " by $it" } ?: "")
                     )
                     r.note?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }

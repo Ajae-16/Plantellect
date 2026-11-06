@@ -4,6 +4,7 @@
 const { mysqlPool } = require('./pool-mysql');
 const { parsePaging, escapeLike, PARTS_SELECT, partsFromRow, DISCOVERY_TYPE } = require('./shared-mysql');
 const { getContributorPeople } = require('./plant-mysql');
+const { contributorPhotoUrl } = require('./profile-mysql');
 const { publicUrls, visibleImageSql } = require('./public-images');
 
 /**
@@ -15,15 +16,25 @@ const PUBLIC_VISIBILITY = `(p.archivedAt IS NULL AND EXISTS (
     WHERE pd.plantId = p.plantId AND pd.status = 'approved' AND pd.isPrimary = TRUE
 ))`;
 
-async function listPublicPlants({ search, type, page, pageSize }) {
+async function listPublicPlants({ search, type, page, pageSize, searchIn }) {
     const paging = parsePaging({ page, pageSize });
     const where = [PUBLIC_VISIBILITY];
     const params = [];
 
     if (search) {
-        where.push("(p.commonName LIKE ? ESCAPE '\\\\' OR p.scientificName LIKE ? ESCAPE '\\\\')");
-        const like = `%${escapeLike(search)}%`;
-        params.push(like, like);
+        // Names START WITH what was typed ("j" lists only names beginning with J).
+        // searchIn: "common", "scientific", or anything else for both.
+        const like = `${escapeLike(String(search).trim())}%`;
+        if (searchIn === 'common') {
+            where.push("p.commonName LIKE ? ESCAPE '\\\\'");
+            params.push(like);
+        } else if (searchIn === 'scientific') {
+            where.push("p.scientificName LIKE ? ESCAPE '\\\\'");
+            params.push(like);
+        } else {
+            where.push("(p.commonName LIKE ? ESCAPE '\\\\' OR p.scientificName LIKE ? ESCAPE '\\\\')");
+            params.push(like, like);
+        }
     }
     if (type) {
         where.push('t.typeName = ?');
@@ -106,7 +117,7 @@ async function getPublicPlantDetail(plantId) {
     const [descriptions] = await mysqlPool.query(
         `SELECT d.descriptionId, d.uses, d.benefits, d.harmful, d.isPrimary, d.createdAt,
                 a.accountId AS authorId, a.username AS authorName,
-                pr.firstName, pr.lastName, pr.specialization,
+                pr.firstName, pr.lastName, pr.specialization, pr.imagePath, pr.updatedAt AS profileUpdatedAt,
                 ${PARTS_SELECT}
          FROM plant_description d
          JOIN accounts a ON d.accountId = a.accountId
@@ -147,7 +158,8 @@ async function getPublicPlantDetail(plantId) {
             author: {
                 accountId: d.authorId,
                 name: [d.firstName, d.lastName].filter(Boolean).join(' ') || d.authorName,
-                specialization: d.specialization
+                specialization: d.specialization,
+                photoUrl: contributorPhotoUrl(d.authorId, d.imagePath, d.profileUpdatedAt)
             },
             parts: partsFromRow(d),
             createdAt: d.createdAt

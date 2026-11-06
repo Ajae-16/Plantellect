@@ -188,7 +188,10 @@ private fun DiscoveryCardView(
                 }
 
                 // Beside Claim: a vote is an endorsement, so it does not need the claim.
-                if (hasVoted) {
+                // The reporter cannot vote on their own report (the server refuses it too).
+                if (isReporter) {
+                    Text("You reported this, so you can't vote on it.", style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                } else if (hasVoted) {
                     // Voted: shown differently, and tapping it takes the vote back (which enables Claim).
                     FilledTonalButton(
                         onClick = { onUnvote(id) },

@@ -35,7 +35,8 @@ interface RecordApi {
     suspend fun plantsSearch(
         @Query("search") search: String?,
         @Query("type") type: String?,
-        @Query("pageSize") pageSize: Int
+        @Query("pageSize") pageSize: Int,
+        @Query("searchIn") searchIn: String? = null
     ): Response<RecPlantPage>
 
     /** Finds unpublished plants too. Pass exactly one of the two. */

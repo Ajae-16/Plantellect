@@ -1,10 +1,14 @@
 package com.plantellect.mobileplantellect.ui.screen
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -14,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
@@ -71,6 +76,7 @@ private fun formatWhen(value: String?): String {
  * @param baseUrl       server origin, used to open relative plant links.
  * @param onOpenPlant   opens a plant inside the app (the plant profile).
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun ProfileScreen(
     account: AccountDto?,
@@ -93,6 +99,39 @@ fun ProfileScreen(
     var showChangePassword by remember { mutableStateOf(false) }
     var passwordNotice by remember { mutableStateOf<String?>(null) }
     var tab by rememberSaveable(target) { mutableIntStateOf(0) }
+
+    // Picks a photo from the phone and sends it as the new profile picture (the repository shrinks big files).
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) vm.uploadPhoto(uri)
+    }
+    fun pickPhoto() { vm.clearEditMessages(); photoPicker.launch("image/*") }
+
+    // "Use camera": take a picture with the phone's camera and send it as the new profile picture.
+    val context = LocalContext.current
+    var cameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val uri = cameraUri
+        if (saved && uri != null) vm.uploadPhoto(uri)
+        cameraUri = null
+    }
+    fun launchCamera() {
+        val dir = java.io.File(context.cacheDir, "camera").apply { mkdirs() }
+        val file = java.io.File.createTempFile("profile_", ".jpg", dir)
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        cameraUri = uri
+        takePicture.launch(uri)
+    }
+    // The app declares the camera permission, so Android needs it granted before the camera can open.
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) launchCamera()
+    }
+    fun useCamera() {
+        vm.clearEditMessages()
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.CAMERA
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) launchCamera() else cameraPermission.launch(android.Manifest.permission.CAMERA)
+    }
 
     fun open(url: String) {
         val full = if (url.startsWith("http")) url else baseUrl.trimEnd('/') + "/" + url.trimStart('/')
@@ -144,7 +183,9 @@ fun ProfileScreen(
                         ProfilePicture(
                             url = vm.photoUrl(account.photoUrl),
                             name = account.username,
-                            initials = account.username.take(2).uppercase()
+                            initials = account.username.take(2).uppercase(),
+                            busy = edit.uploadingPhoto,
+                            onClick = { if (!edit.uploadingPhoto) pickPhoto() }
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(account.username.ifBlank { "-" }, style = MaterialTheme.typography.titleLarge, color = c.onSurface)
@@ -157,6 +198,27 @@ fun ProfileScreen(
                     }
                     account.bio?.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodyMedium, color = c.onSurface)
+                    }
+
+                    // ---- profile picture ----
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedButton(onClick = { pickPhoto() }, enabled = !edit.uploadingPhoto) {
+                            Text(if (account.photoUrl == null) "Add profile photo" else "Change photo")
+                        }
+                        OutlinedButton(onClick = { useCamera() }, enabled = !edit.uploadingPhoto) {
+                            Text("Use camera")
+                        }
+                        if (account.photoUrl != null) {
+                            TextButton(onClick = { vm.removePhoto() }, enabled = !edit.uploadingPhoto) { Text("Remove") }
+                        }
+                    }
+                    if (edit.uploadingPhoto) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    edit.photoMessage?.let {
+                        Text(
+                            it.text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (it.isError) c.error else c.primary
+                        )
                     }
                 }
             }
@@ -273,14 +335,40 @@ fun ProfileScreen(
     }
 }
 
-/** Profile picture in the app's leaf shape; initials when there is no photo. */
+/**
+ * Profile picture in the app's leaf shape; initials when there is no photo. With [onClick] it is tappable
+ * (your own picture: tap to change it) and wears a small camera badge; [busy] covers it with a spinner
+ * while a new photo is being sent.
+ */
 @Composable
-private fun ProfilePicture(url: String?, name: String, initials: String) {
+private fun ProfilePicture(
+    url: String?, name: String, initials: String,
+    busy: Boolean = false, onClick: (() -> Unit)? = null
+) {
     val c = MaterialTheme.colorScheme
-    Surface(shape = LeafMedium, color = c.primaryContainer, modifier = Modifier.size(72.dp)) {
+    val picture: @Composable () -> Unit = {
         Box(contentAlignment = Alignment.Center) {
             if (url != null) PlantPhoto(url, name, Modifier.fillMaxSize(), maxPx = 256, placeholder = false)
             else Text(initials, style = MaterialTheme.typography.titleLarge, color = c.onPrimaryContainer)
+            if (busy) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
+        }
+    }
+    Box(Modifier.size(72.dp)) {
+        if (onClick != null) {
+            Surface(
+                onClick = onClick, shape = LeafMedium, color = c.primaryContainer,
+                modifier = Modifier.fillMaxSize()
+            ) { picture() }
+            Surface(
+                shape = CircleShape, color = c.primary, shadowElevation = 2.dp,
+                modifier = Modifier.align(Alignment.BottomEnd).size(24.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.PhotoCamera, contentDescription = "Change profile photo", tint = c.onPrimary, modifier = Modifier.size(14.dp))
+                }
+            }
+        } else {
+            Surface(shape = LeafMedium, color = c.primaryContainer, modifier = Modifier.fillMaxSize()) { picture() }
         }
     }
 }

@@ -49,6 +49,18 @@ function photoUrl(imagePath, updatedAt) {
     return `/api/profile/photo?v=${Number.isFinite(stamp) ? stamp : 0}`;
 }
 
+/**
+ * The address of ANOTHER person's profile photo, as shown beside their name on a plant page.
+ * Same file and same '?v=<time>' cache-buster as photoUrl() above, but served by
+ * GET /api/contributors/:accountId/photo, which applies the public profile's visibility rule
+ * (so an administrator's photo is only served to administrators).
+ */
+function contributorPhotoUrl(accountId, imagePath, updatedAt) {
+    if (!accountId || !imagePath) return null;
+    const stamp = updatedAt ? new Date(updatedAt).getTime() : 0;
+    return `/api/contributors/${encodeURIComponent(accountId)}/photo?v=${Number.isFinite(stamp) ? stamp : 0}`;
+}
+
 function shapeProfile(row) {
     return {
         accountId: row.accountId,
@@ -173,6 +185,7 @@ module.exports = {
     imageRoot,
     resolveStoredPath,
     photoUrl,
+    contributorPhotoUrl,
     getOwnProfile,
     getPhotoPath,
     updateBio,

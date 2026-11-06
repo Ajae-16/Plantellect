@@ -263,7 +263,9 @@ private fun AppShell(
                 )
             }
         ) { innerPadding ->
-            NavHost(navController, startDestination = "home", modifier = Modifier.padding(innerPadding)) {
+            // imePadding lifts every screen above the keyboard, so the field being typed in scrolls into view
+            // instead of sitting behind the keyboard (edge-to-edge mode ignores adjustResize).
+            NavHost(navController, startDestination = "home", modifier = Modifier.padding(innerPadding).imePadding()) {
                 composable("home") {
                     HomeScreen(
                         onNavigateToScan = { go("scan") },

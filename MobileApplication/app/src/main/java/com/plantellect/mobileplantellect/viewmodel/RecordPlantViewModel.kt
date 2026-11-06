@@ -122,11 +122,11 @@ class RecordPlantViewModel(private val repo: RecordRepository) : ViewModel() {
 
     // ---- pickers ---------------------------------------------------------------
 
-    fun search(query: String, typeName: String?) {
+    fun search(query: String, typeName: String?, searchIn: String? = null) {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
-            (repo.searchPlants(query, typeName) as? ApiResult.Success)?.let { r -> _ui.update { it.copy(results = r.value) } }
+            (repo.searchPlants(query, typeName, searchIn) as? ApiResult.Success)?.let { r -> _ui.update { it.copy(results = r.value) } }
         }
     }
 

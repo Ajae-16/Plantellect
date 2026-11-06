@@ -90,21 +90,7 @@ fun PlantProfileDialog(
         }
     }
 
-    viewing?.let { url ->
-        Dialog(onDismissRequest = { viewing = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Surface(Modifier.fillMaxSize(), color = MaterialTheme.extraColors.overlay.copy(alpha = 0.92f)) {
-                Box(Modifier.fillMaxSize().clickable { viewing = null }) {
-                    PlantPhoto(
-                        url, fallbackName, Modifier.fillMaxSize().padding(16.dp),
-                        maxPx = 2048, scale = ContentScale.Fit, placeholder = false
-                    )
-                    TextButton({ viewing = null }, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
-                        Text("Close", color = MaterialTheme.extraColors.onOverlay)
-                    }
-                }
-            }
-        }
-    }
+    viewing?.let { url -> PhotoZoomDialog(url, fallbackName) { viewing = null } }
 }
 
 private fun Modifier.heroModifier(): Modifier =
@@ -327,7 +313,15 @@ private fun PeopleRow(label: String, people: List<ProfilePerson>, onOpen: (Strin
                 "superadmin" -> " (Superadministrator)"
                 else -> ""
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 4.dp)) {
+                // Profile picture (or the person's initial) beside every name that links to a profile.
+                if (person.accountId != null) {
+                    Avatar(
+                        person.name, person.photoUrl, 24.dp, c.primary, c.onSurface,
+                        onClick = { onOpen(person.accountId) }
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
                 PersonLink(person.name, person.accountId, c.primary, style, onOpen)
                 Text(role + if (i < people.lastIndex) ", " else "", style = style, color = c.onSurfaceVariant)
             }

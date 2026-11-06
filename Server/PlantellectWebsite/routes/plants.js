@@ -161,7 +161,8 @@ function redactAdminAccounts(plant, viewerSeesAdmins) {
     const out = { ...plant };
     const strip = (p) => {
         if (!isAdminAccount(p)) return p;
-        const { accountId, ...rest } = p;
+        // The photo address names the account too, so it goes with the id.
+        const { accountId, photoUrl, ...rest } = p;
         return rest;
     };
     for (const key of PEOPLE_FIELDS) {
@@ -255,6 +256,7 @@ router.get('/', async (req, res) => {
     try {
         const result = await listPublicPlants({
             search: req.query.search,
+            searchIn: req.query.searchIn,
             type: req.query.type,
             page: req.query.page,
             pageSize: req.query.pageSize,

@@ -8,7 +8,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -251,7 +253,7 @@ private val LibraryCardHeight = 236.dp
  * The "Added ..." date comes from [addedAt] when the caller has it, otherwise from the
  * plant's profile (dateUploaded), read through [rememberCardInfo].
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun LibraryPlantCard(
     id: String,
@@ -266,9 +268,11 @@ fun LibraryPlantCard(
     val c = MaterialTheme.colorScheme
     val info = rememberCardInfo(id, vm, null, listToxicity)
     val added = formatAdded(addedAt ?: info.addedIso)
+    // Long-press: the photo, big and zoomable. A tap still opens the plant.
+    val zoomPhoto = rememberCardPhotoZoom(id, photoUrl, name, vm)
 
     Card(
-        modifier.fillMaxWidth().height(LibraryCardHeight).clickable(onClick = onClick),
+        modifier.fillMaxWidth().height(LibraryCardHeight).combinedClickable(onClick = onClick, onLongClick = zoomPhoto),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = c.surface),
         border = BorderStroke(1.dp, MaterialTheme.extraColors.forest.copy(alpha = 0.12f)),

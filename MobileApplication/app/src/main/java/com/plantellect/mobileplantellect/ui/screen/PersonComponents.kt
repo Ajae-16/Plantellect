@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * A person's name. With an [accountId] it is underlined and tappable (opens their profile).
@@ -63,7 +64,9 @@ fun Avatar(
         if (photoUrl != null) PlantPhoto(photoUrl, name ?: "Profile photo", Modifier.fillMaxSize(), maxPx = 128, placeholder = false)
         else Text(
             name?.trim()?.firstOrNull()?.uppercase() ?: "?",
-            style = MaterialTheme.typography.labelLarge, color = fg
+            style = MaterialTheme.typography.labelLarge, color = fg,
+            // The initial shrinks with the circle (a 24 dp avatar beside a name is much smaller than a 32 dp one).
+            fontSize = if (size < 30.dp) (size.value * 0.5f).sp else MaterialTheme.typography.labelLarge.fontSize
         )
     }
 }

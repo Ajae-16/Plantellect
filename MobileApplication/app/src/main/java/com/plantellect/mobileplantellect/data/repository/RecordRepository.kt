@@ -100,8 +100,9 @@ class RecordRepository(
         is ApiResult.Failure -> ApiResult.Failure(r.error)
     }
 
-    suspend fun searchPlants(query: String?, typeName: String?): ApiResult<List<RecPlantItem>> =
-        when (val r = caller.call { api.plantsSearch(query?.trim()?.ifBlank { null }, typeName?.ifBlank { null }, 50) }) {
+    /** [searchIn] is "common", "scientific" or null (both). Names must START WITH [query]. */
+    suspend fun searchPlants(query: String?, typeName: String?, searchIn: String? = null): ApiResult<List<RecPlantItem>> =
+        when (val r = caller.call { api.plantsSearch(query?.trim()?.ifBlank { null }, typeName?.ifBlank { null }, 50, searchIn) }) {
             is ApiResult.Success -> ApiResult.Success(r.value.plants.orEmpty())
             is ApiResult.Failure -> ApiResult.Failure(r.error)
         }

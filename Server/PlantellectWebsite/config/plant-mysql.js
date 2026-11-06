@@ -3,6 +3,7 @@
 
 const { mysqlPool } = require('./pool-mysql');
 const { parsePaging, escapeLike, TAXONOMY_GAP_LEVELS, UNSPECIFIED_TAXONOMY, PARTS_SELECT, partsFromRow } = require('./shared-mysql');
+const { contributorPhotoUrl } = require('./profile-mysql');
 
 // ---------------------------------------------------------------------------
 // Admin: plants
@@ -187,12 +188,13 @@ async function getContributorPeople(plantId) {
         `SELECT pc.role AS contributorRole,
                 a.accountId,
                 COALESCE(NULLIF(TRIM(CONCAT_WS(' ', p.firstName, p.lastName)), ''), a.username) AS displayName,
+                p.imagePath, p.updatedAt AS profileUpdatedAt,
                 MIN(pc.createdAt) AS firstAt
          FROM plant_contributors pc
          JOIN accounts a ON pc.accountId = a.accountId
          LEFT JOIN profiles p ON p.accountId = a.accountId
          WHERE pc.plantId = ?
-         GROUP BY pc.role, a.accountId, a.username, p.firstName, p.lastName
+         GROUP BY pc.role, a.accountId, a.username, p.firstName, p.lastName, p.imagePath, p.updatedAt
          ORDER BY firstAt ASC`,
         [plantId]
     );
@@ -205,7 +207,9 @@ async function getContributorPeople(plantId) {
         }
         const person = {
             name: row.displayName,
-            accountId: String(row.accountId)
+            accountId: String(row.accountId),
+            // Shown beside the name; null when the person has no photo.
+            photoUrl: contributorPhotoUrl(String(row.accountId), row.imagePath, row.profileUpdatedAt)
         };
         if (row.contributorRole === 'contributor') people.recordedBy.push(person);
         if (row.contributorRole === 'reviewer') people.reviewedBy.push(person);
