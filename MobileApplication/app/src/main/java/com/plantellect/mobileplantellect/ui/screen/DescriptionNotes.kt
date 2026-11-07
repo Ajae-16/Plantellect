@@ -1,10 +1,5 @@
 package com.plantellect.mobileplantellect.ui.screen
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -186,12 +181,11 @@ fun DescriptionVoteBar(
             )
         }
 
-        AnimatedVisibility(
-            visible = choice != null && !st.own,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            val pending = choice ?: return@AnimatedVisibility
+        // Plain conditionals, no AnimatedVisibility: animated size inside the contributor boxes (which are measured
+        // by intrinsic size) was never re-measured, so the panel and its Submit button stayed hidden until some
+        // other change (like View votes) forced a new layout.
+        val pending = choice
+        if (pending != null && !st.own) {
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = c.surface, contentColor = c.onSurface,
@@ -228,7 +222,7 @@ fun DescriptionVoteBar(
                                     )
                                 }
                             }
-                            AnimatedVisibility(visible = reason == "other") {
+                            if (reason == "other") {
                                 LimitedOutlinedTextField(
                                     value = note,
                                     onValueChange = { note = it },
@@ -263,11 +257,7 @@ fun DescriptionVoteBar(
             }
         }
 
-        AnimatedVisibility(
-            visible = tableOpen,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) { VotesTable(st) }
+        if (tableOpen) VotesTable(st)
     }
 }
 

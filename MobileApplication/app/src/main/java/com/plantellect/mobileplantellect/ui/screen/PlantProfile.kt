@@ -19,6 +19,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.LocalFlorist
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
@@ -27,6 +31,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlin.math.abs
@@ -89,23 +95,48 @@ fun PlantProfileDialog(
             Box(Modifier.fillMaxSize().plantBackdrop()) {
                 val body: @Composable () -> Unit = {
                     Column(Modifier.fillMaxSize()) {
-                        // Wraps onto a second line when the phone's font size leaves no room for all the controls.
-                        FlowRow(
-                            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            itemVerticalAlignment = Alignment.CenterVertically
+                        // One row: Menu and Back on the left, Contribute at the right end. It is outside the scrolling
+                        // page, so it stays in view however far you scroll.
+                        Row(
+                            Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (nav != null) IconButton({ drawerScope.launch { drawerState.open() } }) {
-                                    Icon(Icons.Filled.Menu, contentDescription = "Menu")
-                                }
-                                PlantTextButton(onClose) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                            if (nav != null) IconButton({ drawerScope.launch { drawerState.open() } }) {
+                                Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                            }
+                            AppBackButton(onClose, Modifier.padding(start = 4.dp))
+                            Spacer(Modifier.weight(1f))
+                            if (zoom.scale > 1.01f) PlantTextButton({ zoom.reset() }) { Text("Reset zoom") }
+                            // Only people who may record plants see it; it opens Record Plant on this plant.
+                            val ready = state as? ProfileLoad.Ready
+                            if (ready != null && nav != null && "record_plant" in nav.permissions) {
+                                PlantButton(
+                                    { onClose(); nav.contribute(plantId, ready.data.name) },
+                                    modifier = Modifier.heightIn(max = 40.dp),
+                                    contentPadding = PaddingValues(start = 12.dp, end = 16.dp)
+                                ) {
+                                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("Back")
+                                    Text("Contribute", maxLines = 1)
                                 }
                             }
-                            if (zoom.scale > 1.01f) PlantTextButton({ zoom.reset() }) { Text("Reset zoom") }
+                        }
+
+                        // Where this page lives: the plant profile is part of the Plant Library (also lit up in the sidebar).
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Filled.LocalFlorist, contentDescription = null, tint = c.primary, modifier = Modifier.size(18.dp))
+                            Text("Plant Library", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = c.primary, maxLines = 1)
+                            Text("›", style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
+                            Text(
+                                (state as? ProfileLoad.Ready)?.data?.name ?: fallbackName,
+                                Modifier.weight(1f, fill = false),
+                                style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
                         }
 
                         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().fingerZoom(zoom)) {
@@ -135,10 +166,6 @@ fun PlantProfileDialog(
                                     }
                                     is ProfileLoad.Ready -> ProfileBody(
                                         p = s.data, fallbackHero = heroUrl, votes = votes,
-                                        // Only people who may record plants see Contribute; it opens Record Plant on this plant.
-                                        onContribute = if (nav != null && "record_plant" in nav.permissions) {
-                                            { onClose(); nav.contribute(plantId, s.data.name) }
-                                        } else null,
                                         // A description just got hidden by down votes: draw the page again.
                                         onHidden = { attempt++ },
                                         onView = { viewing = it },
@@ -156,7 +183,7 @@ fun PlantProfileDialog(
                         drawerContent = {
                             PlantellectDrawerSheet(
                                 permissions = nav.permissions,
-                                currentRoute = null,
+                                currentRoute = "inventory",   // the plant profile belongs to the Plant Library
                                 // Pick a page: close the sidebar and this profile, then go there.
                                 onGo = { route -> drawerScope.launch { drawerState.close() }; onClose(); nav.go(route) },
                                 onSignOut = { drawerScope.launch { drawerState.close() }; onClose(); nav.signOut() }
@@ -325,7 +352,6 @@ private fun ProfileBody(
     p: PlantProfileData,
     fallbackHero: String?,
     votes: VotesController,
-    onContribute: (() -> Unit)?,
     onHidden: () -> Unit,
     onView: (String) -> Unit,
     onOpenBotanist: (String) -> Unit
@@ -336,6 +362,8 @@ private fun ProfileBody(
     val primary = p.descriptions.firstOrNull { it.isPrimary } ?: p.descriptions.firstOrNull()
     val others = p.descriptions.filter { it !== primary }
     val tox = p.toxicityLevel?.takeIf { it.isNotBlank() && it != "none" }
+    // How the other contributors' boxes are ordered: "recent" (newest first) or "upvoted" (most up votes first).
+    var sort by remember { mutableStateOf("recent") }
 
     // Photos: the large photo swipes (and moves by itself) through all of them; the strip below jumps to one.
     // Tap the large photo to view it full size.
@@ -375,15 +403,12 @@ private fun ProfileBody(
             }
         }
 
-        if (onContribute != null) {
-            PlantButton(onClick = onContribute) { Text("Contribute") }
-        }
-
-        if (primary != null && p.descriptions.size > 1 && primary.author != null) {
+        if (primary != null && primary.author != null) {
             ContributorByline(primary, onOpenBotanist, onView)
         }
 
-        // The primary description's thumbs, right under the byline (same place as the web).
+        // Thumbs sit ABOVE the description text, for the primary one (here, under the byline) and for every
+        // contributor box below (under the author's name), so they are always in the same place.
         DescriptionVoteBar(votes, primary?.descriptionId, onHidden)
 
         Section("What it looks like", primary?.looks, "No description recorded yet.")
@@ -408,13 +433,41 @@ private fun ProfileBody(
         }
 
         // One colored box per other contributor; the color follows their place in the list (the primary has color 0).
-        val boxes = others.withIndex().filter { (_, d) ->
+        val shown = others.withIndex().filter { (_, d) ->
             d.looks.isNotBlank() || d.uses.isNotBlank() || d.benefits.isNotBlank() || d.harmful.isNotBlank()
+        }
+        // The color stays with the contributor (their original place in the list), whatever the order.
+        val ups = votes.summary?.byId
+        val boxes = when (sort) {
+            "upvoted" -> shown.sortedWith(
+                compareByDescending<IndexedValue<ProfileDescription>> { ups?.get(it.value.descriptionId ?: "")?.up ?: 0 }
+                    .thenByDescending { it.value.createdAt.orEmpty() }
+            )
+            else -> shown.sortedByDescending { it.value.createdAt.orEmpty() }
         }
         if (boxes.isNotEmpty()) {
             HorizontalDivider()
             Text("More details from other contributors", style = MaterialTheme.typography.titleMedium, color = c.onSurface)
-            boxes.forEach { (i, d) ->
+            if (boxes.size > 1) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilterChip(selected = sort == "recent", onClick = { sort = "recent" }, label = { Text("Most recent") })
+                    FilterChip(selected = sort == "upvoted", onClick = { sort = "upvoted" }, label = { Text("Most upvoted") })
+                }
+            }
+            // The boxes live in their own scrolling container, so a plant with many contributions does not
+            // make the whole page endless: scroll inside it to read them all.
+            val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = c.surfaceVariant.copy(alpha = 0.25f),
+                border = BorderStroke(1.dp, c.outlineVariant),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+              Column(
+                Modifier.fillMaxWidth().heightIn(max = maxHeight).verticalScroll(rememberScrollState()).padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+              ) {
+              boxes.forEach { (i, d) ->
                 ContributorBox(MaterialTheme.extraColors.contributor(i + 1)) { colors ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Avatar(
@@ -430,22 +483,29 @@ private fun ProfileBody(
                     d.specialization?.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = colors.fg.copy(alpha = 0.8f))
                     }
-                    if (d.looks.isNotBlank()) BoxSection("What it looks like", d.looks, colors)
-                    if (d.uses.isNotBlank()) BoxSection("Common uses", d.uses, colors)
-                    if (d.benefits.isNotBlank()) BoxSection("Health benefits", d.benefits, colors)
-                    if (d.harmful.isNotBlank()) BoxSection("Things to watch out for", d.harmful, colors)
                     if (d.descriptionId != null) {
-                        HorizontalDivider(color = colors.accent.copy(alpha = 0.4f))
                         CompositionLocalProvider(LocalContentColor provides colors.fg) {
                             DescriptionVoteBar(votes, d.descriptionId, onHidden)
                         }
                     }
+                    if (d.looks.isNotBlank()) BoxSection("What it looks like", d.looks, colors)
+                    if (d.uses.isNotBlank()) BoxSection("Common uses", d.uses, colors)
+                    if (d.benefits.isNotBlank()) BoxSection("Health benefits", d.benefits, colors)
+                    if (d.harmful.isNotBlank()) BoxSection("Things to watch out for", d.harmful, colors)
                 }
+              }
+              }
+            }
+            if (boxes.size > 1) {
+                Text(
+                    "${boxes.size} contributions. Scroll inside the box to see them all.",
+                    style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant
+                )
             }
         }
 
         HorizontalDivider()
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             PeopleRow("Recorded by", p.recordedBy, onOpenBotanist, onView)
             PeopleRow("Reviewed by", p.reviewedBy, onOpenBotanist, onView)
             PeopleRow("Reported by", p.reportedBy, onOpenBotanist, onView)
@@ -463,7 +523,7 @@ private fun Section(title: String, body: String?, empty: String = "No informatio
     }
 }
 
-/** "Notable description by NAME" with the author's picture, in the first contributor color. NAME is a tappable link. */
+/** "Primary description by NAME" (the plant's first description) with the author's picture, in the first contributor color. NAME is a tappable link. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ContributorByline(d: ProfileDescription, onOpen: (String) -> Unit, onView: (String) -> Unit) {
@@ -491,7 +551,7 @@ private fun ContributorByline(d: ProfileDescription, onOpen: (String) -> Unit, o
                 verticalArrangement = Arrangement.spacedBy(0.dp),
                 itemVerticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Notable description by", style = MaterialTheme.typography.labelLarge, color = colors.fg)
+                Text("Primary description by", style = MaterialTheme.typography.labelLarge, color = colors.fg)
                 PersonLink(d.author.orEmpty(), d.authorId, colors.fg, MaterialTheme.typography.labelLarge, onOpen)
             }
         }
@@ -508,10 +568,15 @@ private fun ContributorBox(colors: ContributorPalette, content: @Composable Colu
         border = BorderStroke(1.dp, colors.accent),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(Modifier.height(IntrinsicSize.Min)) {
-            Box(Modifier.width(6.dp).fillMaxHeight().background(colors.accent))
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { this.content(colors) }
-        }
+        // The accent edge is drawn behind the content instead of using IntrinsicSize.Min, so the box is measured once
+        // and anything inside it that changes size (the vote panel) lays out correctly.
+        val edge = colors.accent
+        Column(
+            Modifier.fillMaxWidth()
+                .drawBehind { drawRect(edge, size = Size(6.dp.toPx(), size.height)) }
+                .padding(start = 20.dp, top = 14.dp, end = 14.dp, bottom = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) { this.content(colors) }
     }
 }
 
@@ -527,34 +592,39 @@ private fun BoxSection(title: String, body: String, colors: ContributorPalette) 
 }
 
 /**
- * Names with the role the SERVER gave them (never guessed from the name). Each name with an accountId is an
- * underlined link to that person's profile. Nobody named: row hidden.
+ * Names with the role the SERVER gave them (never guessed from the name). The label is a small heading and every
+ * person gets their own line with the same layout: picture (or the person's initial), then the name, then the role.
+ * A name with an accountId is an underlined link to that person's profile; one without is plain text, but still has
+ * its picture or initial so the lines line up. Nobody named: row hidden.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PeopleRow(label: String, people: List<ProfilePerson>, onOpen: (String) -> Unit, onView: (String) -> Unit) {
     if (people.isEmpty()) return
     val c = MaterialTheme.colorScheme
-    val style = MaterialTheme.typography.bodySmall
-    FlowRow(verticalArrangement = Arrangement.spacedBy(2.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-        Text("$label: ", style = style, color = c.onSurfaceVariant)
-        people.forEachIndexed { i, person ->
+    val style = MaterialTheme.typography.bodyMedium
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
+        people.forEach { person ->
             val role = when (person.role) {
-                "admin" -> " (Administrator)"
-                "superadmin" -> " (Superadministrator)"
-                else -> ""
+                "admin" -> "Administrator"
+                "superadmin" -> "Superadministrator"
+                else -> null
             }
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 4.dp)) {
-                // Profile picture (or the person's initial) beside every name that links to a profile.
-                if (person.accountId != null) {
-                    Avatar(
-                        person.name, person.photoUrl, 24.dp, c.primary, c.onSurface,
-                        onClick = person.photoUrl?.let { u -> { onView(u) } } ?: { onOpen(person.accountId) }
-                    )
-                    Spacer(Modifier.width(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Avatar(
+                    person.name, person.photoUrl, 28.dp, c.primary, c.onSurface,
+                    // Tap the picture to see it large; with no picture it opens the profile like the name does.
+                    onClick = person.photoUrl?.let { u -> { onView(u) } } ?: person.accountId?.let { id -> { onOpen(id) } }
+                )
+                FlowRow(
+                    Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically
+                ) {
+                    PersonLink(person.name, person.accountId, c.primary, style, onOpen)
+                    if (role != null) Text("($role)", style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
                 }
-                PersonLink(person.name, person.accountId, c.primary, style, onOpen)
-                Text(role + if (i < people.lastIndex) ", " else "", style = style, color = c.onSurfaceVariant)
             }
         }
     }

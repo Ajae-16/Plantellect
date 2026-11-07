@@ -342,11 +342,12 @@ private fun AppShell(
                     ) { entry ->
                         val plantId = entry.arguments?.getString("plantId").orEmpty()
                         BackHandler { backFromContribute(plantId) }
-                        Column(Modifier.fillMaxSize()) {
-                            BackBar { backFromContribute(plantId) }
-                            Box(Modifier.weight(1f)) {
-                                RecordPlantScreen(fixedPlantId = plantId, fixedPlantName = contributeName)
-                            }
+                        // The app bar above already clears the status bar, so this page must not add that gap again.
+                        Box(Modifier.fillMaxSize().consumeWindowInsets(WindowInsets.systemBars)) {
+                            RecordPlantScreen(
+                                fixedPlantId = plantId, fixedPlantName = contributeName,
+                                onBack = { backFromContribute(plantId) }
+                            )
                         }
                     }
                     composable("discoveries") {
@@ -401,12 +402,8 @@ private fun AppShell(
 /** "← Back", shown above a profile that was opened from somewhere else (a plant, a list, a report). */
 @Composable
 private fun BackBar(onBack: () -> Unit) {
-    Row(Modifier.padding(horizontal = 8.dp)) {
-        PlantTextButton(onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("Back")
-        }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        AppBackButton(onBack)
     }
 }
 

@@ -7,6 +7,7 @@ import com.plantellect.mobileplantellect.data.logic.*
 import com.plantellect.mobileplantellect.data.remote.dto.*
 import com.plantellect.mobileplantellect.data.repository.RecordRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -37,6 +38,8 @@ data class RecordUiState(
     val contribPlant: RecLookupPlant? = null,
     val duplicate: RecLookupPlant? = null,
     val editable: RecEditable? = null,
+    /** True while the plant opened from a plant card is being read (both tabs). */
+    val fixedLoading: Boolean = false,
     val requests: List<RecMyRequest> = emptyList(),
     val requestsLoading: Boolean = false,
     val requestsEnd: Boolean = false,
@@ -49,6 +52,7 @@ class RecordPlantViewModel(private val repo: RecordRepository) : ViewModel() {
     private var minePage = 0
     private var requestsPage = 0
     private var searchJob: Job? = null
+    private var fixedJob: Job? = null
 
     init {
         viewModelScope.launch { loadTypesNow() }
@@ -157,6 +161,50 @@ class RecordPlantViewModel(private val repo: RecordRepository) : ViewModel() {
     }
 
     fun clearEditable() = _ui.update { it.copy(editable = null) }
+
+    /**
+     * Opens the page for ONE plant (Contribute on a plant's card): drops whatever plant was held before and reads
+     * the plant for BOTH tabs in a single cancellable job, so the two reads cannot clear each other, a slow older
+     * read cannot land after a newer one, and a failure leaves [RecordUiState.fixedLoading] false with an error
+     * the screen can offer to retry.
+     */
+    fun openFixedPlant(plantId: String) {
+        fixedJob?.cancel()
+        _ui.update {
+            it.copy(
+                contribPlant = null, editable = null, fixedLoading = true,
+                error = null, notice = null, submitted = null, contributed = null
+            )
+        }
+        fixedJob = viewModelScope.launch {
+            val lookup = async { repo.lookupById(plantId) }
+            val edit = async { repo.editable(plantId) }
+            val l = lookup.await()
+            val e = edit.await()
+            var problem: String? = null
+            var plant: RecLookupPlant? = null
+            var editable: RecEditable? = null
+            when (l) {
+                is ApiResult.Success ->
+                    if (l.value.exists && l.value.plant != null) plant = l.value.plant
+                    else problem = "That plant could not be found."
+                is ApiResult.Failure -> problem = l.error.userMessage()
+            }
+            when (e) {
+                is ApiResult.Success ->
+                    if (e.value.archived == true) problem = problem ?: "That plant is archived and cannot be changed."
+                    else editable = e.value
+                is ApiResult.Failure -> problem = problem ?: e.error.userMessage()
+            }
+            _ui.update { it.copy(contribPlant = plant, editable = editable, fixedLoading = false, error = problem) }
+        }
+    }
+
+    /** Leaving the page: stop reading and forget the plant. */
+    fun closeFixedPlant() {
+        fixedJob?.cancel()
+        _ui.update { it.copy(contribPlant = null, editable = null, fixedLoading = false, error = null, notice = null, submitted = null, contributed = null) }
+    }
 
     // ---- submissions -----------------------------------------------------------
 

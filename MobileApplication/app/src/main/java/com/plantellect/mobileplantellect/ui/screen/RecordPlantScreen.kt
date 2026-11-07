@@ -1167,7 +1167,7 @@ private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordFo
 // ============================================================================
 
 @Composable
-private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms, fixedName: String? = null) {
+private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms, fixedName: String? = null, fixedId: String? = null) {
     val c = f.contrib
     val plant = ui.contribPlant
     val safe = plant?.isSafeType == true
@@ -1184,15 +1184,21 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
         // ------------------------------------------------------------ REQUIRED: cannot be left blank
-        FormGroupLabel("Required", if (fixedName != null) "Add something about this plant." else "Choose the plant, then add something about it.")
-
         if (fixedName != null) {
             // Opened from a plant's card: the plant is fixed and cannot be changed here.
             Text(
                 "Contributing to: " + (plant?.let { plantLabel(it.name, it.scientificName) } ?: fixedName),
                 style = MaterialTheme.typography.titleSmall
             )
-        } else PlantPicker(
+            if (plant == null && ui.fixedLoading) Text("Loading…", style = MaterialTheme.typography.bodySmall)
+            else if (plant == null && fixedId != null) {
+                Text("This plant could not be loaded.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                PlantOutlinedButton({ vm.openFixedPlant(fixedId) }) { Text("Try again") }
+            }
+        }
+        FormGroupLabel("Required", if (fixedName != null) "Add something about this plant." else "Choose the plant, then add something about it.")
+
+        if (fixedName == null) PlantPicker(
             vm, ui, plant?.let { "Adding to: ${plantLabel(it.name, it.scientificName)}" }, c.errors["plant"], "plant",
             onPick = { p -> c.errors.remove("plant"); vm.selectContribPlant(p.id) },
             onClear = { vm.clearContribPlant() }
@@ -1296,18 +1302,24 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
 // ============================================================================
 
 @Composable
-private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms, fixedName: String? = null) {
+private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms, fixedName: String? = null, fixedId: String? = null) {
     val s = f.change
     val d = ui.editable
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (fixedName != null) {
             // Opened from a plant's card: the plant is fixed and cannot be changed here.
-            Hint("Edit what is wrong and say why. Nothing changes until it is approved. A blank field means no change.")
             Text(
                 "Requesting a change to: " + (d?.let { plantLabel(it.values?.get("commonName").asText(), it.values?.get("scientificName").asText()) } ?: fixedName),
                 style = MaterialTheme.typography.titleSmall
             )
-            if (d == null) Text("Loading…", style = MaterialTheme.typography.bodySmall)
+            Hint("Edit what is wrong and say why. Nothing changes until it is approved. A blank field means no change.")
+            if (d == null) {
+                if (ui.fixedLoading) Text("Loading…", style = MaterialTheme.typography.bodySmall)
+                else if (fixedId != null) {
+                    Text("This plant could not be loaded.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    PlantOutlinedButton({ vm.openFixedPlant(fixedId) }) { Text("Try again") }
+                }
+            }
         } else {
             Hint("Pick a plant, edit what is wrong and say why. Nothing changes until it is approved. A blank field means no change.")
             PlantPicker(
@@ -1564,7 +1576,7 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
  * opened from the sidebar.
  */
 @Composable
-fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "") {
+fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "", onBack: (() -> Unit)? = null) {
     val app = LocalContext.current.applicationContext as PlantellectApp
     val vm: RecordPlantViewModel = viewModel(factory = app.container.viewModelFactory)
     val ui by vm.ui.collectAsState()
@@ -1596,14 +1608,11 @@ fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "")
     LaunchedEffect(fixedPlantId) {
         if (fixedPlantId != null) {
             f.tab = 1
-            vm.clearMessages()
-            vm.clearContribPlant(); vm.clearEditable()
-            vm.selectContribPlant(fixedPlantId)
-            vm.selectChangePlant(fixedPlantId)
+            vm.openFixedPlant(fixedPlantId)   // reads the plant for both tabs in one go
         }
     }
     DisposableEffect(fixedPlantId) {
-        onDispose { if (fixedPlantId != null) { vm.clearContribPlant(); vm.clearEditable(); vm.clearMessages() } }
+        onDispose { if (fixedPlantId != null) vm.closeFixedPlant() }
     }
     // The plant was loaded on the change tab (or cleared): build / drop the form.
     LaunchedEffect(ui.editable) { ui.editable?.let { f.change.load(it) } ?: f.change.reset() }
@@ -1613,15 +1622,29 @@ fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "")
 
     // PlantellectPage already scrolls, so there is NO inner verticalScroll here.
     CompositionLocalProvider(LocalErrorFocus provides f.focus) {
-        PlantellectPage {
-            PageHeading(
-                null, if (fixed) "Contribute" else "Record Plant",
-                if (fixed) "Add to ${fixedPlantName.ifBlank { "this plant" }}, or request a change to it. Every submission is reviewed."
-                else "Add new species, contribute to existing ones, or request a correction. Every submission is reviewed."
+        PlantellectPage(compact = fixed) {
+            if (fixed) {
+                // Opened from a plant's card: Back and the title share one row, so the form starts higher up the screen.
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (onBack != null) AppBackButton(onBack)
+                        Text("Contribute", style = MaterialTheme.typography.headlineSmall, color = c.onBackground)
+                    }
+                    Text(
+                        "Add to ${fixedPlantName.ifBlank { "this plant" }}, or request a change to it. Every submission is reviewed.",
+                        style = MaterialTheme.typography.bodyMedium, color = c.onBackground.copy(alpha = .72f)
+                    )
+                }
+            } else PageHeading(
+                null, "Record Plant",
+                "Add new species, contribute to existing ones, or request a correction. Every submission is reviewed."
             )
 
             PlantSurface(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    Modifier.fillMaxWidth().padding(top = if (fixed) 0.dp else 12.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (fixed) 8.dp else 12.dp)
+                ) {
                     if (fixed) {
                         // Two tabs; inside, tab 1 is "Contribute" and tab 2 is "Request change".
                         ScrollableTabStrip(listOf("Contribute", "Request change"), if (f.tab == 2) 1 else 0, { f.tab = if (it == 1) 2 else 1 })
@@ -1640,8 +1663,8 @@ fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "")
                             }
                         }
                         when {
-                            fixed && f.tab == 2 -> ChangeTab(vm, ui, f, fixedName = fixedPlantName.ifBlank { "this plant" })
-                            fixed -> ContributeTab(vm, ui, f, fixedName = fixedPlantName.ifBlank { "this plant" })
+                            fixed && f.tab == 2 -> ChangeTab(vm, ui, f, fixedName = fixedPlantName.ifBlank { "this plant" }, fixedId = fixedPlantId)
+                            fixed -> ContributeTab(vm, ui, f, fixedName = fixedPlantName.ifBlank { "this plant" }, fixedId = fixedPlantId)
                             f.tab == 0 -> NewPlantTab(vm, ui, f)
                             f.tab == 1 -> ContributeTab(vm, ui, f)
                             f.tab == 2 -> ChangeTab(vm, ui, f)

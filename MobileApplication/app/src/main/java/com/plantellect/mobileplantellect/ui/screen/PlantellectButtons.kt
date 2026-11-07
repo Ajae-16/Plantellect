@@ -4,6 +4,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Button
@@ -91,3 +94,34 @@ internal fun PlantTextButton(
     onClick = onClick, modifier = modifier.heightIn(min = MinButtonHeight), enabled = enabled, shape = shape,
     colors = colors, contentPadding = contentPadding, content = content
 )
+
+/**
+ * THE Back button: every screen that can go back uses this one, so they all look and feel the same.
+ * A soft green pill with an arrow, never smaller than a comfortable touch target.
+ */
+@Composable
+internal fun AppBackButton(onClick: () -> Unit, modifier: Modifier = Modifier, label: String = "Back") {
+    val c = MaterialTheme.colorScheme
+    androidx.compose.material3.Surface(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 40.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+        color = c.primaryContainer,
+        contentColor = c.onPrimaryContainer
+    ) {
+        androidx.compose.foundation.layout.Row(
+            Modifier.padding(start = 10.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)
+        ) {
+            androidx.compose.material3.Icon(
+                androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = null, modifier = Modifier.size(18.dp)
+            )
+            androidx.compose.material3.Text(
+                label, style = MaterialTheme.typography.labelLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1
+            )
+        }
+    }
+}

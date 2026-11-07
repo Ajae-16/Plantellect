@@ -56,13 +56,14 @@ internal fun Modifier.plantBackdrop(): Modifier {
 
 /** A screen's page: scrolls, with the app's padding. The background comes from the app shell, not from here. */
 @Composable
-internal fun PlantellectPage(scroll: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
+internal fun PlantellectPage(scroll: Boolean = true, compact: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Box(Modifier.fillMaxSize().systemBarsPadding()) {
         Column(
             Modifier.fillMaxSize()
                 .then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+                // compact: a page that already has a Back bar above it needs less air around the content.
+                .padding(horizontal = if (compact) 12.dp else 20.dp, vertical = if (compact) 6.dp else 18.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 18.dp),
             content = content
         )
     }
