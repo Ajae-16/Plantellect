@@ -9,6 +9,10 @@
 //
 // The public WebP copies are removed when a plant is archived (so a direct file URL stops working
 // too) and rebuilt from the masters when it is restored.
+//
+// An archived plant can be DELETED on the Archive page (config/archive-delete-mysql.js): it keeps archivedAt,
+// gets deletedAt, and is removed for good after the archive retention days. A plant in that Deleted status
+// cannot be restored until the deletion is undone.
 
 const { mysqlPool } = require('./pool-mysql');
 const publicImages = require('./public-images');
@@ -42,7 +46,7 @@ async function archivePlant(plantId, options = {}, deps = {}) {
     const conn = await db.getConnection();
     try {
         await conn.beginTransaction();
-        const [rows] = await conn.query('SELECT archivedAt FROM plants WHERE plantId = ? FOR UPDATE', [plantId]);
+        const [rows] = await conn.query('SELECT archivedAt, deletedAt FROM plants WHERE plantId = ? FOR UPDATE', [plantId]);
         if (rows.length === 0) {
             await conn.rollback();
             return fail('Plant not found', 404);
@@ -93,7 +97,7 @@ async function restorePlant(plantId, deps = {}) {
     const conn = await db.getConnection();
     try {
         await conn.beginTransaction();
-        const [rows] = await conn.query('SELECT archivedAt FROM plants WHERE plantId = ? FOR UPDATE', [plantId]);
+        const [rows] = await conn.query('SELECT archivedAt, deletedAt FROM plants WHERE plantId = ? FOR UPDATE', [plantId]);
         if (rows.length === 0) {
             await conn.rollback();
             return fail('Plant not found', 404);
@@ -101,6 +105,11 @@ async function restorePlant(plantId, deps = {}) {
         if (!rows[0].archivedAt) {
             await conn.rollback();
             return fail('This plant is not archived', 409);
+        }
+        // Deleted status: waiting for its retention days. Undo the deletion (Archive page) first.
+        if (rows[0].deletedAt) {
+            await conn.rollback();
+            return fail('This plant is waiting to be deleted. Undo the deletion first.', 409);
         }
         await conn.query(
             'UPDATE plants SET archivedAt = NULL, archivedBy = NULL, archiveReason = NULL, isArchive = 0 WHERE plantId = ?',

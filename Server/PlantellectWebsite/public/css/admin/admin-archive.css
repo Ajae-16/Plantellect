@@ -1,0 +1,29 @@
+/* Archive page (admin-archive.html). Built on the Dataset page styles: tiles, chips, view switch, table. */
+.ds-view:disabled { opacity: 0.5; cursor: not-allowed; }
+.ar-table td { vertical-align: top; }
+.ar-table .ar-plant { font-weight: 600; }
+.ar-table .ar-sub { display: block; font-size: 0.8rem; opacity: 0.7; font-weight: 400; }
+.ar-expand { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 1rem; padding: 2px 6px; }
+.ar-expand[aria-expanded="true"] { transform: rotate(90deg); }
+.ar-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.78rem; border: 1px solid rgba(0,0,0,.25); white-space: nowrap; }
+.ar-badge.archived { border-color: #d68910; color: #9a6208; }
+.ar-badge.deleted { border-color: #c0392b; color: #a93226; }
+.ar-badge.active { border-color: #4caf50; color: #2e7d32; }
+.ar-count { white-space: nowrap; font-size: 0.85rem; }
+.ar-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.ar-detail td { background: rgba(128,128,128,.06); }
+.ar-pieces h4 { margin: 10px 0 6px; font-size: 0.95rem; }
+.ar-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.ar-piece { border: 1px solid rgba(0,0,0,.15); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; }
+.ar-piece img { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; }
+.ar-piece.deleted { border-color: #c0392b; }
+.ar-piece.archived { border-color: #d68910; }
+.ar-desc-list { display: flex; flex-direction: column; gap: 8px; }
+.ar-desc { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ar-desc .ar-text { flex: 1 1 320px; }
+.ar-muted { opacity: .7; font-size: .8rem; }
+html[data-theme="dark"] .ar-piece { border-color: var(--dk-border); }
+html[data-theme="dark"] .ar-badge.archived { color: #e0a63a; }
+html[data-theme="dark"] .ar-badge.deleted { color: #e57368; }
+html[data-theme="dark"] .ar-badge.active { color: #7fcf83; }
+@media (max-width: 700px) { .ar-table thead { display: none; } .ar-table td { display: block; } }

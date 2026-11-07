@@ -72,6 +72,7 @@ async function promoteReplacement(conn, plantId, excludeId) {
         `SELECT d.descriptionId
          FROM plant_description d
          WHERE d.plantId = ? AND d.status = 'approved' AND d.hiddenAt IS NULL AND d.descriptionId <> ?
+           AND d.archivedAt IS NULL
          ORDER BY (SELECT COUNT(*) FROM description_votes v WHERE v.descriptionId = d.descriptionId AND v.voteValue = 'up')
                 - (SELECT COUNT(*) FROM description_votes v WHERE v.descriptionId = d.descriptionId AND v.voteValue = 'down') DESC,
                   d.createdAt ASC
@@ -115,7 +116,7 @@ async function electPrimary(conn, plantId) {
                 (SELECT COUNT(*) FROM description_votes v WHERE v.descriptionId = d.descriptionId AND v.voteValue = 'up')
               - (SELECT COUNT(*) FROM description_votes v WHERE v.descriptionId = d.descriptionId AND v.voteValue = 'down') AS score
          FROM plant_description d
-         WHERE d.plantId = ? AND d.status = 'approved' AND d.hiddenAt IS NULL
+         WHERE d.plantId = ? AND d.status = 'approved' AND d.hiddenAt IS NULL AND d.archivedAt IS NULL
          ORDER BY d.createdAt ASC, d.descriptionId ASC`,
         [plantId]
     );
@@ -200,9 +201,10 @@ async function castDescriptionVote(plantId, descriptionId, accountId, body, { re
             `SELECT d.accountId, d.status, d.hiddenAt, d.isPrimary, p.archivedAt
              FROM plant_description d
              JOIN plants p ON p.plantId = d.plantId
-             WHERE d.descriptionId = ? AND d.plantId = ? FOR UPDATE`,
+             WHERE d.descriptionId = ? AND d.plantId = ? AND d.archivedAt IS NULL FOR UPDATE`,
             [descriptionId, plantId]
         );
+        // An archived description (an admin took it out of use) is not there to vote on: not found.
         if (rows.length === 0 || rows[0].status !== 'approved' || rows[0].archivedAt) {
             await conn.rollback();
             return fail('Description not found', 404);
@@ -282,7 +284,7 @@ async function getVoteSummary(plantId, accountId) {
         `SELECT d.descriptionId, d.accountId AS authorId, t.upVotes, t.downVotes
          FROM plant_description d
          JOIN vw_description_votes t ON t.descriptionId = d.descriptionId
-         WHERE d.plantId = ? AND d.status = 'approved' AND d.hiddenAt IS NULL`,
+         WHERE d.plantId = ? AND d.status = 'approved' AND d.hiddenAt IS NULL AND d.archivedAt IS NULL`,
         [plantId]
     );
     const ids = rows.map((r) => r.descriptionId);
@@ -375,7 +377,7 @@ const BASE_SQL = `
     JOIN plants p ON p.plantId = d.plantId
     JOIN accounts a ON a.accountId = d.accountId
     LEFT JOIN profiles pr ON pr.accountId = d.accountId
-    WHERE d.status = 'approved' AND p.archivedAt IS NULL`;
+    WHERE d.status = 'approved' AND p.archivedAt IS NULL AND d.archivedAt IS NULL`;
 
 /**
  * How many descriptions need the admin, and why (a description can be in more than one group,

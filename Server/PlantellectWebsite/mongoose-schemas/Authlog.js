@@ -39,6 +39,11 @@ const AUTHLOG_ACTIONS = [
     'user_password_reset',
     // Plants page: an admin archived or restored a whole plant. metadata.action says which.
     'plant_archive_changed',
+    // Archive page and the plant edit dialog: a description archived or unarchived, anything put in the Deleted
+    // status or taken back from it, or the retention days changed. metadata: { action: 'archive' | 'unarchive' |
+    // 'delete' | 'undelete' | 'settings', kind: 'plant' | 'photo' | 'description', plantId, imageId?, descriptionId? }.
+    // (A whole plant or a photo archived or restored keeps its own actions above.)
+    'archive_changed',
     // Mobile profile API (routes/profile.js). Never stores the passwords themselves.
     // profile_updated metadata: { field: 'bio' | 'photo', ... }
     'password_changed',

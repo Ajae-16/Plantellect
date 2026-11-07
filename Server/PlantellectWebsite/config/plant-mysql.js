@@ -34,7 +34,8 @@ async function listPlants({ search, type, taxonomyGap, archived, page, pageSize 
         params.push(type);
     }
     // Active plants by default; ?archived=1 shows the archived ones instead.
-    where.push(archived ? 'p.isArchive = 1' : 'p.isArchive = 0');
+    // A plant in the Deleted status (waiting for its retention days) is managed on the Archive page, not here.
+    where.push(archived ? 'p.isArchive = 1 AND p.deletedAt IS NULL' : 'p.isArchive = 0');
 
     const GAP_PREDICATE = TAXONOMY_GAP_LEVELS
         .map((level) => `tx.\`${level}\` = '${UNSPECIFIED_TAXONOMY}'`)
@@ -50,7 +51,7 @@ async function listPlants({ search, type, taxonomyGap, archived, page, pageSize 
                 ${gapSelect},
                 (SELECT COUNT(*) FROM plant_images i WHERE i.plantId = p.plantId AND i.status = 'approved' AND i.origin = 'record') AS imageCount,
                 (SELECT COUNT(*) FROM plant_images i WHERE i.plantId = p.plantId AND i.status = 'pending') AS pendingImageCount,
-                (SELECT COUNT(*) FROM plant_description d WHERE d.plantId = p.plantId AND d.status = 'approved') AS descriptionCount
+                (SELECT COUNT(*) FROM plant_description d WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.archivedAt IS NULL) AS descriptionCount
          FROM plants p
          JOIN plant_types t ON p.typeId = t.typeId
          LEFT JOIN taxonomy tx ON tx.taxonomyId = p.taxonomyId
@@ -243,7 +244,7 @@ async function getVotingSummary(plantId) {
                 COALESCE(v.upVotes, 0) AS upVotes, COALESCE(v.downVotes, 0) AS downVotes
          FROM plant_description d
          LEFT JOIN vw_description_votes v ON v.descriptionId = d.descriptionId
-         WHERE d.plantId = ? AND d.status = 'approved'
+         WHERE d.plantId = ? AND d.status = 'approved' AND d.archivedAt IS NULL
          ORDER BY d.createdAt ASC, d.descriptionId ASC`,
         [plantId]
     );
@@ -276,7 +277,7 @@ async function getPlantDetailSummary(plantId) {
          -- LEFT JOIN, not INNER: partsId is nullable, so a description recorded
          -- without measurements is still a description.
          LEFT JOIN plant_parts pp ON d.partsId = pp.partId
-         WHERE d.plantId = ? AND d.status = 'approved' AND d.isPrimary = TRUE
+         WHERE d.plantId = ? AND d.status = 'approved' AND d.isPrimary = TRUE AND d.archivedAt IS NULL
          LIMIT 1`,
         [plantId]
     );

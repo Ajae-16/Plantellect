@@ -1,7 +1,9 @@
 // Nightly housekeeping for the photo store (dataset handler).
 //
 //   startup  reconcile the public copies (config/reconcile.js)
-//   nightly  reconcile the public copies, then purge old denied photos (config/retention.js)
+//   nightly  reconcile the public copies, then purge old denied photos (config/retention.js), then remove the
+//            archived plants / photos / descriptions that have been in the Deleted status for longer than the
+//            archive retention days (config/archive-delete-mysql.js)
 //
 // "Nightly" is settings.maintenance.nightlyHour (default 03:00) in the server's local time.
 // The timer is unref()'d so it never keeps the process alive, a run that is still going
@@ -11,6 +13,7 @@
 const settings = require('./settings');
 const reconcile = require('./reconcile');
 const retention = require('./retention');
+const archiveDelete = require('./archive-delete-mysql');
 
 /** Milliseconds from `now` until the next `hour`:00 local time (always more than 0). */
 function msUntilNext(now, hour) {
@@ -45,6 +48,13 @@ async function runNightly(deps = {}) {
         if (line) log(line);
     } catch (err) {
         console.error('Nightly retention failed:', err.message);
+    }
+    try {
+        out.archivePurge = await (deps.archivePurge || archiveDelete.purgeExpired)();
+        const line = archiveDelete.describe(out.archivePurge);
+        if (line) log(line);
+    } catch (err) {
+        console.error('Nightly archive purge failed:', err.message);
     }
     return out;
 }

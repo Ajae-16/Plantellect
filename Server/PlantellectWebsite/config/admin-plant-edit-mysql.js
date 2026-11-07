@@ -47,6 +47,7 @@ async function getAdminPlantEdit(plantId) {
     const partColumns = PARTS_FIELDS.map((f) => `pp.${f}`).join(', ');
     const [rows] = await mysqlPool.query(
         `SELECT d.descriptionId, d.accountId, d.uses, d.benefits, d.harmful, d.isPrimary, d.createdAt,
+                d.archivedAt, d.archiveReason, d.deletedAt,
                 COALESCE(NULLIF(TRIM(CONCAT_WS(' ', pr.firstName, pr.lastName)), ''), a.username) AS authorName,
                 ${partColumns}
          FROM plant_description d
@@ -84,6 +85,12 @@ async function getAdminPlantEdit(plantId) {
                 authorName: r.authorName,
                 isPrimary: Boolean(r.isPrimary),
                 createdAt: r.createdAt,
+                // Archived: out of the public page and the voting. Deleted: archived and waiting for the
+                // retention days (managed on the Archive page).
+                archived: Boolean(r.archivedAt),
+                archivedAt: r.archivedAt || null,
+                archiveReason: r.archiveReason || null,
+                deleted: Boolean(r.deletedAt),
                 uses: r.uses || '',
                 benefits: r.benefits || '',
                 harmful: r.harmful || '',
@@ -209,7 +216,7 @@ async function updateDescription(plantId, descriptionId, body) {
         await conn.beginTransaction();
 
         const [rows] = await conn.query(
-            `SELECT d.descriptionId, d.accountId, d.partsId, d.hiddenAt, t.isHarmful, t.toxicityLevel
+            `SELECT d.descriptionId, d.accountId, d.partsId, d.hiddenAt, d.archivedAt, t.isHarmful, t.toxicityLevel
              FROM plant_description d
              JOIN plants p ON p.plantId = d.plantId
              JOIN plant_types t ON t.typeId = p.typeId
@@ -278,6 +285,10 @@ async function updateDescription(plantId, descriptionId, body) {
                 await conn.rollback();
                 return fail('This description is hidden by community votes. Restore it on the dashboard first.', 409);
             }
+            if (desc.archivedAt) {
+                await conn.rollback();
+                return fail('This description is archived. Unarchive it first.', 409);
+            }
             await conn.query('UPDATE plant_description SET isPrimary = FALSE WHERE plantId = ?', [plantId]);
             await conn.query('UPDATE plant_description SET isPrimary = TRUE WHERE descriptionId = ?', [descriptionId]);
         }
@@ -298,7 +309,7 @@ async function setPrimaryDescription(plantId, descriptionId) {
     try {
         await conn.beginTransaction();
         const [rows] = await conn.query(
-            `SELECT descriptionId, hiddenAt FROM plant_description
+            `SELECT descriptionId, hiddenAt, archivedAt FROM plant_description
              WHERE descriptionId = ? AND plantId = ? AND status = 'approved' FOR UPDATE`,
             [descriptionId, plantId]
         );
@@ -309,6 +320,10 @@ async function setPrimaryDescription(plantId, descriptionId) {
         if (rows[0].hiddenAt) {
             await conn.rollback();
             return fail('This description is hidden by community votes. Restore it on the dashboard first.', 409);
+        }
+        if (rows[0].archivedAt) {
+            await conn.rollback();
+            return fail('This description is archived. Unarchive it first.', 409);
         }
         await conn.query('UPDATE plant_description SET isPrimary = FALSE WHERE plantId = ?', [plantId]);
         await conn.query('UPDATE plant_description SET isPrimary = TRUE WHERE descriptionId = ?', [descriptionId]);

@@ -240,7 +240,7 @@
             border-top: 1px solid rgba(128, 128, 128, 0.2);
         }
         .sf-bar-status { flex: 1; font-size: 13px; font-weight: 600; color: #b26a00; min-width: 120px; }
-        .sf-bar .btn, .sf-all-bar .btn, .description-votes-editor .btn {
+        .sf-bar .btn, .sf-all-bar .btn, .description-votes-editor .btn, .archive-retention-editor .btn {
             min-width: 84px; padding: 8px 16px; border-radius: 8px; font: inherit; font-size: 14px; font-weight: 600;
             border: 1px solid rgba(45, 106, 26, 0.65); background: transparent; color: inherit; cursor: pointer;
         }
@@ -280,7 +280,7 @@
         .sf-undo .material-symbols-outlined { font-size: 18px; }
         .sf-changed { border-color: #e69a1e !important; box-shadow: 0 0 0 1px rgba(230, 154, 30, 0.45); }
         .confidence-tab.is-dirty::after { content: ' \2022'; color: #e69a1e; }
-        .description-votes-editor .dv-field input { margin-right: 8px; }
+        .description-votes-editor .dv-field input, .archive-retention-editor .dv-field input { margin-right: 8px; }
 
         .sf-all-bar {
             position: sticky;
@@ -352,6 +352,10 @@
                     <span class="material-symbols-outlined">dataset</span>
                     <span class="nav-link-text">Dataset</span>
                 </a>
+                <a href="/admin/archive" data-perm="access_admin" title="Archive">
+                    <span class="material-symbols-outlined">inventory_2</span>
+                    <span class="nav-link-text">Archive</span>
+                </a>
                 <a href="/admin/settings" class="active" data-perm="access_admin" title="Settings">
                     <span class="material-symbols-outlined">settings</span>
                     <span class="nav-link-text">Settings</span>
@@ -384,6 +388,7 @@
                 <a href="#discoveriesSection" class="admin-tab settings-tab" data-target="discoveriesSection">Discoveries</a>
                 <a href="#descriptionVotesSection" class="admin-tab settings-tab" data-target="descriptionVotesSection">Description Votes</a>
                 <a href="#plantImagesSection" class="admin-tab settings-tab" data-target="plantImagesSection">Plant Photos</a>
+                <a href="#archiveSection" class="admin-tab settings-tab" data-target="archiveSection">Archive &amp; Deletion</a>
                 <a href="#mlRequestSection" class="admin-tab settings-tab" data-target="mlRequestSection">ML Request</a>
                 <a href="#spamQuotasSection" class="admin-tab settings-tab" data-target="spamQuotasSection">Spam Quotas</a>
                 <a href="#datasetAuditSection" class="admin-tab settings-tab" data-target="datasetAuditSection">Dataset Audit</a>
@@ -463,6 +468,22 @@
                             <p class="admin-subtitle">Thumbs up / down on contributor descriptions. Every signed-in user can vote, with no limit. Lowering the hide number hides descriptions that already have that many downvotes.</p>
                             <div class="description-votes-editor"></div>
                             <p class="admin-notice" id="descriptionVotesNotice" hidden></p>
+                        </div>
+                    </details>
+                </section>
+
+                <!-- Archive retention. Self-contained: javascript/admin/admin-archive-settings.js
+                     talks to GET/POST /admin/api/archive/settings on its own. -->
+                <section class="admin-section" id="archiveSection">
+                    <details class="collapse">
+                        <summary class="collapse-summary">
+                            <h2>Archive &amp; Deletion</h2>
+                            <span class="collapse-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="collapse-body">
+                            <p class="admin-subtitle">Deleting an archived plant, photo or description on the <a href="/admin/archive">Archive page</a> only moves it to the Deleted status. It is removed for good after this many days, and an admin can undo the deletion until then.</p>
+                            <div class="archive-retention-editor"></div>
+                            <p class="admin-notice" id="archiveRetentionNotice" hidden></p>
                         </div>
                     </details>
                 </section>
@@ -547,6 +568,7 @@
     <script src="/javascript/admin/settings-forms.js"></script>
     <script src="/javascript/admin/admin-plant-images.js"></script>
     <script src="/javascript/admin/admin-description-vote-settings.js"></script>
+    <script src="/javascript/admin/admin-archive-settings.js"></script>
 
     <script type="module">
         import { initSettingsPage, addTopbarTab, initAdminUser } from '/javascript/admin/admin-settings.js';

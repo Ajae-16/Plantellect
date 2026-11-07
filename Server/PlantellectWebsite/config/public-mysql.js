@@ -50,10 +50,10 @@ async function listPublicPlants({ search, type, page, pageSize, searchIn }) {
                  WHERE i.plantId = p.plantId AND ${visibleImageSql('i')}
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId,
                 (SELECT d.benefits FROM plant_description d
-                 WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE AND d.hiddenAt IS NULL
+                 WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE AND d.hiddenAt IS NULL AND d.archivedAt IS NULL
                  LIMIT 1) AS primaryBenefits,
                 (SELECT d.harmful FROM plant_description d
-                 WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE AND d.hiddenAt IS NULL
+                 WHERE d.plantId = p.plantId AND d.status = 'approved' AND d.isPrimary = TRUE AND d.hiddenAt IS NULL AND d.archivedAt IS NULL
                  LIMIT 1) AS primaryHarmful
          FROM plants p
          JOIN plant_types t ON p.typeId = t.typeId
@@ -123,7 +123,7 @@ async function getPublicPlantDetail(plantId) {
          JOIN accounts a ON d.accountId = a.accountId
          LEFT JOIN profiles pr ON pr.accountId = a.accountId
          LEFT JOIN plant_parts pp ON d.partsId = pp.partId
-         WHERE d.plantId = ? AND d.status = 'approved' AND d.hiddenAt IS NULL
+         WHERE d.plantId = ? AND d.status = 'approved' AND d.hiddenAt IS NULL AND d.archivedAt IS NULL
          ORDER BY d.isPrimary DESC, d.createdAt ASC`,
         [plantId]
     );

@@ -8,7 +8,6 @@ const { mysqlPool } = require('./pool-mysql');
 const { DISCOVERY_TYPE, parsePayload, normalizeScientificName, normalizeName, normalizeRichText, buildTaxonomyRow, hasAnyPartValue, DENIAL_KINDS, TAXONOMY_LEVELS, normalizeTypeSpec, createPlantType, cloneType } = require('./shared-mysql');
 const { claimPendingRequest, finishRequest } = require('./request-mysql');
 const { applyPlantChange } = require('./plant-manage-mysql');
-const { ownerGateMessage } = require('./owner-approval');
 const imageFiles = require('./image-files');
 const relocation = require('./image-relocation');
 const publicImages = require('./public-images');
@@ -36,7 +35,7 @@ async function ensurePrimaryContent(conn, plantId) {
              SELECT d2.descriptionId FROM (
                  SELECT descriptionId FROM plant_description
                  WHERE plantId = ? AND status = 'approved'
-                 ORDER BY createdAt ASC LIMIT 1
+                 ORDER BY (archivedAt IS NOT NULL) ASC, createdAt ASC LIMIT 1
              ) d2
          )`,
         [plantId]
@@ -189,12 +188,6 @@ async function approveTaxonomyRequest(conn, request, reviewerId, note, audit) {
  * type. A request whose fields moved since it was filed is refused (409).
  */
 async function approvePlantChangeRequest(conn, request, reviewerId, note, audit) {
-    // A change to another contributor's description needs that contributor's approval first.
-    const gate = ownerGateMessage(parsePayload(request.payload));
-    if (gate) {
-        await conn.rollback();
-        return { error: gate, code: 409 };
-    }
     const result = await applyPlantChange(conn, request);
     if (result.error) {
         await conn.rollback();

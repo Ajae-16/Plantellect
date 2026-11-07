@@ -66,12 +66,6 @@ PlantellectWebsite/
 │   │                          #   payload.descriptionId; one pending per description). Neither scope can write
 │   │                          #   into the other. getPlantEditable(plantId, accountId) returns only the caller's
 │   │                          #   own descriptions; applyPlantChange runs in approvePlantRequest's transaction
-│   ├── owner-approval.js      # Pure: contributor approval on a change request. A 'description' change to ANOTHER
-│   │                          #   contributor's description keeps that contributor's answer in payload.ownerApproval
-│   │                          #   (pending | approved | denied); the admin cannot approve until it is 'approved'.
-│   ├── owner-approval-mysql.js # Profile > Pending approval: awaitingMe / mine lists, the sidebar badge count
-│   │                          #   (waiting for me + my requests whose state changed since I last looked), mark-seen,
-│   │                          #   and the author's approve / decline (decline ends the request). Routes: /api/profile/approvals*
 │   ├── discovery-mysql.js     # Discovery reports, votes and image access
 │   ├── description-vote-settings.js # The two admin-editable numbers (system_settings key descriptionVotes:
 │   │                          #   upvoteAlert, downvoteHide >= 2), per-field fallback to settings.descriptionVotes, version-checked save.
@@ -346,6 +340,28 @@ PlantellectWebsite/
 
 ```
 
+
+## Archive, Deleted status and the Archive page
+
+- Three states for a plant, a photo and a description (`config/archive-status.js`): **active**, **archived** (`archivedAt`:
+  hidden from the library, the app and training, nothing removed) and **deleted** (`deletedAt`, `archivedAt` stays set).
+  Descriptions got `archivedAt / archivedBy / archiveReason` (`config/description-archive-mysql.js`, Archive / Unarchive in
+  the plant edit dialog). Plants, descriptions and photos got `deletedAt / deletedBy`. Run `npm run db:migrate` (twice).
+- **Delete never removes anything by itself.** `config/archive-delete-mysql.js`: an archived plant, an archived photo or
+  description, or ANY piece of an archived plant (it is archived on the way) goes to the Deleted status; "Undo delete" returns
+  it to archived. The nightly job (`purgeExpired`, run from `config/maintenance.js`) removes an item once `deletedAt` is older
+  than the retention days: photo = copies + master + row; description = row + its measurements; plant = every photo's
+  files, then the plants row (descriptions, photos, contributor rows and its review requests go by ON DELETE CASCADE) and its type row.
+- **Retention days**: Settings > Archive & Deletion, system_settings key `archiveRetention` (`config/archive-retention.js`,
+  1-3650, default `ARCHIVE_RETENTION_DAYS` = 30). Read on every use, so a change also applies to items already waiting.
+- **Archive page** `/admin/archive` (`administration/admin/admin-archive.html`, `javascript/admin/admin-archive.js`, `routes/admin-archive.js`):
+  Plant archive first, User archive is a disabled placeholder. One row per plant with anything archived; open it for its pieces
+  (an archived / deleted plant lists every photo and description, an active plant only its archived pieces). Delete needs
+  `delete_plant`; everything else `access_admin`. Reads: `config/archive-list-mysql.js`.
+- **For the uploader** (`routes/archive.js`, mounted at `/api/archive`, any signed-in account): `GET /api/archive/mine?kind=&state=`
+  and `GET /api/archive/mine/:kind/:id` (kind plant | photo | description) return `state`, `via` (self | plant), `archivedAt`,
+  `deletedAt`, `purgeAt`, `daysLeft`. The admin's note is never sent. `GET /api/plants/mine` also carries `archive` on each photo.
+- Public reads, the vote summary, contributor edit lists and primary election skip archived descriptions.
 
 ## Plant types and badges (per-plant model)
 

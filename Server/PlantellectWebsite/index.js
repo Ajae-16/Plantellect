@@ -84,10 +84,13 @@ app.use('/api/contributors', contributorsRouter);
 // link) keeps working. Same router, same rules. Remove once nothing calls it.
 app.use('/api/botanists', contributorsRouter);
 app.use('/api/ml', require('./routes/ml'));
+// What happened to the caller's own archived / deleted plants, photos and descriptions.
+app.use('/api/archive', require('./routes/archive'));
 app.use('/admin/api/ml/usage', require('./routes/ml-usage'));
 app.use('/admin', require('./routes/admin'));
 app.use('/admin', require('./routes/admin-dataset'));
 app.use('/admin', require('./routes/admin-description-feedback'));
+app.use('/admin', require('./routes/admin-archive'));
 
 app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });

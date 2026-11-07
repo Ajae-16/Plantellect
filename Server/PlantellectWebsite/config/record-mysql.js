@@ -642,12 +642,21 @@ async function listMyRequests(accountId, { page, pageSize } = {}) {
     if (allImageIds.size > 0) {
         const placeholders = [...allImageIds].map(() => '?').join(',');
         const [imgRows] = await mysqlPool.query(
-            `SELECT imageId, status, mimeType, size, originalFilename
-             FROM plant_images WHERE accountId = ? AND imageId IN (${placeholders})`,
+            `SELECT i.imageId, i.status, i.mimeType, i.size, i.originalFilename,
+                    i.archivedAt, i.deletedAt, p.archivedAt AS plantArchivedAt, p.deletedAt AS plantDeletedAt
+             FROM plant_images i LEFT JOIN plants p ON p.plantId = i.plantId
+             WHERE i.accountId = ? AND i.imageId IN (${placeholders})`,
             [accountId, ...allImageIds]
         );
         for (const img of imgRows) imageById.set(img.imageId, img);
     }
+    // Archive / Deleted status of the photos (config/archive-status.js), with the live retention days.
+    const retentionDays = allImageIds.size > 0 ? await require('./archive-retention').getRetentionDays(mysqlPool) : 0;
+    const archiveOf = (img) => {
+        const { effectiveStatus } = require('./archive-status');
+        const s = effectiveStatus(img, { archivedAt: img.plantArchivedAt, deletedAt: img.plantDeletedAt }, retentionDays);
+        return { state: s.state, via: s.via, archivedAt: s.archivedAt, deletedAt: s.deletedAt, purgeAt: s.purgeAt, daysLeft: s.daysLeft };
+    };
 
     return {
         requests: rows.map((r) => {
@@ -663,7 +672,6 @@ async function listMyRequests(accountId, { page, pageSize } = {}) {
                 changeReason: r.requestType === 'plant_change' ? (payload.reason || null) : null,
                 changeScope: r.requestType === 'plant_change' ? (payload.scope || 'legacy') : null,
                 changeDescriptionId: r.requestType === 'plant_change' ? (payload.descriptionId || null) : null,
-                ownerApproval: r.requestType === 'plant_change' ? (payload.ownerApproval || null) : null,
                 note: r.note,
                 createdAt: r.createdAt,
                 reviewedAt: r.reviewedAt,
@@ -681,7 +689,9 @@ async function listMyRequests(accountId, { page, pageSize } = {}) {
                             status: img.status,
                             mimeType: img.mimeType,
                             size: img.size,
-                            originalFilename: img.originalFilename
+                            originalFilename: img.originalFilename,
+                            // state: active | archived | deleted. A deleted photo has purgeAt, the day it is removed.
+                            archive: archiveOf(img)
                         };
                     })
                     .filter(Boolean)

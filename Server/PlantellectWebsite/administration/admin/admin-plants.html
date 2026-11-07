@@ -245,6 +245,10 @@
                     <span class="material-symbols-outlined">dataset</span>
                     <span class="nav-link-text">Dataset</span>
                 </a>
+                <a href="/admin/archive" data-perm="access_admin" title="Archive">
+                    <span class="material-symbols-outlined">inventory_2</span>
+                    <span class="nav-link-text">Archive</span>
+                </a>
                 <a href="/admin/settings" data-perm="access_admin" title="Settings">
                     <span class="material-symbols-outlined">settings</span>
                     <span class="nav-link-text">Settings</span>
@@ -1403,7 +1407,24 @@
 
         function descriptionLabel(d, i) {
             return `${d.authorName} \u00b7 ${d.isPrimary ? 'Primary' : 'Description ' + (i + 1)}` +
-                ` \u00b7 ${formatDate(d.createdAt)}`;
+                ` \u00b7 ${formatDate(d.createdAt)}` +
+                (d.deleted ? ' \u00b7 Pending deletion' : d.archived ? ' \u00b7 Archived' : '');
+        }
+
+        // Archive / unarchive the chosen description. Nothing is deleted; an archived description leaves the
+        // public page and the voting. Deleting it is done on the Archive page (it keeps a retention period).
+        function descriptionArchiveField(d) {
+            if (d.deleted) {
+                return '<div class="plant-field wide"><p class="request-detail-muted">This description is waiting to be deleted. ' +
+                    'Undo or finish that on the <a href="/admin/archive">Archive page</a>.</p></div>';
+            }
+            if (d.archived) {
+                return '<div class="plant-field wide"><p class="request-detail-muted">Archived' +
+                    (d.archiveReason ? ': ' + escapeHtml(d.archiveReason) : '') + '. It is not shown on the plant page and cannot be voted on.</p>' +
+                    '<button type="button" class="btn" id="edit-descArchiveBtn" data-act="unarchive">Unarchive description</button></div>';
+            }
+            return '<div class="plant-field wide"><button type="button" class="btn-deny" id="edit-descArchiveBtn" data-act="archive" ' +
+                'title="Take this description off the plant page. It can be unarchived later.">Archive description</button></div>';
         }
 
         function renderEditDescription() {
@@ -1433,6 +1454,7 @@
                         <input type="checkbox" id="edit-makePrimary" ${d.isPrimary ? 'checked disabled' : ''}>
                         ${d.isPrimary ? 'This is the primary description (shown first on the plant page and in the library)'
                                       : 'Make this the primary description (shown first on the plant page and in the library)'}</label></div>` +
+                    descriptionArchiveField(d) +
                     '<div class="plant-form-section">Description</div>' +
                     DESCRIPTION_TEXT_FIELDS.map(([key, label]) => editField('edit-d-' + key, label, 'area', d[key], true)).join('') +
                     '<div class="plant-form-section">Measurements</div>' +
@@ -1445,6 +1467,40 @@
             });
             save.textContent = 'Save this description';
             RichText.attachAll(body);
+            const archiveBtn = document.getElementById('edit-descArchiveBtn');
+            if (archiveBtn) archiveBtn.addEventListener('click', () => archiveDescriptionAction(d, archiveBtn));
+        }
+
+        async function archiveDescriptionAction(d, btn) {
+            const act = btn.dataset.act;
+            let reason = '';
+            if (act === 'archive') {
+                const answer = window.prompt('Archive this description? It leaves the public plant page and the voting, and can be unarchived later.\n\nReason (optional):', '');
+                if (answer === null) return;
+                reason = answer.trim().slice(0, 255);
+            }
+            btn.disabled = true;
+            editMessage('none');
+            try {
+                const res = await fetch('/admin/api/plants/' + encodeURIComponent(editingPlantId) + '/descriptions/' +
+                    encodeURIComponent(d.descriptionId) + '/' + act, {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { editMessage('error', data.error || 'The description could not be changed'); return; }
+                await reloadEditData();
+                renderEditTab();
+                loadPlants();
+                editMessage('ok', act === 'archive'
+                    ? 'Description archived.' + (data.noReplacement ? ' It was the only description, so the plant page now shows none.' : '')
+                    : 'Description unarchived.');
+            } catch (err) {
+                editMessage('error', 'The description could not be changed: ' + err.message);
+            } finally {
+                btn.disabled = false;
+            }
         }
 
         function renderEditTab() {
@@ -1540,7 +1596,8 @@
                 const badges = [
                     ph.isPrimary ? '<span class="plant-photo-badge primary">Primary</span>' : '',
                     scan ? `<span class="plant-photo-badge scan-badge" title="${escapeHtml(scanTitle)}">Scan contribution${escapeHtml(scanConfidence)}</span>` : '',
-                    archived ? `<span class="plant-photo-badge archived-badge" title="${escapeHtml(archivedTitle)}">Archived</span>`
+                    ph.deleted ? '<span class="plant-photo-badge archived-badge" title="Waiting to be deleted. Manage it on the Archive page.">Pending deletion</span>'
+                             : archived ? `<span class="plant-photo-badge archived-badge" title="${escapeHtml(archivedTitle)}">Archived</span>`
                              : hidden && !scan ? '<span class="plant-photo-badge hidden-badge">Hidden</span>'
                            : (ph.publicNow ? '<span class="plant-photo-badge public">Public</span>' : ''),
                     missing ? '<span class="plant-photo-badge warn" title="Visible, but its public copy is not made yet">Copy pending</span>' : ''
@@ -1557,7 +1614,7 @@
                         <div class="plant-photo-by">${escapeHtml(ph.uploadedByName || '')} · ${formatDate(ph.uploadedAt)}</div>
                         ${scan ? '<div class="plant-photo-by">Private training photo. Only Archive is available.</div>' : ''}
                         <div class="plant-photo-actions">
-                            ${archived ? `
+                            ${ph.deleted ? '<a class="plant-photo-btn" href="/admin/archive" title="Undo or finish the deletion on the Archive page">Archive page</a>' : archived ? `
                             <button type="button" class="plant-photo-btn" data-photo-act="unarchive" data-image="${id}"
                                     title="${scan ? 'Bring the photo back. It stays hidden: a scan contribution is never public.' : 'Bring the photo back. It stays hidden until you press Show.'}">Unarchive</button>` : scan ? `
                             <button type="button" class="plant-photo-btn" data-photo-act="archive" data-image="${id}"
@@ -1971,9 +2028,9 @@
             } else if (act === 'restore') {
                 url += '/restore';
             } else if (act === 'delete') {
-                const typed = prompt(`This permanently deletes "${plant.name}", its photos and its descriptions. Type DELETE to confirm.`);
+                const typed = prompt(`Delete "${plant.name}"? It moves to the Deleted status on the Archive page and is removed for good, with its photos and descriptions, after the retention days set in Settings. Until then it can be undone. Type DELETE to confirm.`);
                 if (typed !== 'DELETE') return;
-                method = 'DELETE';
+                url = '/admin/api/archive/plants/' + encodeURIComponent(id) + '/delete';
             } else {
                 return;
             }

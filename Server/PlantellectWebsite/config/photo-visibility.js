@@ -109,7 +109,7 @@ async function listPlantPhotos(plantId, deps, options = {}) {
     if (options && options.pageSize) return listPlantPhotoPage(db, plantId, plantArchived, options);
 
     const [rows] = await db.query(
-        `SELECT i.imageId, i.status, i.isPrimary, i.publicVisible, i.archivedAt, i.archiveReason, i.uploadedAt,
+        `SELECT i.imageId, i.status, i.isPrimary, i.publicVisible, i.archivedAt, i.archiveReason, i.deletedAt, i.uploadedAt,
                 i.thumbnailHash, i.displayHash, i.origin, i.contributionConfidence, i.contributionModelId,
                 a.username AS uploadedByName
          FROM plant_images i
@@ -134,6 +134,9 @@ function photoRow(r, plantArchived) {
         archived: Boolean(r.archivedAt),
         archivedAt: r.archivedAt || null,
         archiveReason: r.archiveReason || null,
+        // Deleted status (Archive page): waiting for the retention days. Unarchive is refused until it is undone.
+        deleted: Boolean(r.deletedAt),
+        deletedAt: r.deletedAt || null,
         // 'record' or 'scan_contribution'. A contribution is private: the admin panel offers
         // Archive / Unarchive only. contributionConfidence is a number (the column is DECIMAL,
         // which the driver returns as text) or null.
@@ -181,7 +184,7 @@ async function listPlantPhotoPage(db, plantId, plantArchived, options) {
         ? 'i.uploadedAt DESC, i.imageId ASC'
         : 'i.isPrimary DESC, i.uploadedAt ASC, i.imageId ASC';
     const [rows] = await db.query(
-        `SELECT i.imageId, i.status, i.isPrimary, i.publicVisible, i.archivedAt, i.archiveReason, i.uploadedAt,
+        `SELECT i.imageId, i.status, i.isPrimary, i.publicVisible, i.archivedAt, i.archiveReason, i.deletedAt, i.uploadedAt,
                 i.thumbnailHash, i.displayHash, i.origin, i.contributionConfidence, i.contributionModelId,
                 i.trainingStatus, i.trainingReason, i.part, i.groupKey, i.masterPurgedAt,
                 a.username AS uploadedByName
@@ -221,7 +224,7 @@ async function listPlantPhotoPage(db, plantId, plantArchived, options) {
 
 async function loadPhoto(conn, plantId, imageId) {
     const [rows] = await conn.query(
-        `SELECT imageId, plantId, status, isPrimary, publicVisible, archivedAt, storedPath, origin
+        `SELECT imageId, plantId, status, isPrimary, publicVisible, archivedAt, storedPath, origin, deletedAt
          FROM plant_images WHERE imageId = ? AND plantId = ? FOR UPDATE`,
         [imageId, plantId]
     );
@@ -462,6 +465,7 @@ async function unarchivePhoto(plantId, imageId, deps) {
         if (!photo) return fail('Photo not found on this plant', 404);
         if (photo.status !== 'approved') return fail('Only an approved photo can be unarchived', 409);
         if (!photo.archivedAt) return fail('This photo is not archived', 409);
+        if (photo.deletedAt) return fail('This photo is waiting to be deleted. Undo the deletion first.', 409);
         await conn.query(
             'UPDATE plant_images SET archivedAt = NULL, archivedBy = NULL, archiveReason = NULL WHERE imageId = ?',
             [imageId]

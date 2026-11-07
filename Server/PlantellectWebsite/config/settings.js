@@ -311,6 +311,16 @@ module.exports = {
         // audit. Cancel differs only in timing: it deletes at once.
         discoveryClosedPhotoDays: parseInt(process.env.DISCOVERY_CLOSED_PHOTO_DAYS, 10) || 90
     },
+    // Archive and deletion (config/archive-retention.js). An admin archives a plant, a photo or a
+    // description; deleting an archived item only puts it in the DELETED status, and the nightly job
+    // removes it for good once it has been there this many days. The admin changes the live number in
+    // Settings > Archive & Deletion (system_settings key archiveRetention); this is the fallback.
+    archive: {
+        retentionDays: Math.min(3650, Math.max(1, numberSetting('ARCHIVE_RETENTION_DAYS', 30))),
+        retentionDaysMax: 3650,
+        // Most deleted items the nightly job removes in one run; the rest wait for the next night.
+        purgeBatchSize: Math.max(1, numberSetting('ARCHIVE_PURGE_BATCH_SIZE', 100))
+    },
     // Community feedback on a contributor's plant description (the thumbs up / down
     // on the plant profile). Counted per description, one ballot per account.
     descriptionVotes: {
