@@ -272,6 +272,16 @@ class ChangeState {
         descChoices(d).firstOrNull { !it.pending }?.let { loadDesc(d, it) }
     }
 
+    /**
+     * Opened from a description's "..." menu: tick "Change a description" and load that description, unless it
+     * already has a change waiting (then nothing is chosen and the form explains why).
+     */
+    internal fun preselect(d: RecEditable, id: String) {
+        val choice = descChoices(d).firstOrNull { it.id == id && !it.pending } ?: return
+        descOn = true
+        loadDesc(d, choice)
+    }
+
     internal fun loadDesc(d: RecEditable, choice: DescChoice) {
         descId = choice.id
         desc.clear()
@@ -1033,7 +1043,8 @@ private fun PlantPicker(
                 Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small, tonalElevation = 3.dp,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
-                Column(Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                val suggestionScroll = rememberScrollState()
+                Column(Modifier.fillMaxWidth().heightIn(max = 320.dp).trapScroll(suggestionScroll).verticalScroll(suggestionScroll)) {
                     if (shown.isEmpty()) Text(
                         "Nothing matched.", Modifier.padding(12.dp),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1335,9 +1346,17 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
         // ---- the plant info half
         CheckRow("Change the plant info", s.baseOn, enabled = d.hasPendingBase != true) { s.baseOn = it; s.errors.remove("c.pick") }
         ErrorText(s.errors["c.pick"], "c.pick")
+        // A plant-info change goes to the plant's primary contributor first; only if they approve does an admin decide.
+        val baseApproval = d.baseApproval?.takeIf { it.needsOwnerApproval == true }
         Hint(
-            if (d.hasPendingBase == true) "A change to this plant's info is already waiting for review (${d.pendingBaseRequestId})."
-            else "Common name, scientific name, plant type and taxonomy. This is the plant's shared record, so an admin decides it."
+            when {
+                d.hasPendingBase == true -> "A change to this plant's info is already waiting for review (${d.pendingBaseRequestId})."
+                baseApproval != null ->
+                    "Common name, scientific name, plant type and taxonomy. This is the plant's shared record: " +
+                            "${baseApproval.ownerName ?: "its primary contributor"}, the primary contributor, is asked first. " +
+                            "If they approve, an admin decides; if they decline, it ends there."
+                else -> "Common name, scientific name, plant type and taxonomy. This is the plant's shared record, so an admin decides it."
+            }
         )
         if (s.baseOn) {
             // Required first: the reason. Then the fields to edit, then the optional taxonomy.
@@ -1506,7 +1525,8 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
                     // A change to somebody else's description also needs that contributor.
                     r.ownerApproval?.let { o ->
                         val answer = when (o.status) { "approved" -> "approved"; "denied" -> "declined"; else -> "has not answered yet" }
-                        Hint("Contributor ${o.ownerName ?: ""}: $answer. An admin also has to approve.")
+                        val who = if (o.role == "primary") "Primary contributor" else "Contributor"
+                        Hint("$who ${o.ownerName ?: ""}: $answer. An admin also has to approve.")
                     }
 
                     Hint(
@@ -1570,13 +1590,21 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
 /**
  * The Record Plant page.
  *
- * [fixedPlantId] / [fixedPlantName]: set when the person tapped "Contribute" on a plant's card. The page then
- * works on THAT plant only: two tabs, "Contribute" and "Request change", with the plant fixed (no picker, no
- * "Change" button). The app shell puts a Back button above it. Left null, this is the normal four-tab page
- * opened from the sidebar.
+ * [fixedPlantId] / [fixedPlantName]: set when the person came from a plant's profile. The page then works on
+ * THAT plant only, with the plant fixed (no picker, no "Change" button), and shows ONE form, no tabs:
+ *   - [changeMode] false: "Contribute", the form for adding a contribution to the plant;
+ *   - [changeMode] true: "Request change", opened from the "..." menu of a description, with that description
+ *     ([changeDescriptionId]) already chosen.
+ * The app shell puts a Back button above it. Left null, this is the normal four-tab page opened from the sidebar.
  */
 @Composable
-fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "", onBack: (() -> Unit)? = null) {
+fun RecordPlantScreen(
+    fixedPlantId: String? = null,
+    fixedPlantName: String = "",
+    changeMode: Boolean = false,
+    changeDescriptionId: String? = null,
+    onBack: (() -> Unit)? = null
+) {
     val app = LocalContext.current.applicationContext as PlantellectApp
     val vm: RecordPlantViewModel = viewModel(factory = app.container.viewModelFactory)
     val ui by vm.ui.collectAsState()
@@ -1605,17 +1633,29 @@ fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "",
     }
     // Opened from a plant's card: fix the plant on both tabs. The view model is shared with the normal page, so
     // whatever plant it held before is dropped first, and dropped again on the way out.
-    LaunchedEffect(fixedPlantId) {
+    LaunchedEffect(fixedPlantId, changeMode) {
         if (fixedPlantId != null) {
-            f.tab = 1
-            vm.openFixedPlant(fixedPlantId)   // reads the plant for both tabs in one go
+            f.tab = if (changeMode) 2 else 1
+            vm.openFixedPlant(fixedPlantId)   // reads the plant for both forms in one go
         }
     }
     DisposableEffect(fixedPlantId) {
         onDispose { if (fixedPlantId != null) vm.closeFixedPlant() }
     }
     // The plant was loaded on the change tab (or cleared): build / drop the form.
-    LaunchedEffect(ui.editable) { ui.editable?.let { f.change.load(it) } ?: f.change.reset() }
+    // Opened from a description's menu: choose that description once, the first time the plant is read.
+    var descPreselected by remember(changeDescriptionId) { mutableStateOf(false) }
+    LaunchedEffect(ui.editable) {
+        val e = ui.editable
+        if (e == null) f.change.reset()
+        else {
+            f.change.load(e)
+            if (changeMode && changeDescriptionId != null && !descPreselected) {
+                descPreselected = true
+                f.change.preselect(e, changeDescriptionId)
+            }
+        }
+    }
     LaunchedEffect(f.tab) { if (f.tab == 3 && ui.requests.isEmpty()) vm.loadRequests(reset = true) }
 
     f.preview?.let { PreviewDialog(it) { f.preview = null } }
@@ -1628,10 +1668,14 @@ fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "",
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (onBack != null) AppBackButton(onBack)
-                        Text("Contribute", style = MaterialTheme.typography.headlineSmall, color = c.onBackground)
+                        Text(
+                            if (changeMode) "Request change" else "Contribute",
+                            style = MaterialTheme.typography.headlineSmall, color = c.onBackground
+                        )
                     }
                     Text(
-                        "Add to ${fixedPlantName.ifBlank { "this plant" }}, or request a change to it. Every submission is reviewed.",
+                        if (changeMode) "Ask for a correction to ${fixedPlantName.ifBlank { "this plant" }}. Nothing changes until it is approved."
+                        else "Add to ${fixedPlantName.ifBlank { "this plant" }}. Every submission is reviewed.",
                         style = MaterialTheme.typography.bodyMedium, color = c.onBackground.copy(alpha = .72f)
                     )
                 }
@@ -1645,10 +1689,8 @@ fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "",
                     Modifier.fillMaxWidth().padding(top = if (fixed) 0.dp else 12.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(if (fixed) 8.dp else 12.dp)
                 ) {
-                    if (fixed) {
-                        // Two tabs; inside, tab 1 is "Contribute" and tab 2 is "Request change".
-                        ScrollableTabStrip(listOf("Contribute", "Request change"), if (f.tab == 2) 1 else 0, { f.tab = if (it == 1) 2 else 1 })
-                    } else {
+                    // A plant's own page has no tabs: Contribute and Request change are two separate entrances.
+                    if (!fixed) {
                         ScrollableTabStrip(listOf("New plant", "Add to existing", "Request change", "My submissions"), f.tab, { f.tab = it })
                     }
                     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1663,7 +1705,7 @@ fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "",
                             }
                         }
                         when {
-                            fixed && f.tab == 2 -> ChangeTab(vm, ui, f, fixedName = fixedPlantName.ifBlank { "this plant" }, fixedId = fixedPlantId)
+                            fixed && changeMode -> ChangeTab(vm, ui, f, fixedName = fixedPlantName.ifBlank { "this plant" }, fixedId = fixedPlantId)
                             fixed -> ContributeTab(vm, ui, f, fixedName = fixedPlantName.ifBlank { "this plant" }, fixedId = fixedPlantId)
                             f.tab == 0 -> NewPlantTab(vm, ui, f)
                             f.tab == 1 -> ContributeTab(vm, ui, f)

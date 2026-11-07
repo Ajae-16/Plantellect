@@ -3,7 +3,8 @@
 //   startup  reconcile the public copies (config/reconcile.js)
 //   nightly  reconcile the public copies, then purge old denied photos (config/retention.js), then remove the
 //            archived plants / photos / descriptions that have been in the Deleted status for longer than the
-//            archive retention days (config/archive-delete-mysql.js)
+//            archive retention days (config/archive-delete-mysql.js), then delete denied change requests older
+//            than settings.maintenance.deniedChangeRetentionDays (config/denied-change-purge.js)
 //
 // "Nightly" is settings.maintenance.nightlyHour (default 03:00) in the server's local time.
 // The timer is unref()'d so it never keeps the process alive, a run that is still going
@@ -14,6 +15,7 @@ const settings = require('./settings');
 const reconcile = require('./reconcile');
 const retention = require('./retention');
 const archiveDelete = require('./archive-delete-mysql');
+const deniedChanges = require('./denied-change-purge');
 
 /** Milliseconds from `now` until the next `hour`:00 local time (always more than 0). */
 function msUntilNext(now, hour) {
@@ -55,6 +57,13 @@ async function runNightly(deps = {}) {
         if (line) log(line);
     } catch (err) {
         console.error('Nightly archive purge failed:', err.message);
+    }
+    try {
+        out.deniedChanges = await (deps.deniedChanges || deniedChanges.purgeDeniedChangeRequests)();
+        const line = deniedChanges.describe(out.deniedChanges);
+        if (line) log(line);
+    } catch (err) {
+        console.error('Nightly denied change purge failed:', err.message);
     }
     return out;
 }

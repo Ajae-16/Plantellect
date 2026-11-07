@@ -260,7 +260,10 @@ data class ProfilePlantDto(
     val role: String = "",
     val type: String = "",
     val typeLabel: String = "",
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+    /** Totals over the descriptions this person wrote for the plant (contributions only; 0 elsewhere). */
+    val upVotes: Int = 0,
+    val downVotes: Int = 0
 )
 
 @Serializable

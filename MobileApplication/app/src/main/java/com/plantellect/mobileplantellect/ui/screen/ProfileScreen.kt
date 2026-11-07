@@ -12,6 +12,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -21,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontStyle
@@ -33,8 +37,10 @@ import com.plantellect.mobileplantellect.data.logic.ProfileValidator
 import com.plantellect.mobileplantellect.data.logic.UploadLimits
 import com.plantellect.mobileplantellect.viewmodel.ProfileMessage
 import com.plantellect.mobileplantellect.data.remote.dto.AccountDto
+import com.plantellect.mobileplantellect.data.remote.dto.MyApprovalDto
 import com.plantellect.mobileplantellect.data.remote.dto.ProfilePlantDto
 import com.plantellect.mobileplantellect.ui.theme.LeafMedium
+import com.plantellect.mobileplantellect.viewmodel.ApprovalsUiState
 import com.plantellect.mobileplantellect.viewmodel.ProfileViewModel
 import com.plantellect.mobileplantellect.viewmodel.ReportItem
 import java.text.DateFormat
@@ -80,6 +86,8 @@ private fun formatWhen(value: String?): String {
  * @param viewAccountId whose profile to show. Null or equal to [myAccountId] = your own profile.
  * @param baseUrl       server origin, used to open relative plant links.
  * @param onOpenPlant   opens a plant inside the app (the plant profile).
+ * @param refreshSignal changes whenever something that shows on this page may have changed behind it (the plant
+ *                      profile was closed after a vote or an edit): the profile is read again quietly.
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -90,7 +98,8 @@ fun ProfileScreen(
     onSignIn: () -> Unit,
     myAccountId: String? = account?.accountId,
     viewAccountId: String? = null,
-    onOpenPlant: (String) -> Unit = {}
+    onOpenPlant: (String) -> Unit = {},
+    refreshSignal: Int = 0
 ) {
     val c = MaterialTheme.colorScheme
     val s by vm.state.collectAsState()
@@ -111,6 +120,10 @@ fun ProfileScreen(
     var bioDraft by rememberSaveable { mutableStateOf("") }
     var passwordNotice by remember { mutableStateOf<String?>(null) }
     var tab by rememberSaveable(target) { mutableIntStateOf(0) }
+    // Big preview of a plant's photo (url to plant name), and the "search by name" boxes of the two plant lists.
+    var plantPreview by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var contributionQuery by rememberSaveable(target) { mutableStateOf("") }
+    var reportedQuery by rememberSaveable(target) { mutableStateOf("") }
 
     // Picks a photo from the phone and sends it as the new profile picture (the repository shrinks big files).
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -155,6 +168,15 @@ fun ProfileScreen(
     LaunchedEffect(account != null, target, isOwn) {
         if (isOwn && account != null) { vm.load(1); vm.loadOwnProfile(); vm.loadApprovals() }
         target?.let { if (account != null) vm.loadBotanist(it) }
+    }
+
+    // A vote or an edit was made on a plant page that was open over this one: read the numbers again, without
+    // clearing the list (that was why the up / down votes looked stuck until the app was reopened).
+    LaunchedEffect(refreshSignal) {
+        if (refreshSignal > 0 && account != null) {
+            target?.let { vm.loadBotanist(it, silent = true) }
+            if (isOwn) vm.loadApprovals()
+        }
     }
 
     // The view model is shared: never show the previous person's profile for a frame while this one loads.
@@ -289,7 +311,11 @@ fun ProfileScreen(
         val tabs = buildList<Pair<String, String>> {
             if (isOwn) {
                 // First, so a request waiting for you is the first thing you see.
-                if (canRecord) add("approvals" to "Pending approval (${approvals.data.awaitingMe.size + approvals.data.mine.size})")
+                // The number is what still needs an approval; approved and denied ones sit at the bottom of the tab.
+                if (canRecord) {
+                    val open = approvals.data.awaitingMe.count { it.needsAnswer } + approvals.data.mine.count { it.status == "pending" }
+                    add("approvals" to "Pending approval ($open)")
+                }
                 add("reports" to "My reports (${s.total})")
                 if (p != null || canRecord) add("contributions" to "My contributions (${p?.contributions?.size ?: 0})")
             } else if (p != null) {
@@ -305,23 +331,49 @@ fun ProfileScreen(
             LaunchedEffect(onApprovals, approvals.loaded, approvals.data.mine) {
                 if (onApprovals && approvals.loaded) vm.markApprovalsSeen()
             }
+            // Opening a plant list reads the profile again, so votes cast by other people show up too.
+            val tabKey = tabs[selected].first
+            var firstLook by remember(target) { mutableStateOf(true) }
+            LaunchedEffect(tabKey) {
+                if (firstLook) { firstLook = false; return@LaunchedEffect }   // the page just loaded it
+                if ((tabKey == "contributions" || tabKey == "reported") && p != null) {
+                    target?.let { vm.loadBotanist(it, silent = true) }
+                    if (isOwn && tabKey == "contributions") vm.loadApprovals()
+                }
+            }
             when (tabs[selected].first) {
                 "approvals" -> PendingApprovalSection(
                     state = approvals,
                     onAnswer = vm::answerChange,
                     onOpenPlant = onOpenPlant,
-                    onDismissMessage = vm::clearApprovalMessage
+                    onDismissMessage = vm::clearApprovalMessage,
+                    resolveUrl = vm::photoUrl,
+                    onPreview = { url, name -> plantPreview = url to name }
                 )
                 "reports" -> MyReportsSection(s.total, s.loading, s.notice, s.reports, s.withdrawingId,
                     s.page, s.pageCount, s.pageSize, s.hasPrev, s.hasNext,
                     onWithdraw = vm::withdraw, onPrev = vm::prevPage, onNext = vm::nextPage,
                     onOpenPlant = onOpenPlant, onOpenWeb = ::open)
-                "contributions" -> PlantList(
-                    p?.contributions.orEmpty(),
-                    if (isOwn) "You have not recorded any plants yet." else "Nothing recorded yet.",
-                    onOpenPlant
+                "contributions" -> {
+                    PlantList(
+                        p?.contributions.orEmpty(),
+                        if (isOwn) "You have not recorded any plants yet." else "Nothing recorded yet.",
+                        onOpenPlant,
+                        resolve = vm::photoUrl,
+                        onPreview = { url, name -> plantPreview = url to name },
+                        query = contributionQuery, onQuery = { contributionQuery = it },
+                        // Your own list also shows the votes your descriptions received.
+                        showVotes = isOwn
+                    )
+                    // The changes you made to descriptions, and what each one changed.
+                    if (isOwn) YourEdits(approvals, vm::photoUrl, { url, name -> plantPreview = url to name }, onOpenPlant)
+                }
+                "reported" -> PlantList(
+                    p?.reported.orEmpty(), "No reported plants yet.", onOpenPlant,
+                    resolve = vm::photoUrl,
+                    onPreview = { url, name -> plantPreview = url to name },
+                    query = reportedQuery, onQuery = { reportedQuery = it }
                 )
-                "reported" -> PlantList(p?.reported.orEmpty(), "No reported plants yet.", onOpenPlant)
             }
         }
 
@@ -370,6 +422,7 @@ fun ProfileScreen(
         }
     }
     zoomPhoto?.let { url -> PhotoZoomDialog(url, if (isOwn) "Your profile photo" else (p?.name ?: "Profile photo"), onClose = { zoomPhoto = null }) }
+    plantPreview?.let { (url, name) -> PhotoZoomDialog(url, name, onClose = { plantPreview = null }) }
     if (showChangeEmail && account != null && isOwn) {
         ChangeEmailDialog(
             currentEmail = account.email,
@@ -503,33 +556,166 @@ private fun BioSection(
     }
 }
 
+/**
+ * A list of plants (contributions or reported plants): search by name on top, then one card per plant with a photo
+ * you can tap for a big preview (a plant with no photo shows the leaf). With [showVotes] the up and down votes on the
+ * descriptions you wrote for the plant sit under its name; they are read again every time the list is opened.
+ */
 @Composable
-private fun PlantList(plants: List<ProfilePlantDto>, empty: String, onOpen: (String) -> Unit) {
+private fun PlantList(
+    plants: List<ProfilePlantDto>,
+    empty: String,
+    onOpen: (String) -> Unit,
+    resolve: (String?) -> String?,
+    onPreview: (url: String, name: String) -> Unit,
+    query: String,
+    onQuery: (String) -> Unit,
+    showVotes: Boolean = false
+) {
     val c = MaterialTheme.colorScheme
     if (plants.isEmpty()) {
         Text(empty, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
         return
     }
+    // Search by name: the common or the scientific name contains what was typed, any capitals.
+    val q = query.trim()
+    val shown = if (q.isEmpty()) plants else plants.filter {
+        it.name.contains(q, ignoreCase = true) || it.scientificName.contains(q, ignoreCase = true)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        plants.forEach { pl ->
+        if (plants.size > 1) NameSearchField(query, onQuery, "Search plants by name")
+        if (showVotes) {
+            Text(
+                "Under each plant: the total upvotes and downvotes on the descriptions you wrote for it.",
+                style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant
+            )
+        }
+        if (shown.isEmpty()) {
+            Text("No plant matches “$q”.", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+        }
+        shown.forEach { pl ->
             PlantSurface(Modifier.fillMaxWidth().clickable { onOpen(pl.id) }) {
                 Row(
                     Modifier.fillMaxWidth().padding(10.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PlantPhoto(pl.imageUrl, pl.name, Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)))
-                    Column {
+                    // The server sends a path; the picture needs the full address (that is why it never showed).
+                    PhotoPreviewThumb(resolve(pl.imageUrl), pl.name, onPreview)
+                    Column(Modifier.weight(1f)) {
                         Text(pl.name, style = MaterialTheme.typography.titleMedium, color = c.onSurface)
                         if (pl.scientificName.isNotBlank())
                             Text(pl.scientificName, style = MaterialTheme.typography.bodySmall,
                                 fontStyle = FontStyle.Italic, color = c.onSurfaceVariant)
                         if (pl.typeLabel.isNotBlank())
                             Text(pl.typeLabel, style = MaterialTheme.typography.labelMedium, color = c.primary)
+                        if (showVotes) {
+                            Row(
+                                Modifier.padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                VoteTotal(Icons.Filled.ThumbUp, pl.upVotes, "upvote", c.primary)
+                                VoteTotal(Icons.Filled.ThumbDown, pl.downVotes, "downvote", c.error)
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/** A plant photo you can tap to see big. [url] must already be a full address; null shows the leaf and does nothing. */
+@Composable
+internal fun PhotoPreviewThumb(
+    url: String?, name: String, onPreview: (url: String, name: String) -> Unit,
+    size: androidx.compose.ui.unit.Dp = 72.dp
+) {
+    val c = MaterialTheme.colorScheme
+    Box(
+        Modifier.size(size).clip(RoundedCornerShape(10.dp))
+            .then(if (url != null) Modifier.clickable(onClickLabel = "Preview photo") { onPreview(url, name) } else Modifier)
+    ) {
+        PlantPhoto(url, name, Modifier.fillMaxSize())
+        if (url != null) {
+            Surface(
+                shape = CircleShape, color = c.surface.copy(alpha = 0.85f),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(20.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.ZoomIn, contentDescription = null, tint = c.primary, modifier = Modifier.size(14.dp))
+                }
+            }
+        }
+    }
+}
+
+/** What the change was about, for a sentence: "the plant info", "your description" or "Maria's description". */
+private fun editedWhat(m: MyApprovalDto): String = when {
+    m.scope == "base" -> "the plant info"
+    m.owner != null -> "${m.owner.name ?: "another contributor"}'s description"
+    else -> "your description"
+}
+
+/**
+ * "Your edits": the changes you asked for that were approved and are now on the plant, newest first. Each shows the
+ * plant (photo to preview), what you edited, when it was applied, and, under "What changed", the words before and after.
+ */
+@Composable
+private fun YourEdits(
+    state: ApprovalsUiState,
+    resolve: (String?) -> String?,
+    onPreview: (url: String, name: String) -> Unit,
+    onOpenPlant: (String) -> Unit
+) {
+    val c = MaterialTheme.colorScheme
+    val edits = state.data.mine.filter { it.status == "approved" }.sortedByDescending { it.reviewedAt ?: it.createdAt.orEmpty() }
+    if (!state.loaded) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionTitle("Your edits (${edits.size})")
+        Text(
+            if (edits.isEmpty()) "Changes you ask for show up here once they are approved."
+            else "Changes you asked for that were approved and are now on the plant.",
+            style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant
+        )
+        edits.forEach { m ->
+            var open by remember(m.requestId) { mutableStateOf(false) }
+            PlantSurface(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PhotoPreviewThumb(resolve(m.imageUrl), m.plantName ?: "Plant", onPreview, size = 56.dp)
+                        Column(Modifier.weight(1f).clickable(enabled = m.plantId != null) { m.plantId?.let(onOpenPlant) }) {
+                            Text(m.plantName ?: "Plant", style = MaterialTheme.typography.titleSmall, color = c.onSurface)
+                            Text(
+                                "You edited ${editedWhat(m)}",
+                                style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant
+                            )
+                            Text(
+                                niceDateTime(m.reviewedAt ?: m.createdAt),
+                                style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant
+                            )
+                        }
+                    }
+                    if (!m.changes.isNullOrEmpty()) {
+                        PlantTextButton(onClick = { open = !open }) { Text(if (open) "Hide what changed" else "Show what changed") }
+                        if (open) ChangeDiff(m.changes)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** "12 upvotes" / "1 downvote" with its thumb. */
+@Composable
+private fun VoteTotal(icon: ImageVector, count: Int, word: String, tint: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+        Text(
+            "$count $word" + if (count == 1) "" else "s",
+            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 

@@ -182,7 +182,7 @@ async function updatePlantBase(plantId, body) {
 // One description
 // ---------------------------------------------------------------------------
 
-async function updateDescription(plantId, descriptionId, body) {
+async function updateDescription(plantId, descriptionId, body, editorId = null) {
     const b = body && typeof body === 'object' ? body : {};
     const errors = [];
 
@@ -261,6 +261,13 @@ async function updateDescription(plantId, descriptionId, body) {
             'UPDATE plant_description SET uses = ?, benefits = ?, harmful = ? WHERE descriptionId = ?',
             [text.uses, text.benefits, text.harmful, descriptionId]
         );
+        // Remember who changed the description last and when (the plant page shows it).
+        if (editorId) {
+            await conn.query(
+                'UPDATE plant_description SET editedAt = NOW(), editedBy = ? WHERE descriptionId = ?',
+                [editorId, descriptionId]
+            );
+        }
 
         const sent = Object.keys(parts);
         if (sent.length) {

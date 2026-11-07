@@ -4,7 +4,10 @@
 // A change request has TWO independent scopes, and each one is its own request
 // row with its own reason and its own admin decision:
 //
-//   scope 'base'         the plant's shared record. One per plant at a time.
+//   scope 'base'         the plant's shared record. One per plant at a time. It goes to the plant's PRIMARY
+//       contributor first (payload.ownerApproval, role 'primary'); if they approve it goes on to the admin,
+//       if they decline it ends and the admin never sees it. Nobody is asked when the person filing it IS
+//       the primary contributor, or when that account is no longer active.
 //       commonName, scientificName   plants
 //       type.*                       the plant's OWN plant_types row: typeName,
 //                                    isMedicinal, isHarmful, toxicityLevel, cautionNote
@@ -39,7 +42,7 @@
 // keys with the plant's primary description. applyPlantChange still honours them.
 
 const { insertRow } = require('./ids.js');
-const { stateOf, OWNER_PENDING } = require('./owner-approval');
+const { stateOf, OWNER_PENDING, OWNER_ROLE_PRIMARY } = require('./owner-approval');
 const { mysqlPool } = require('./pool-mysql');
 const {
     normalizeName, normalizeRichText, normalizeScientificName, loadModelClasses, parsePayload,
@@ -144,6 +147,39 @@ async function loadPrimaryDescription(executor, plantId, lock) {
         [plantId]
     );
     return rows[0] || null;
+}
+
+/**
+ * The plant's primary contributor: the author of the description the plant page shows first (primary flag,
+ * then the oldest). Null when the plant has no approved description.
+ */
+async function loadPrimaryContributor(executor, plantId) {
+    const [rows] = await executor.query(
+        `SELECT d.accountId, a.status AS accountStatus, a.username, pr.firstName, pr.lastName
+         FROM plant_description d
+         JOIN accounts a ON a.accountId = d.accountId
+         LEFT JOIN profiles pr ON pr.accountId = d.accountId
+         WHERE d.plantId = ? AND d.status = 'approved' AND d.archivedAt IS NULL
+         ORDER BY d.isPrimary DESC, d.createdAt ASC
+         LIMIT 1`,
+        [plantId]
+    );
+    return rows[0] || null;
+}
+
+/** The ownerApproval block for a plant-info request, or null when nobody needs to be asked. */
+function primaryApprovalFor(primary, requesterId) {
+    if (!primary || primary.accountId === requesterId || primary.accountStatus !== 'active') return null;
+    return {
+        required: true,
+        role: OWNER_ROLE_PRIMARY,
+        ownerId: primary.accountId,
+        ownerName: [primary.firstName, primary.lastName].filter(Boolean).join(' ') || primary.username,
+        status: OWNER_PENDING,
+        requestedAt: new Date().toISOString(),
+        decidedAt: null,
+        note: null
+    };
 }
 
 /** Every approved description the account wrote for this plant, oldest first. */
@@ -278,6 +314,7 @@ async function getPlantEditable(plantId, accountId) {
     const own = await loadOwnDescriptions(mysqlPool, plantId, accountId);
     const others = await loadOtherDescriptions(mysqlPool, plantId, accountId);
     const pending = await loadPendingChanges(mysqlPool, plantId);
+    const baseApproval = primaryApprovalFor(await loadPrimaryContributor(mysqlPool, plantId), accountId);
 
     const taxonomy = {};
     for (const level of TAXONOMY_LEVELS) taxonomy[level] = plant[level];
@@ -299,6 +336,10 @@ async function getPlantEditable(plantId, accountId) {
         taxonomy,
         hasPendingBase,
         pendingBaseRequestId: pending.base || pending.legacy || null,
+        // Who must approve a change to the plant info before the admin does (null: only the admin).
+        baseApproval: baseApproval
+            ? { needsOwnerApproval: true, ownerId: baseApproval.ownerId, ownerName: baseApproval.ownerName }
+            : null,
         descriptions: own.map((d) => {
             const requestId = pending.descriptions.get(d.descriptionId) || pending.legacy || null;
             return {
@@ -513,7 +554,10 @@ async function createPlantChangeRequest(accountId, plantId, body) {
                 await conn.rollback();
                 return failure(`A change to this plant's info is already waiting for review (${waiting}).`, 409);
             }
-            filed.push({ scope: SCOPE_BASE, changes, payload: { scope: SCOPE_BASE, changes, reason: baseReason } });
+            const basePayload = { scope: SCOPE_BASE, changes, reason: baseReason };
+            const baseApproval = primaryApprovalFor(await loadPrimaryContributor(conn, plantId), accountId);
+            if (baseApproval) basePayload.ownerApproval = baseApproval;
+            filed.push({ scope: SCOPE_BASE, changes, payload: basePayload });
         }
 
         // ---------------- description ----------------

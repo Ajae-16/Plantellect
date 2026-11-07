@@ -62,8 +62,8 @@ internal fun PlantellectPage(scroll: Boolean = true, compact: Boolean = false, c
             Modifier.fillMaxSize()
                 .then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                 // compact: a page that already has a Back bar above it needs less air around the content.
-                .padding(horizontal = if (compact) 12.dp else 20.dp, vertical = if (compact) 6.dp else 18.dp),
-            verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 18.dp),
+                .padding(horizontal = if (compact) 12.dp else 20.dp, vertical = if (compact) 4.dp else 10.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 14.dp),
             content = content
         )
     }
@@ -114,10 +114,17 @@ internal fun LeafDot(active: Boolean, size: Dp = 12.dp) {
 @Composable
 internal fun PageHeading(eyebrow: String?, title: String, subtitle: String) {
     val c = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (eyebrow != null) Text(eyebrow.uppercase(), style = MaterialTheme.typography.labelMedium, color = c.primary)
-        Text(title, style = MaterialTheme.typography.headlineMedium, color = c.onBackground)
-        Text(subtitle, style = MaterialTheme.typography.bodyLarge, color = c.onBackground.copy(alpha = .72f))
+    // Short heading: small eyebrow, one-line title, a two-line subtitle (it used to take a quarter of the screen).
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (eyebrow != null) Text(eyebrow.uppercase(), style = MaterialTheme.typography.labelSmall, color = c.primary)
+        Text(
+            title, style = MaterialTheme.typography.headlineSmall, color = c.onBackground,
+            maxLines = 1, overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            subtitle, style = MaterialTheme.typography.bodyMedium, color = c.onBackground.copy(alpha = .72f),
+            maxLines = 2, overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

@@ -1,8 +1,14 @@
 // Pending approvals for the signed-in account (the Profile > Pending approval tab and the
 // sidebar's "Profile (n)" badge).
 //
-//   awaitingMe   change requests to MY description that I have not answered yet
-//   mine         change requests I filed that are still pending, plus decided ones I have not looked at
+//   awaitingMe   change requests that need MY answer (a change to a description I wrote, or to the plant info
+//                of a plant I am the primary contributor of), then the ones I already answered or that were
+//                decided meanwhile
+//   mine         change requests I filed: the open ones first, then the approved / denied ones
+//
+// Both lists put what still needs an approval on top and what is already approved or denied at the
+// bottom. A denied request is deleted after settings.maintenance.deniedChangeRetentionDays days
+// (config/denied-change-purge.js); an answered one leaves my awaitingMe list after the same time.
 //
 // The contributor's answer is stored in the request's payload (see owner-approval.js), so there is
 // no table of its own. Approving only records the answer; the request stays pending for the admin.
@@ -16,10 +22,19 @@
 const { mysqlPool } = require('./pool-mysql');
 const { parsePayload } = require('./shared-mysql');
 const { claimPendingRequest, finishRequest } = require('./request-mysql');
+const settings = require('./settings');
+const { publicUrls, visibleImageSql } = require('./public-images');
 const { ownerApprovalOf, stateOf, OWNER_PENDING, OWNER_APPROVED, OWNER_DENIED } = require('./owner-approval');
 
 const MAX_NOTE = 300;
 const MINE_LIMIT = 100;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** When a request was decided (or filed, when no decision time was stored): the key for newest-first order. */
+function decidedAtMs(row) {
+    const t = new Date(row.reviewedAt || row.createdAt).getTime();
+    return Number.isFinite(t) ? t : 0;
+}
 
 function personName(row, prefix) {
     const full = [row[`${prefix}FirstName`], row[`${prefix}LastName`]].filter(Boolean).join(' ');
@@ -35,43 +50,68 @@ function changeShape(payload) {
     };
 }
 
-/** Requests waiting for MY answer. */
+/**
+ * Requests sent to ME. The ones that still need my answer come first (oldest first); after them the ones I
+ * already answered or that an admin settled meanwhile (newest first), each with its state.
+ */
 async function loadAwaiting(accountId) {
+    const keepSince = new Date(Date.now() - settings.maintenance.deniedChangeRetentionDays * DAY_MS);
     const [rows] = await mysqlPool.query(
-        `SELECT ar.requestId, ar.accountId, ar.targetPlantId, ar.payload, ar.createdAt,
+        `SELECT ar.requestId, ar.accountId, ar.targetPlantId, ar.payload, ar.status, ar.createdAt, ar.reviewedAt,
                 a.username AS requesterUsername, pr.firstName AS requesterFirstName, pr.lastName AS requesterLastName,
-                p.commonName AS plantName, p.scientificName AS plantScientificName
+                p.commonName AS plantName, p.scientificName AS plantScientificName,
+                (SELECT i.imageId FROM plant_images i
+                 WHERE i.plantId = p.plantId AND ${visibleImageSql('i')}
+                 ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId
          FROM approval_requests ar
          JOIN accounts a ON a.accountId = ar.accountId
          LEFT JOIN profiles pr ON pr.accountId = ar.accountId
          LEFT JOIN plants p ON p.plantId = ar.targetPlantId
-         WHERE ar.requestType = 'plant_change' AND ar.status = 'pending'
-         ORDER BY ar.createdAt ASC`
+         WHERE ar.requestType = 'plant_change' AND ar.status <> 'cancelled'
+           AND (ar.status = 'pending' OR COALESCE(ar.reviewedAt, ar.createdAt) >= ?)
+         ORDER BY ar.createdAt ASC`,
+        [keepSince]
     );
-    const out = [];
+    const open = [];
+    const settled = [];
     for (const r of rows) {
         const payload = parsePayload(r.payload);
         const oa = ownerApprovalOf(payload);
-        if (!oa || oa.ownerId !== accountId || oa.status !== OWNER_PENDING) continue;
-        out.push({
+        if (!oa || oa.ownerId !== accountId) continue;
+        // Needs my answer: nobody has settled the request and I have not answered it.
+        const needsAnswer = r.status === 'pending' && oa.status === OWNER_PENDING;
+        const item = {
             requestId: r.requestId,
             plantId: r.targetPlantId,
             plantName: r.plantName,
             scientificName: r.plantScientificName,
+            imageUrl: publicUrls(r.targetPlantId, r.heroImageId).imageUrl,
             requesterId: r.accountId,
             requesterName: personName(r, 'requester'),
             createdAt: r.createdAt,
+            reviewedAt: r.reviewedAt,
+            status: r.status,                 // pending | approved | denied (the request as a whole)
+            ownerStatus: oa.status,           // my own answer: pending | approved | denied
+            ownerNote: oa.note || null,
+            ownerDecidedAt: oa.decidedAt || null,
+            needsAnswer,
+            _sort: decidedAtMs(r),
             ...changeShape(payload)
-        });
+        };
+        (needsAnswer ? open : settled).push(item);
     }
-    return out;
+    settled.sort((x, y) => y._sort - x._sort);
+    return [...open, ...settled].map(({ _sort, ...rest }) => rest);
 }
 
 /** Requests I filed: still pending, or decided / answered since I last looked. */
 async function loadMine(accountId) {
     const [rows] = await mysqlPool.query(
         `SELECT ar.requestId, ar.targetPlantId, ar.payload, ar.status, ar.createdAt, ar.reviewedAt, ar.note,
-                p.commonName AS plantName, p.scientificName AS plantScientificName
+                p.commonName AS plantName, p.scientificName AS plantScientificName,
+                (SELECT i.imageId FROM plant_images i
+                 WHERE i.plantId = p.plantId AND ${visibleImageSql('i')}
+                 ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId
          FROM approval_requests ar
          LEFT JOIN plants p ON p.plantId = ar.targetPlantId
          WHERE ar.requestType = 'plant_change' AND ar.accountId = ?
@@ -86,13 +126,14 @@ async function loadMine(accountId) {
         const state = stateOf(r.status, payload);
         // Older requests carry no seen-state: treat them as already seen so nothing floods the badge.
         const unread = payload.requesterSeenState !== undefined && payload.requesterSeenState !== state;
-        if (r.status !== 'pending' && !unread) continue;   // a decided request I have already seen is history
+        // A decided request stays (at the bottom) until it is deleted: a denied one after the retention days.
         const oa = ownerApprovalOf(payload);
         out.push({
             requestId: r.requestId,
             plantId: r.targetPlantId,
             plantName: r.plantName,
             scientificName: r.plantScientificName,
+            imageUrl: publicUrls(r.targetPlantId, r.heroImageId).imageUrl,
             status: r.status,                 // pending | approved | denied
             createdAt: r.createdAt,
             reviewedAt: r.reviewedAt,
@@ -100,21 +141,28 @@ async function loadMine(accountId) {
             unread,
             owner: oa ? {
                 id: oa.ownerId, name: oa.ownerName || 'the contributor',
+                role: oa.role || null,        // 'primary' = the plant's primary contributor (a plant-info change)
                 status: oa.status, decidedAt: oa.decidedAt || null, note: oa.note || null
             } : null,
             ...changeShape(payload),
-            _state: state
+            _state: state,
+            _sort: decidedAtMs(r)
         });
     }
+    // Still open on top (newest first), then approved / denied (most recently decided first).
+    const isOpen = (x) => x.status === 'pending';
+    out.sort((x, y) => (isOpen(x) === isOpen(y)
+        ? y._sort - x._sort
+        : (isOpen(x) ? -1 : 1)));
     return out;
 }
 
 async function getApprovals(accountId) {
     const [awaitingMe, mine] = await Promise.all([loadAwaiting(accountId), loadMine(accountId)]);
-    const badge = awaitingMe.length + mine.filter((m) => m.unread).length;
+    const badge = awaitingMe.filter((a) => a.needsAnswer).length + mine.filter((m) => m.unread).length;
     return {
         awaitingMe,
-        mine: mine.map(({ _state, ...rest }) => rest),
+        mine: mine.map(({ _state, _sort, ...rest }) => rest),
         badge
     };
 }

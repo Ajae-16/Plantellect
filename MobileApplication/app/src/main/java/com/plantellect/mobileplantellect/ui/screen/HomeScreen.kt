@@ -81,12 +81,12 @@ fun HomeScreen(
     Refreshable(refreshing = ui.loading, onRefresh = { vm.reload() }, modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            contentPadding = PaddingValues(vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
-                Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Plantellect", style = MaterialTheme.typography.headlineMedium)
+                Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Plantellect", style = MaterialTheme.typography.headlineSmall)
                     Text(
                         "Identify, learn and record plants.",
                         style = MaterialTheme.typography.bodyMedium,

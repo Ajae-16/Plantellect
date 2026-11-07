@@ -150,15 +150,23 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
     /** Loadable photo URL for a relative photoUrl (send the session cookie: use the app's OkHttp client). */
     fun photoUrl(relative: String?): String? = repo.photoUrl(relative)
 
-    /** Loads the public profile (photo, metrics, contributions, reported plants) of any account. */
-    fun loadBotanist(accountId: String) {
-        _botanist.update { BotanistUiState(loading = true) }
+    /**
+     * Loads the public profile (photo, metrics, contributions, reported plants, the vote totals) of any account.
+     *
+     * [silent] = a refresh of a profile that is already on screen (the votes changed, a plant was edited): the
+     * profile stays visible while the new one loads, so the list does not flash empty and the tabs do not jump.
+     * A failed silent refresh keeps what was shown.
+     */
+    fun loadBotanist(accountId: String, silent: Boolean = false) {
+        val shownNow = _botanist.value.profile?.takeIf { it.accountId == accountId }
+        if (silent && shownNow != null) _botanist.update { it.copy(loading = false, error = null) }
+        else _botanist.update { BotanistUiState(loading = true) }
         viewModelScope.launch {
-            val next = when (val r = repo.botanistProfile(accountId)) {
-                is ApiResult.Success -> BotanistUiState(profile = r.value)
-                is ApiResult.Failure -> BotanistUiState(error = "This profile could not be loaded.")
+            when (val r = repo.botanistProfile(accountId)) {
+                is ApiResult.Success -> _botanist.value = BotanistUiState(profile = r.value)
+                is ApiResult.Failure ->
+                    if (!(silent && shownNow != null)) _botanist.value = BotanistUiState(error = "This profile could not be loaded.")
             }
-            _botanist.value = next
         }
     }
 

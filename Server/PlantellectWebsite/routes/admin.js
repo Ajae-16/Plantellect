@@ -524,7 +524,7 @@ router.patch('/api/plants/:plantId', requirePermission('access_admin'), async (r
 /** One contributor's description (text + measurements); body.makePrimary may promote it. */
 router.patch('/api/plants/:plantId/descriptions/:descriptionId', requirePermission('access_admin'), async (req, res) => {
     try {
-        sendEditResult(res, await plantEdit.updateDescription(req.params.plantId, req.params.descriptionId, req.body));
+        sendEditResult(res, await plantEdit.updateDescription(req.params.plantId, req.params.descriptionId, req.body, req.session.accountId));
     } catch (err) {
         console.error('Save plant description error:', err.message);
         res.status(500).json({ error: 'Failed to save the description' });

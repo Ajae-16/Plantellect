@@ -20,6 +20,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.LocalFlorist
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalConfiguration
@@ -98,14 +101,27 @@ fun PlantProfileDialog(
                         // One row: Menu and Back on the left, Contribute at the right end. It is outside the scrolling
                         // page, so it stays in view however far you scroll.
                         Row(
-                            Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 12.dp),
+                            Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 10.dp, top = 2.dp, bottom = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (nav != null) IconButton({ drawerScope.launch { drawerState.open() } }) {
+                            if (nav != null) IconButton({ drawerScope.launch { drawerState.open() } }, Modifier.size(40.dp)) {
                                 Icon(Icons.Filled.Menu, contentDescription = "Menu")
                             }
-                            AppBackButton(onClose, Modifier.padding(start = 4.dp))
-                            Spacer(Modifier.weight(1f))
+                            AppBackButton(onClose, Modifier.padding(start = 2.dp))
+                            // The plant's name takes the free space between Back and the right-hand buttons
+                            // (it replaces the extra "Plant Library > name" row, so the bar is one short line).
+                            Row(
+                                Modifier.weight(1f).padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Filled.LocalFlorist, contentDescription = null, tint = c.primary, modifier = Modifier.size(18.dp))
+                                Text(
+                                    (state as? ProfileLoad.Ready)?.data?.name ?: fallbackName,
+                                    style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                            }
                             if (zoom.scale > 1.01f) PlantTextButton({ zoom.reset() }) { Text("Reset zoom") }
                             // Only people who may record plants see it; it opens Record Plant on this plant.
                             val ready = state as? ProfileLoad.Ready
@@ -120,23 +136,6 @@ fun PlantProfileDialog(
                                     Text("Contribute", maxLines = 1)
                                 }
                             }
-                        }
-
-                        // Where this page lives: the plant profile is part of the Plant Library (also lit up in the sidebar).
-                        Row(
-                            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Filled.LocalFlorist, contentDescription = null, tint = c.primary, modifier = Modifier.size(18.dp))
-                            Text("Plant Library", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = c.primary, maxLines = 1)
-                            Text("›", style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
-                            Text(
-                                (state as? ProfileLoad.Ready)?.data?.name ?: fallbackName,
-                                Modifier.weight(1f, fill = false),
-                                style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis
-                            )
                         }
 
                         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().fingerZoom(zoom)) {
@@ -169,6 +168,11 @@ fun PlantProfileDialog(
                                         // A description just got hidden by down votes: draw the page again.
                                         onHidden = { attempt++ },
                                         onView = { viewing = it },
+                                        // The "..." menu of every description: Request change opens the change form for THAT
+                                        // description. Only people who may record plants get it.
+                                        onRequestChange = nav?.takeIf { "record_plant" in it.permissions }?.let { n ->
+                                            { descriptionId: String -> onClose(); n.requestChange(plantId, s.data.name, descriptionId) }
+                                        },
                                         // The screen that shows this dialog hides it and brings it back when Back is pressed on the profile.
                                         onOpenBotanist = { id -> onOpenBotanist(id) }
                                     )
@@ -354,6 +358,7 @@ private fun ProfileBody(
     votes: VotesController,
     onHidden: () -> Unit,
     onView: (String) -> Unit,
+    onRequestChange: ((String) -> Unit)?,
     onOpenBotanist: (String) -> Unit
 ) {
     val c = MaterialTheme.colorScheme
@@ -363,7 +368,11 @@ private fun ProfileBody(
     val others = p.descriptions.filter { it !== primary }
     val tox = p.toxicityLevel?.takeIf { it.isNotBlank() && it != "none" }
     // How the other contributors' boxes are ordered: "recent" (newest first) or "upvoted" (most up votes first).
+    // The contributor's name is no longer a sort (A to Z): type it in the search box instead.
     var sort by remember { mutableStateOf("recent") }
+    var query by remember { mutableStateOf("") }
+    // The boxes scroll inside their own container; this state lets trapScroll keep that scroll from moving the page.
+    val innerScroll = rememberScrollState()
 
     // Photos: the large photo swipes (and moves by itself) through all of them; the strip below jumps to one.
     // Tap the large photo to view it full size.
@@ -406,10 +415,11 @@ private fun ProfileBody(
         if (primary != null && primary.author != null) {
             ContributorByline(primary, onOpenBotanist, onView)
         }
+        if (primary != null) EditedLine(primary, c.onSurfaceVariant, onOpenBotanist)
 
         // Thumbs sit ABOVE the description text, for the primary one (here, under the byline) and for every
         // contributor box below (under the author's name), so they are always in the same place.
-        DescriptionVoteBar(votes, primary?.descriptionId, onHidden)
+        DescriptionVoteBar(votes, primary?.descriptionId, onHidden, onRequestChange)
 
         Section("What it looks like", primary?.looks, "No description recorded yet.")
         Section("Common uses", primary?.uses)
@@ -438,33 +448,44 @@ private fun ProfileBody(
         }
         // The color stays with the contributor (their original place in the list), whatever the order.
         val ups = votes.summary?.byId
+        // Search by contributor name: anything the name contains, any capitals.
+        val q = query.trim()
+        val found = if (q.isEmpty()) shown else shown.filter { (_, d) -> d.author.orEmpty().contains(q, ignoreCase = true) }
         val boxes = when (sort) {
-            "upvoted" -> shown.sortedWith(
+            "upvoted" -> found.sortedWith(
                 compareByDescending<IndexedValue<ProfileDescription>> { ups?.get(it.value.descriptionId ?: "")?.up ?: 0 }
                     .thenByDescending { it.value.createdAt.orEmpty() }
             )
-            else -> shown.sortedByDescending { it.value.createdAt.orEmpty() }
+            else -> found.sortedByDescending { it.value.createdAt.orEmpty() }
         }
-        if (boxes.isNotEmpty()) {
+        if (shown.isNotEmpty()) {
             HorizontalDivider()
             Text("More details from other contributors", style = MaterialTheme.typography.titleMedium, color = c.onSurface)
-            if (boxes.size > 1) {
+            if (shown.size > 1) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     FilterChip(selected = sort == "recent", onClick = { sort = "recent" }, label = { Text("Most recent") })
                     FilterChip(selected = sort == "upvoted", onClick = { sort = "upvoted" }, label = { Text("Most upvoted") })
                 }
+                NameSearchField(query, { query = it }, "Search by contributor name")
             }
             // The boxes live in their own scrolling container, so a plant with many contributions does not
             // make the whole page endless: scroll inside it to read them all.
             val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
-            Surface(
+            if (boxes.isEmpty()) {
+                Text(
+                    "No contributor matches “$q”.",
+                    style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant
+                )
+            }
+            if (boxes.isNotEmpty()) Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = c.surfaceVariant.copy(alpha = 0.25f),
                 border = BorderStroke(1.dp, c.outlineVariant),
-                modifier = Modifier.fillMaxWidth()
+                // trapScroll: at the top or bottom of this list the drag stops here and does not move the page.
+                modifier = Modifier.fillMaxWidth().trapScroll(innerScroll)
             ) {
               Column(
-                Modifier.fillMaxWidth().heightIn(max = maxHeight).verticalScroll(rememberScrollState()).padding(10.dp),
+                Modifier.fillMaxWidth().heightIn(max = maxHeight).verticalScroll(innerScroll).padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
               ) {
               boxes.forEach { (i, d) ->
@@ -483,9 +504,10 @@ private fun ProfileBody(
                     d.specialization?.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = colors.fg.copy(alpha = 0.8f))
                     }
+                    EditedLine(d, colors.fg.copy(alpha = 0.9f), onOpenBotanist)
                     if (d.descriptionId != null) {
                         CompositionLocalProvider(LocalContentColor provides colors.fg) {
-                            DescriptionVoteBar(votes, d.descriptionId, onHidden)
+                            DescriptionVoteBar(votes, d.descriptionId, onHidden, onRequestChange)
                         }
                     }
                     if (d.looks.isNotBlank()) BoxSection("What it looks like", d.looks, colors)
@@ -498,7 +520,7 @@ private fun ProfileBody(
             }
             if (boxes.size > 1) {
                 Text(
-                    "${boxes.size} contributions. Scroll inside the box to see them all.",
+                    "${boxes.size} contributions" + (if (q.isNotEmpty()) " match “$q”" else "") + ". Scroll inside the box to see them all.",
                     style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant
                 )
             }
@@ -556,6 +578,50 @@ private fun ContributorByline(d: ProfileDescription, onOpen: (String) -> Unit, o
             }
         }
     }
+}
+
+/**
+ * "Edited by NAME · November 5, 2026, 3:42 PM". Nothing when the description was never edited. The server keeps only
+ * the LATEST edit, so a new edit by someone else replaces both the name and the time. The name opens that person's profile.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun EditedLine(d: ProfileDescription, color: Color, onOpen: (String) -> Unit, modifier: Modifier = Modifier) {
+    if (d.editedAt.isNullOrBlank()) return
+    val whenText = niceDateTime(d.editedAt)
+    FlowRow(
+        modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+        itemVerticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Filled.Edit, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+        Text("Edited", style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.SemiBold)
+        if (!d.editedBy.isNullOrBlank()) {
+            Text("by", style = MaterialTheme.typography.labelMedium, color = color)
+            PersonLink(d.editedBy, d.editedById, color, MaterialTheme.typography.labelMedium, onOpen)
+        }
+        if (whenText.isNotBlank()) Text("· $whenText", style = MaterialTheme.typography.labelMedium, color = color)
+    }
+}
+
+/** One-line search box with a clear button: the app's "search by name" field. */
+@Composable
+internal fun NameSearchField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { onChange(it.take(60)) },
+        modifier = modifier.fillMaxWidth(),
+        singleLine = true,
+        label = { Text(label) },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = {
+            if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) {
+                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+            }
+        },
+        shape = MaterialTheme.shapes.small
+    )
 }
 
 /** A contributor's box: tinted background, an accent edge on the left, text in the box's own color. */

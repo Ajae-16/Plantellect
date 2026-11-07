@@ -52,10 +52,10 @@ fun DiscoveriesScreen(
     val c = MaterialTheme.colorScheme
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Discoveries", style = MaterialTheme.typography.headlineMedium, color = c.onBackground)
+        Text("Discoveries", style = MaterialTheme.typography.headlineSmall, color = c.onBackground)
         Text(
             "Plants people could not identify. Claim one, record it, and an admin closes it when the record is approved.",
             style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant

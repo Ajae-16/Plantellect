@@ -115,13 +115,16 @@ async function getPublicPlantDetail(plantId) {
     );
 
     const [descriptions] = await mysqlPool.query(
-        `SELECT d.descriptionId, d.uses, d.benefits, d.harmful, d.isPrimary, d.createdAt,
+        `SELECT d.descriptionId, d.uses, d.benefits, d.harmful, d.isPrimary, d.createdAt, d.editedAt, d.editedBy,
                 a.accountId AS authorId, a.username AS authorName,
                 pr.firstName, pr.lastName, pr.specialization, pr.imagePath, pr.updatedAt AS profileUpdatedAt,
+                ea.username AS editorUsername, ep.firstName AS editorFirstName, ep.lastName AS editorLastName,
                 ${PARTS_SELECT}
          FROM plant_description d
          JOIN accounts a ON d.accountId = a.accountId
          LEFT JOIN profiles pr ON pr.accountId = a.accountId
+         LEFT JOIN accounts ea ON ea.accountId = d.editedBy
+         LEFT JOIN profiles ep ON ep.accountId = d.editedBy
          LEFT JOIN plant_parts pp ON d.partsId = pp.partId
          WHERE d.plantId = ? AND d.status = 'approved' AND d.hiddenAt IS NULL AND d.archivedAt IS NULL
          ORDER BY d.isPrimary DESC, d.createdAt ASC`,
@@ -162,7 +165,15 @@ async function getPublicPlantDetail(plantId) {
                 photoUrl: contributorPhotoUrl(d.authorId, d.imagePath, d.profileUpdatedAt)
             },
             parts: partsFromRow(d),
-            createdAt: d.createdAt
+            createdAt: d.createdAt,
+            // The latest editor only: it changes every time another edit is applied. null = never edited.
+            editedAt: d.editedAt || null,
+            editedBy: d.editedAt
+                ? {
+                    accountId: d.editedBy || null,
+                    name: [d.editorFirstName, d.editorLastName].filter(Boolean).join(' ') || d.editorUsername || null
+                }
+                : null
         })),
         recordedBy: people.recordedBy,
         reviewedBy: people.reviewedBy,
@@ -197,9 +208,17 @@ async function getContributorProfile(accountId) {
         [accountId]
     );
 
-    const contributionSelect = `
+    // Total up / down votes on the descriptions this account wrote for the plant (approved, not archived).
+    // Only the contributions list carries them.
+    const voteTotals = (column) => `
+        (SELECT COALESCE(SUM(v.${column}), 0)
+         FROM plant_description d
+         JOIN vw_description_votes v ON v.descriptionId = d.descriptionId
+         WHERE d.plantId = p.plantId AND d.accountId = pc.accountId
+           AND d.status = 'approved' AND d.archivedAt IS NULL) AS ${column}`;
+    const contributionSelect = (extraColumns = '') => `
         SELECT p.plantId, p.commonName, p.scientificName, pc.role, pc.createdAt,
-                t.typeName, t.typeName AS typeLabel,
+                t.typeName, t.typeName AS typeLabel,${extraColumns}
                 (SELECT i.imageId FROM plant_images i
                  WHERE i.plantId = p.plantId AND ${visibleImageSql('i')}
                  ORDER BY i.isPrimary DESC, i.uploadedAt ASC LIMIT 1) AS heroImageId
@@ -210,14 +229,14 @@ async function getContributorProfile(accountId) {
         ORDER BY pc.createdAt DESC`;
 
     const [contributions] = await mysqlPool.query(
-        `${contributionSelect}
+        `${contributionSelect(`${voteTotals('upVotes')}, ${voteTotals('downVotes')},`)}
          WHERE pc.accountId = ? AND pc.role = 'contributor' AND ${PUBLIC_VISIBILITY}
          ${orderAndVisibility}`,
         [accountId]
     );
 
     const [reported] = await mysqlPool.query(
-        `${contributionSelect}
+        `${contributionSelect()}
          WHERE pc.accountId = ? AND pc.role = 'reporter' AND ${PUBLIC_VISIBILITY}
          ${orderAndVisibility}`,
         [accountId]
@@ -247,6 +266,9 @@ async function getContributorProfile(accountId) {
             role: c.role,
             type: c.typeName,
             typeLabel: c.typeLabel,
+            // Totals over everything this account wrote for the plant.
+            upVotes: Number(c.upVotes) || 0,
+            downVotes: Number(c.downVotes) || 0,
             ...publicUrls(c.plantId, c.heroImageId)
         })),
         reported: reported.map((c) => ({

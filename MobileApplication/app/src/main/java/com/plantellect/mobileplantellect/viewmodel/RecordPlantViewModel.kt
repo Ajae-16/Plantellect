@@ -252,12 +252,15 @@ class RecordPlantViewModel(private val repo: RecordRepository) : ViewModel() {
                 val ids = r.value.requests.orEmpty().mapNotNull { it.requestId }.joinToString(" and ")
                     .ifBlank { r.value.requestId.orEmpty() }
                 val plural = if ((r.value.requests?.size ?: 0) > 1) "s" else ""
-                // A change to someone else's description also waits for that contributor.
-                val owner = r.value.requests.orEmpty().firstOrNull { it.needsOwnerApproval == true }
-                val text = if (owner != null)
-                    "Change request$plural sent as $ids. ${owner.ownerName ?: "The contributor"} was notified and must approve it, " +
-                            "then an admin must approve it too. Follow it under Profile › Pending approval."
-                else "Change request$plural sent for review as $ids. Nothing changes until an admin decides each one."
+                // A change to someone else's description, or to the plant info (the primary contributor), also
+                // waits for that contributor first; if they decline, an admin never sees it.
+                val askedOwners = r.value.requests.orEmpty().filter { it.needsOwnerApproval == true }
+                val text = if (askedOwners.isNotEmpty()) {
+                    val names = askedOwners.mapNotNull { it.ownerName }.distinct().joinToString(" and ").ifBlank { "The contributor" }
+                    val were = if (askedOwners.mapNotNull { it.ownerName }.distinct().size > 1) "were" else "was"
+                    "Change request$plural sent as $ids. $names $were notified and must approve first; " +
+                            "if they do, an admin decides next. Follow it under Profile › Pending approval."
+                } else "Change request$plural sent for review as $ids. Nothing changes until an admin decides each one."
                 done(text, RecordDone.CHANGE)
             }
             is ApiResult.Failure -> fail(r.error)

@@ -77,6 +77,13 @@ import kotlinx.serialization.json.JsonPrimitive
     val values: Map<String, JsonElement>? = null
 )
 
+/** Who must approve a change to the plant info before an admin does: the plant's primary contributor. */
+@Serializable data class RecBaseApproval(
+    val needsOwnerApproval: Boolean? = null,
+    val ownerId: String? = null,
+    val ownerName: String? = null
+)
+
 /** GET /api/plants/:id/editable: the plant's current values, to build the change form from. */
 @Serializable data class RecEditable(
     val id: String,
@@ -87,6 +94,8 @@ import kotlinx.serialization.json.JsonPrimitive
     val taxonomy: Map<String, String?>? = null,
     val hasPendingBase: Boolean? = null,
     val pendingBaseRequestId: String? = null,
+    /** Null when only an admin decides a plant-info change (you are the primary contributor, or there is none). */
+    val baseApproval: RecBaseApproval? = null,
     /** Only the signed-in contributor's own descriptions. */
     val descriptions: List<RecDescription>? = null,
     /** Everyone else's descriptions of this plant. */
@@ -118,6 +127,8 @@ import kotlinx.serialization.json.JsonPrimitive
 @Serializable data class RecOwnerApproval(
     val ownerId: String? = null,
     val ownerName: String? = null,
+    /** "primary" for a change to the plant info; null for a change to someone's description. */
+    val role: String? = null,
     val status: String? = null,
     val note: String? = null
 )

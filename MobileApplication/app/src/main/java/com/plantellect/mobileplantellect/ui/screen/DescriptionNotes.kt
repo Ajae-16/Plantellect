@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.ThumbDown
@@ -93,8 +94,9 @@ fun rememberVotes(client: OkHttpClient, vm: LibraryViewModel, plantId: String, r
  * under the buttons with a Submit button, so a vote is never cast by accident:
  *  - up:   "Submit upvote" / Cancel
  *  - down: the premade reasons as chips (plus a note box for "Other"), then "Submit downvote" / Cancel
- * Tapping the vote you already cast offers "Remove my vote". A "votes" toggle opens the table (totals,
- * reasons counted, voters' notes, no names).
+ * Tapping the vote you already cast offers "Remove my vote". The "..." menu next to the thumbs holds
+ * "Request change" (only when [onRequestChange] is given: it opens the change form for THIS description) and
+ * "Votes summary", which opens the table (totals, reasons counted, voters' notes, no names).
  *
  * [onHidden] runs when enough down votes just hid this description: reload the profile.
  */
@@ -104,6 +106,7 @@ fun DescriptionVoteBar(
     votes: VotesController,
     descriptionId: String?,
     onHidden: () -> Unit,
+    onRequestChange: ((descriptionId: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val id: String = descriptionId ?: return
@@ -114,6 +117,7 @@ fun DescriptionVoteBar(
     /** What is picked but not yet submitted: "up", "down" or nothing. */
     var choice by remember(id) { mutableStateOf<String?>(null) }
     var tableOpen by remember(id) { mutableStateOf(false) }
+    var menuOpen by remember(id) { mutableStateOf(false) }
     var reason by remember(id) { mutableStateOf<String?>(null) }
     var note by remember(id) { mutableStateOf("") }
     var message by remember(id) { mutableStateOf<String?>(null) }
@@ -167,8 +171,23 @@ fun DescriptionVoteBar(
                 description = "Downvote: something is wrong",
                 activeContainer = c.error, activeContent = c.onError
             ) { pick("down") }
-            PlantTextButton(onClick = { tableOpen = !tableOpen }) {
-                Text(if (tableOpen) "Hide votes" else "View votes", fontSize = 13.sp)
+            // The three dots: Request change, Votes summary.
+            Box {
+                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "More for this description")
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (onRequestChange != null) {
+                        DropdownMenuItem(
+                            text = { Text("Request change") },
+                            onClick = { menuOpen = false; onRequestChange(id) }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text(if (tableOpen) "Hide votes summary" else "Votes summary") },
+                        onClick = { menuOpen = false; tableOpen = !tableOpen }
+                    )
+                }
             }
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
         }
@@ -183,7 +202,7 @@ fun DescriptionVoteBar(
 
         // Plain conditionals, no AnimatedVisibility: animated size inside the contributor boxes (which are measured
         // by intrinsic size) was never re-measured, so the panel and its Submit button stayed hidden until some
-        // other change (like View votes) forced a new layout.
+        // other change (like opening the votes summary) forced a new layout.
         val pending = choice
         if (pending != null && !st.own) {
             Surface(
@@ -300,7 +319,7 @@ private fun VotesTable(st: DescriptionVoteState) {
     val c = MaterialTheme.colorScheme
     Surface(shape = RoundedCornerShape(12.dp), color = c.surfaceVariant.copy(alpha = 0.5f), border = BorderStroke(1.dp, c.outlineVariant)) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Votes on this description", style = MaterialTheme.typography.labelLarge, color = c.onSurface)
+            Text("Votes summary", style = MaterialTheme.typography.labelLarge, color = c.onSurface)
             TableRow("Upvote", st.up.toString(), "Helpful", c.primary, bold = true)
             TableRow("Downvote", st.down.toString(), "Not good", c.error, bold = true)
             st.reasons.forEach { TableRow("   ↳ Downvote", it.count.toString(), it.label, c.onSurfaceVariant) }

@@ -263,7 +263,10 @@ module.exports = {
     // Nightly housekeeping (config/maintenance.js): the public-copy reconcile job and the
     // denied-photo retention job. Local time of the server process.
     maintenance: {
-        nightlyHour: Math.min(23, numberSetting('NIGHTLY_JOB_HOUR', 3))
+        nightlyHour: Math.min(23, numberSetting('NIGHTLY_JOB_HOUR', 3)),
+        // A DENIED change request (declined by the contributor or by an admin) stays visible on
+        // Profile > Pending approval for this many days, then the nightly job deletes it.
+        deniedChangeRetentionDays: Math.max(1, numberSetting('DENIED_CHANGE_RETENTION_DAYS', 30))
     },
     pagination: {
         // Every list route clamps to these instead of hardcoding a page size.

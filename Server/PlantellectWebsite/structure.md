@@ -69,9 +69,17 @@ PlantellectWebsite/
 │   ├── owner-approval.js      # Pure: contributor approval on a change request. A 'description' change to ANOTHER
 │   │                          #   contributor's description keeps that contributor's answer in payload.ownerApproval
 │   │                          #   (pending | approved | denied); the admin cannot approve until it is 'approved'.
+│   │                          #   A 'base' (plant info) change goes to the plant's PRIMARY contributor the same way
+│   │                          #   (ownerApproval.role = 'primary'): approve -> the admin decides, decline -> it ends.
 │   ├── owner-approval-mysql.js # Profile > Pending approval: awaitingMe / mine lists, the sidebar badge count
-│   │                          #   (waiting for me + my requests whose state changed since I last looked), mark-seen,
-│   │                          #   and the author's approve / decline (decline ends the request). Routes: /api/profile/approvals*
+│   │                          #   (needing my answer + my requests whose state changed since I last looked), mark-seen,
+│   │                          #   and the contributor's approve / decline (decline ends the request). Routes: /api/profile/approvals*
+│   │                          #   Both lists keep what still needs an approval on top and put approved / denied ones at the
+│   │                          #   bottom (a decided request is no longer dropped once it was seen). awaitingMe items carry
+│   │                          #   needsAnswer, ownerStatus and status; an answered one leaves that list after
+│   │                          #   settings.maintenance.deniedChangeRetentionDays days.
+│   ├── denied-change-purge.js # nightly: deletes DENIED plant_change requests (contributor or admin declined) older than
+│   │                          #   settings.maintenance.deniedChangeRetentionDays (env DENIED_CHANGE_RETENTION_DAYS, default 30)
 │   ├── discovery-mysql.js     # Discovery reports, votes and image access
 │   ├── description-vote-settings.js # The two admin-editable numbers (system_settings key descriptionVotes:
 │   │                          #   upvoteAlert, downvoteHide >= 2), per-field fallback to settings.descriptionVotes, version-checked save.
@@ -156,7 +164,8 @@ PlantellectWebsite/
 │   │                          #   no visible record, regenerates missing copies and copies whose SHA-256 no longer matches the row
 │   ├── retention.js           # nightly purge of masters of photos denied longer than deniedRetentionDays; keeps a
 │   │                          #   denied_photo_tombstones row (hash + reason code, nothing personal). findTombstone() reads it
-│   ├── maintenance.js         # runs reconcile at startup, reconcile + retention nightly (settings.maintenance.nightlyHour)
+│   ├── maintenance.js         # runs reconcile at startup, reconcile + retention + archive purge + denied change purge nightly
+│   │                          #   (settings.maintenance.nightlyHour)
 │   ├── image-files.js         # Photo folder layout + verified copy (copy, compare bytes, check the
 │   │                          #   image parses, retry up to 5x, THEN delete the source) + FileMovePlan
 │   ├── image-relocation.js    # Moves photos between pending/approved/denied, updates storedPath,

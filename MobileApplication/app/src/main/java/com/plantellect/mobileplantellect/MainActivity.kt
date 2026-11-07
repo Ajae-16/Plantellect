@@ -216,6 +216,18 @@ private fun AppShell(
         navController.navigate("contribute/$plantId") { launchSingleTop = true }
     }
 
+    /**
+     * The change request form of one plant, with the description that was tapped already chosen. Same page and
+     * same Back behaviour as Contribute; the route just says which of the two forms to show.
+     */
+    fun openRequestChange(plantId: String, plantName: String, descriptionId: String) {
+        scope.launch { drawerState.close() }
+        val here = navController.currentBackStackEntry?.destination?.route
+        if (here?.startsWith("contribute/") != true) contributeOrigin = here ?: "home"
+        contributeName = plantName
+        navController.navigate("contribute/$plantId?change=1&desc=${android.net.Uri.encode(descriptionId)}") { launchSingleTop = true }
+    }
+
     /** Back from the Contribute page: reopen the plant card on the Home or Library page it came from. */
     fun backFromContribute(plantId: String) {
         when (contributeOrigin) {
@@ -231,7 +243,8 @@ private fun AppShell(
             permissions,
             go = { route -> go(route) },
             signOut = { showSignOutDialog = true },
-            contribute = { plantId, name -> openContribute(plantId, name) }
+            contribute = { plantId, name -> openContribute(plantId, name) },
+            requestChange = { plantId, name, descriptionId -> openRequestChange(plantId, name, descriptionId) }
         )
     }
 
@@ -292,27 +305,32 @@ private fun AppShell(
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                CenterAlignedTopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            LogoMark(30.dp)
-                            Text("Plantellect", style = MaterialTheme.typography.headlineSmall, color = c.onSurface)
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton({ scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Filled.Menu, contentDescription = "Menu")
-                        }
+                // A short bar (44 dp under the status bar; the Material one is 64 dp): menu button on the left,
+                // logo and name in the middle. The empty box on the right keeps the title truly centred.
+                Row(
+                    Modifier.fillMaxWidth().statusBarsPadding().height(44.dp).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton({ scope.launch { drawerState.open() } }, Modifier.size(40.dp)) {
+                        Icon(Icons.Filled.Menu, contentDescription = "Menu")
                     }
-                )
+                    Row(
+                        Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+                    ) {
+                        LogoMark(24.dp)
+                        Text("Plantellect", style = MaterialTheme.typography.titleLarge, color = c.onSurface, maxLines = 1)
+                    }
+                    Spacer(Modifier.size(40.dp))
+                }
             }
         ) { innerPadding ->
             // imePadding lifts every screen above the keyboard (edge-to-edge mode ignores adjustResize), and the
             // formatting bar of the description box being typed in is pinned right above the keyboard.
             val richToolbar = remember { RichToolbarHost() }
             CompositionLocalProvider(LocalRichToolbarHost provides richToolbar) {
-                Column(Modifier.padding(innerPadding).imePadding()) {
+                Column(Modifier.padding(innerPadding).consumeWindowInsets(innerPadding).imePadding()) {
                     Box(Modifier.weight(1f)) {
                 NavHost(navController, startDestination = "home", modifier = Modifier.fillMaxSize()) {
                     composable("home") {
@@ -335,17 +353,25 @@ private fun AppShell(
                     }
                     composable("scan") { ScanPlantScreen() }
                     composable("record") { RecordPlantScreen() }
-                    // Contribute from a plant's card: the plant is fixed, with Contribute and Request change for it only.
+                    // From a plant's profile, the plant is fixed. "Contribute" opens the contribution form; the "..." menu of a
+                    // description opens the change request form (change=1) with that description (desc) already chosen.
                     composable(
-                        "contribute/{plantId}",
-                        arguments = listOf(navArgument("plantId") { type = NavType.StringType })
+                        "contribute/{plantId}?change={change}&desc={desc}",
+                        arguments = listOf(
+                            navArgument("plantId") { type = NavType.StringType },
+                            navArgument("change") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("desc") { type = NavType.StringType; defaultValue = "" }
+                        )
                     ) { entry ->
                         val plantId = entry.arguments?.getString("plantId").orEmpty()
+                        val changeMode = entry.arguments?.getString("change") == "1"
+                        val descId = entry.arguments?.getString("desc").orEmpty().ifBlank { null }
                         BackHandler { backFromContribute(plantId) }
                         // The app bar above already clears the status bar, so this page must not add that gap again.
                         Box(Modifier.fillMaxSize().consumeWindowInsets(WindowInsets.systemBars)) {
                             RecordPlantScreen(
                                 fixedPlantId = plantId, fixedPlantName = contributeName,
+                                changeMode = changeMode, changeDescriptionId = descId,
                                 onBack = { backFromContribute(plantId) }
                             )
                         }
@@ -402,7 +428,7 @@ private fun AppShell(
 /** "← Back", shown above a profile that was opened from somewhere else (a plant, a list, a report). */
 @Composable
 private fun BackBar(onBack: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 0.dp)) {
         AppBackButton(onBack)
     }
 }
@@ -422,6 +448,8 @@ private fun ProfileHost(
 ) {
     var openPlant by rememberSaveable { mutableStateOf<String?>(null) }
     var resumePlant by rememberSaveable { mutableStateOf<String?>(null) }   // plant to bring back after a profile
+    // Goes up every time the plant page closes: votes and edits made there must show on the profile behind it.
+    var refreshSignal by rememberSaveable { mutableStateOf(0) }
     LaunchedEffect(Unit) { if (resumePlant != null) { openPlant = resumePlant; resumePlant = null } }
 
     ProfileScreen(
@@ -432,7 +460,8 @@ private fun ProfileHost(
         onSignIn = { },
         myAccountId = account.accountId,
         viewAccountId = viewAccountId,
-        onOpenPlant = { id -> openPlant = id }
+        onOpenPlant = { id -> openPlant = id },
+        refreshSignal = refreshSignal
     )
 
     openPlant?.let { id ->
@@ -442,7 +471,7 @@ private fun ProfileHost(
             heroUrl = null,
             vm = libraryVm,
             onOpenBotanist = { person -> resumePlant = openPlant; openPlant = null; onOpenPerson(person) },
-            onClose = { openPlant = null }
+            onClose = { openPlant = null; refreshSignal++ }
         )
     }
 }

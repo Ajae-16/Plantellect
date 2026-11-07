@@ -66,10 +66,15 @@ internal class AppNav(
     val go: (String) -> Unit,
     val signOut: () -> Unit,
     /**
-     * Opens the Contribute page for one plant (its id and name): the plant is fixed, and the page offers
-     * "Contribute" and "Request change" for that plant only, with a Back button.
+     * Opens the Contribute page for one plant (its id and name): the plant is fixed, and the page adds a
+     * contribution to that plant only, with a Back button.
      */
-    val contribute: (plantId: String, plantName: String) -> Unit = { _, _ -> }
+    val contribute: (plantId: String, plantName: String) -> Unit = { _, _ -> },
+    /**
+     * Opens the change request form for one plant, with the description that was tapped already chosen. It is
+     * reached from the "..." menu of a description on the plant's profile.
+     */
+    val requestChange: (plantId: String, plantName: String, descriptionId: String) -> Unit = { _, _, _ -> }
 )
 
 internal val LocalAppNav = compositionLocalOf<AppNav?> { null }

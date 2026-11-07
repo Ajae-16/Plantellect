@@ -104,13 +104,13 @@ internal fun AppBackButton(onClick: () -> Unit, modifier: Modifier = Modifier, l
     val c = MaterialTheme.colorScheme
     androidx.compose.material3.Surface(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 40.dp),
+        modifier = modifier.heightIn(min = 36.dp),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
         color = c.primaryContainer,
         contentColor = c.onPrimaryContainer
     ) {
         androidx.compose.foundation.layout.Row(
-            Modifier.padding(start = 10.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            Modifier.padding(start = 10.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)
         ) {
