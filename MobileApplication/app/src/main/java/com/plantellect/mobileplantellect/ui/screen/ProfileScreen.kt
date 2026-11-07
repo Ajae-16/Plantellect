@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -344,18 +345,29 @@ fun ProfileScreen(
 
     // Dialogs live outside the page column so they never add spacing to it.
     if (showPhotoChoice && isOwn) {
-        AlertDialog(
-            onDismissRequest = { showPhotoChoice = false },
-            title = { Text(if (account?.photoUrl == null) "Add profile photo" else "Change profile photo") },
-            text = { Text("Where should the new photo come from?") },
-            confirmButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    PlantTextButton(onClick = { showPhotoChoice = false; pickPhoto() }) { Text("Gallery") }
-                    PlantTextButton(onClick = { showPhotoChoice = false; useCamera() }) { Text("Camera") }
-                }
-            },
-            dismissButton = { PlantTextButton(onClick = { showPhotoChoice = false }) { Text("Cancel") } }
-        )
+        PlantDialog(
+            title = if (account?.photoUrl == null) "Add profile photo" else "Change profile photo",
+            onDismiss = { showPhotoChoice = false },
+            actions = { PlantTextButton(onClick = { showPhotoChoice = false }) { Text("Cancel") } }
+        ) {
+            Text("Where should the new photo come from?", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+            PlantOutlinedButton(
+                onClick = { showPhotoChoice = false; pickPhoto() },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+            ) {
+                Icon(Icons.Filled.PhotoLibrary, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Gallery")
+            }
+            PlantOutlinedButton(
+                onClick = { showPhotoChoice = false; useCamera() },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+            ) {
+                Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Camera")
+            }
+        }
     }
     zoomPhoto?.let { url -> PhotoZoomDialog(url, if (isOwn) "Your profile photo" else (p?.name ?: "Profile photo"), onClose = { zoomPhoto = null }) }
     if (showChangeEmail && account != null && isOwn) {
@@ -638,43 +650,34 @@ private fun ChangePasswordDialog(
     val canSubmit = !busy && current.isNotEmpty() && next.isNotEmpty() && confirm.isNotEmpty() &&
             ProfileValidator.passwordProblem(current, next, confirm) == null
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Change password") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PasswordField("Current password", current) { current = it }
-                PasswordField("New password", next) { next = it }
-                PasswordField("Confirm new password", confirm) { confirm = it }
-                (problem ?: serverError)?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
-        },
-        confirmButton = {
+    PlantDialog(
+        title = "Change password",
+        onDismiss = { if (!busy) onDismiss() },
+        actions = {
+            PlantTextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
             PlantButton(onClick = { confirming = true }, enabled = canSubmit) { Text("Change password") }
-        },
-        dismissButton = {
-            PlantTextButton(onClick = onDismiss) { Text("Cancel") }
         }
-    )
+    ) {
+        PasswordField("Current password", current) { current = it }
+        PasswordField("New password", next) { next = it }
+        PasswordField("Confirm new password", confirm) { confirm = it }
+        (problem ?: serverError)?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
 
     if (confirming) {
-        AlertDialog(
-            onDismissRequest = { confirming = false },
-            title = { Text("Confirm password change") },
-            text = { Text("Are you sure you want to change your password?") },
-            confirmButton = {
-                PlantButton(onClick = {
-                    confirming = false
-                    onSubmit(current, next)
-                }) { Text("Yes, change it") }
-            },
-            dismissButton = {
+        PlantDialog(
+            title = "Confirm password change",
+            onDismiss = { confirming = false },
+            actions = {
                 PlantTextButton(onClick = { confirming = false }) { Text("Go back") }
+                PlantButton(onClick = { confirming = false; onSubmit(current, next) }) { Text("Yes, change it") }
             }
-        )
+        ) {
+            Text("Are you sure you want to change your password?", style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 
@@ -690,6 +693,7 @@ private fun ChangeEmailDialog(
     onDismiss: () -> Unit,
     onSubmit: (password: String, newEmail: String) -> Unit
 ) {
+    val c = MaterialTheme.colorScheme
     var newEmail by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirming by remember { mutableStateOf(false) }
@@ -697,39 +701,40 @@ private fun ChangeEmailDialog(
     val problem = if (newEmail.isNotEmpty()) ProfileValidator.emailProblem(newEmail, currentEmail) else null
     val canSubmit = !busy && password.isNotEmpty() && ProfileValidator.emailProblem(newEmail, currentEmail) == null
 
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Change email") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Current email: ${currentEmail.ifBlank { "-" }}", style = MaterialTheme.typography.bodySmall)
-                LimitedOutlinedTextField(
-                    value = newEmail, onValueChange = { newEmail = it }, maxChars = UploadLimits.EMAIL_MAX_CHARS,
-                    modifier = Modifier.fillMaxWidth(), label = "New email", singleLine = true,
-                    errorText = problem,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
-                )
-                PasswordField("Current password", password) { password = it }
-                serverError?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
-        },
-        confirmButton = { PlantButton(onClick = { confirming = true }, enabled = canSubmit) { Text("Change email") } },
-        dismissButton = { PlantTextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } }
-    )
+    PlantDialog(
+        title = "Change email",
+        onDismiss = { if (!busy) onDismiss() },
+        actions = {
+            PlantTextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
+            PlantButton(onClick = { confirming = true }, enabled = canSubmit) { Text("Change email") }
+        }
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Current email", style = MaterialTheme.typography.labelMedium, color = c.onSurfaceVariant)
+            Text(currentEmail.ifBlank { "-" }, style = MaterialTheme.typography.bodyMedium, color = c.onSurface)
+        }
+        LimitedOutlinedTextField(
+            value = newEmail, onValueChange = { newEmail = it }, maxChars = UploadLimits.EMAIL_MAX_CHARS,
+            modifier = Modifier.fillMaxWidth(), label = "New email", singleLine = true,
+            errorText = problem,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+        )
+        PasswordField("Current password", password) { password = it }
+        serverError?.let { Text(it, color = c.error, style = MaterialTheme.typography.bodySmall) }
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
 
     if (confirming) {
-        AlertDialog(
-            onDismissRequest = { confirming = false },
-            title = { Text("Confirm email change") },
-            text = { Text("Change your email to ${newEmail.trim()}? You will use it to sign in from now on.") },
-            confirmButton = {
+        PlantDialog(
+            title = "Confirm email change",
+            onDismiss = { confirming = false },
+            actions = {
+                PlantTextButton(onClick = { confirming = false }) { Text("Go back") }
                 PlantButton(onClick = { confirming = false; onSubmit(password, newEmail.trim()) }) { Text("Yes, change it") }
-            },
-            dismissButton = { PlantTextButton(onClick = { confirming = false }) { Text("Go back") } }
-        )
+            }
+        ) {
+            Text("Change your email to ${newEmail.trim()}? You will use it to sign in from now on.", style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 

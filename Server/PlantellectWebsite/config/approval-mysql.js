@@ -11,6 +11,7 @@ const { applyPlantChange } = require('./plant-manage-mysql');
 const imageFiles = require('./image-files');
 const relocation = require('./image-relocation');
 const publicImages = require('./public-images');
+const { ownerGateMessage } = require('./owner-approval');
 
 // ---------------------------------------------------------------------------
 // Approval: promoting a request into real content
@@ -188,6 +189,12 @@ async function approveTaxonomyRequest(conn, request, reviewerId, note, audit) {
  * type. A request whose fields moved since it was filed is refused (409).
  */
 async function approvePlantChangeRequest(conn, request, reviewerId, note, audit) {
+    // A change to another contributor's description needs that contributor's approval first.
+    const gate = ownerGateMessage(parsePayload(request.payload));
+    if (gate) {
+        await conn.rollback();
+        return { error: gate, code: 409 };
+    }
     const result = await applyPlantChange(conn, request);
     if (result.error) {
         await conn.rollback();

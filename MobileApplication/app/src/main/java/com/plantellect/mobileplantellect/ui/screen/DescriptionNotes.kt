@@ -94,9 +94,12 @@ fun rememberVotes(client: OkHttpClient, vm: LibraryViewModel, plantId: String, r
 // ---------------------------------------------------------------------------
 
 /**
- * Thumbs up / down for one description: two pill buttons with their counts, a "votes" toggle
- * that opens the table (totals, reasons counted, voters' notes, no names), and a down-vote
- * panel with the premade reasons as chips plus a note box for "Other".
+ * Thumbs up / down for one description. Tapping a thumb only CHOOSES it (nothing is sent yet); a panel opens
+ * under the buttons with a Submit button, so a vote is never cast by accident:
+ *  - up:   "Submit upvote" / Cancel
+ *  - down: the premade reasons as chips (plus a note box for "Other"), then "Submit downvote" / Cancel
+ * Tapping the vote you already cast offers "Remove my vote". A "votes" toggle opens the table (totals,
+ * reasons counted, voters' notes, no names).
  *
  * [onHidden] runs when enough down votes just hid this description: reload the profile.
  */
@@ -113,7 +116,8 @@ fun DescriptionVoteBar(
     val st = summary.byId[id] ?: return
     val c = MaterialTheme.colorScheme
 
-    var panelOpen by remember(id) { mutableStateOf(false) }
+    /** What is picked but not yet submitted: "up", "down" or nothing. */
+    var choice by remember(id) { mutableStateOf<String?>(null) }
     var tableOpen by remember(id) { mutableStateOf(false) }
     var reason by remember(id) { mutableStateOf<String?>(null) }
     var note by remember(id) { mutableStateOf("") }
@@ -121,12 +125,14 @@ fun DescriptionVoteBar(
 
     val busy = votes.busyId == id
     val locked = st.own || busy
+    // The thumbs show the pick while choosing, otherwise the vote that is already cast.
+    val shown = choice ?: st.myVote
 
     fun done(r: VoteResult) {
         when (r) {
             is VoteResult.Ok -> {
                 message = null
-                panelOpen = false
+                choice = null
                 reason = null
                 note = ""
                 if (r.hidden) onHidden()
@@ -141,31 +147,31 @@ fun DescriptionVoteBar(
         return true
     }
 
+    fun pick(which: String) {
+        message = null
+        if (needSignIn()) return
+        // Tapping the same thumb again closes the panel.
+        choice = if (choice == which) null else which
+        if (which != "down") { reason = null; note = "" }
+    }
+
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             VoteButton(
-                active = st.myVote == "up", count = st.up, enabled = !locked,
+                active = shown == "up", count = st.up, enabled = !locked,
                 filled = Icons.Filled.ThumbUp, outlined = Icons.Outlined.ThumbUp,
-                description = if (st.myVote == "up") "Remove your upvote" else "Upvote: this is helpful",
+                description = "Upvote: this is helpful",
                 activeContainer = c.primary, activeContent = c.onPrimary
-            ) {
-                message = null
-                if (needSignIn()) return@VoteButton
-                if (st.myVote == "up") votes.retract(id, ::done) else votes.up(id, ::done)
-            }
+            ) { pick("up") }
             VoteButton(
-                active = st.myVote == "down", count = st.down, enabled = !locked,
+                active = shown == "down", count = st.down, enabled = !locked,
                 filled = Icons.Filled.ThumbDown, outlined = Icons.Outlined.ThumbDown,
-                description = if (st.myVote == "down") "Remove your downvote" else "Downvote: something is wrong",
+                description = "Downvote: something is wrong",
                 activeContainer = c.error, activeContent = c.onError
-            ) {
-                message = null
-                if (needSignIn()) return@VoteButton
-                if (st.myVote == "down") votes.retract(id, ::done) else panelOpen = !panelOpen
-            }
+            ) { pick("down") }
             PlantTextButton(onClick = { tableOpen = !tableOpen }) {
                 Text(if (tableOpen) "Hide votes" else "View votes", fontSize = 13.sp)
             }
@@ -181,54 +187,77 @@ fun DescriptionVoteBar(
         }
 
         AnimatedVisibility(
-            visible = panelOpen && !st.own,
+            visible = choice != null && !st.own,
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut()
         ) {
+            val pending = choice ?: return@AnimatedVisibility
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = c.surface, contentColor = c.onSurface,
                 border = BorderStroke(1.dp, c.outlineVariant)
             ) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("What is wrong with it?", style = MaterialTheme.typography.titleSmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        summary.reasons.forEach { r ->
-                            FilterChip(
-                                selected = reason == r.code,
-                                onClick = { reason = r.code; message = null },
-                                label = { Text(r.label) }
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    when {
+                        // Already cast this way: the only thing left to do is take it back.
+                        pending == st.myVote -> {
+                            Text(
+                                if (pending == "up") "You upvoted this description." else "You downvoted this description.",
+                                style = MaterialTheme.typography.titleSmall
                             )
-                        }
-                    }
-                    AnimatedVisibility(visible = reason == "other") {
-                        OutlinedTextField(
-                            value = note,
-                            onValueChange = { if (it.length <= summary.noteMaxLength) note = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            minLines = 3,
-                            shape = RoundedCornerShape(12.dp),
-                            label = { Text("Note for the administrator") },
-                            placeholder = { Text("Say what is wrong, e.g. which fact is incorrect") },
-                            supportingText = {
-                                Text("${note.length}/${summary.noteMaxLength}", Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                PlantButton(enabled = !busy, onClick = { votes.retract(id, ::done) }) { Text("Remove my vote") }
+                                PlantTextButton(onClick = { choice = null; message = null }) { Text("Cancel") }
                             }
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        PlantButton(
-                            enabled = !busy,
-                            onClick = {
-                                val code = reason
-                                when {
-                                    code == null -> message = "Please choose a reason."
-                                    code == "other" && note.trim().length < 3 ->
-                                        message = "Please write a short note so the administrator knows what is wrong."
-                                    else -> votes.down(id, code, note.trim().ifBlank { null }, ::done)
+                        }
+                        pending == "up" -> {
+                            Text("Submit your upvote: this description is helpful.", style = MaterialTheme.typography.titleSmall)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                PlantButton(enabled = !busy, onClick = { votes.up(id, ::done) }) { Text("Submit upvote") }
+                                PlantTextButton(onClick = { choice = null; message = null }) { Text("Cancel") }
+                            }
+                        }
+                        else -> {
+                            Text("What is wrong with it?", style = MaterialTheme.typography.titleSmall)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                summary.reasons.forEach { r ->
+                                    FilterChip(
+                                        selected = reason == r.code,
+                                        onClick = { reason = r.code; message = null },
+                                        label = { Text(r.label) }
+                                    )
                                 }
                             }
-                        ) { Text("Send downvote") }
-                        PlantTextButton(onClick = { panelOpen = false; message = null }) { Text("Cancel") }
+                            AnimatedVisibility(visible = reason == "other") {
+                                LimitedOutlinedTextField(
+                                    value = note,
+                                    onValueChange = { note = it },
+                                    maxChars = summary.noteMaxLength,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 3,
+                                    maxLines = 6,
+                                    label = "Note for the administrator",
+                                    placeholder = "Say what is wrong, e.g. which fact is incorrect",
+                                    showCounter = true,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                PlantButton(
+                                    enabled = !busy,
+                                    onClick = {
+                                        val code = reason
+                                        when {
+                                            code == null -> message = "Please choose a reason."
+                                            code == "other" && note.trim().length < 3 ->
+                                                message = "Please write a short note so the administrator knows what is wrong."
+                                            else -> votes.down(id, code, note.trim().ifBlank { null }, ::done)
+                                        }
+                                    }
+                                ) { Text("Submit downvote") }
+                                PlantTextButton(onClick = { choice = null; reason = null; note = ""; message = null }) { Text("Cancel") }
+                            }
+                        }
                     }
                 }
             }

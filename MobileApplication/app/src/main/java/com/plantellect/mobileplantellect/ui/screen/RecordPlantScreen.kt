@@ -658,51 +658,61 @@ private fun Dropdown(
 }
 
 /**
- * "Which description" picker, split into two groups: Own (what you contributed to this plant) and
- * Others (what other contributors wrote). Each row carries its "(edited ...)" tag.
+ * Every approved description of the plant, in two groups: Own (what you contributed) and Others (what other
+ * contributors wrote). Each is a card you can read before choosing it, with its "(edited ...)" tag. Picking one
+ * loads it into the form below; a description that already has a change waiting cannot be picked.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DescriptionPicker(
-    choices: List<DescChoice>, selectedId: String?, snippet: (DescChoice) -> String, onSelect: (String) -> Unit
-) {
-    var open by remember { mutableStateOf(false) }
-    fun row(i: Int): String {
-        val o = choices[i]
-        val snip = snippet(o)
-        return descName(choices, i) + (if (snip.isNotEmpty()) " · $snip" else "") + (if (o.pending) " · change pending" else "")
-    }
-    val selectedIndex = choices.indexOfFirst { it.id == selectedId }
-    ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {
-        OutlinedTextField(
-            value = if (selectedIndex >= 0) row(selectedIndex) else "", onValueChange = {}, readOnly = true,
-            label = { Text("Which description") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
-            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
-            shape = MaterialTheme.shapes.small
-        )
-        ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            listOf("Own" to true, "Others" to false).forEach { (title, mine) ->
-                val indexes = choices.indices.filter { choices[it].mine == mine }
+private fun DescriptionCards(choices: List<DescChoice>, selectedId: String?, onSelect: (String) -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Which description?", style = MaterialTheme.typography.titleSmall)
+        listOf("Own" to true, "Others" to false).forEach { (title, mine) ->
+            val indexes = choices.indices.filter { choices[it].mine == mine }
+            Text("$title (${indexes.size})", style = MaterialTheme.typography.labelLarge, color = c.primary)
+            if (indexes.isEmpty()) {
                 Text(
-                    title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    if (mine) "You have not contributed a description to this plant." else "Nobody else has described this plant.",
+                    style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant
                 )
-                if (indexes.isEmpty()) {
-                    Text(
-                        if (mine) "You have not contributed a description to this plant." else "Nobody else has described this plant.",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    )
+            }
+            indexes.forEach { i ->
+                val o = choices[i]
+                val selected = o.id == selectedId
+                val snippet = plain(
+                    o.values?.get("uses").asText().ifBlank { o.values?.get("benefits").asText() }
+                        .ifBlank { o.values?.get("harmful").asText() }
+                ).take(160)
+                Surface(
+                    onClick = { onSelect(o.id) },
+                    enabled = !o.pending,
+                    shape = MaterialTheme.shapes.small,
+                    color = if (selected) c.primaryContainer.copy(alpha = 0.35f) else c.surface,
+                    border = androidx.compose.foundation.BorderStroke(
+                        if (selected) 2.dp else 1.dp, if (selected) c.primary else c.outlineVariant
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        RadioButton(selected = selected, onClick = null, enabled = !o.pending, modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(descName(choices, i), style = MaterialTheme.typography.titleSmall, color = c.onSurface)
+                            if (snippet.isNotEmpty()) {
+                                Text(
+                                    snippet, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant,
+                                    maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                            if (o.pending) {
+                                Text("A change is already waiting for review.", style = MaterialTheme.typography.labelSmall, color = c.error)
+                            }
+                        }
+                    }
                 }
-                indexes.forEach { i ->
-                    DropdownMenuItem(
-                        text = { Text(row(i)) },
-                        enabled = !choices[i].pending,
-                        onClick = { onSelect(choices[i].id); open = false }
-                    )
-                }
-                if (mine) HorizontalDivider()
             }
         }
     }
@@ -1364,11 +1374,9 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
             }
         )
         if (s.descOn) {
-            DescriptionPicker(
-                choices = choices,
-                selectedId = s.descId,
-                snippet = { o -> plain(o.values?.get("uses").asText().ifBlank { o.values?.get("benefits").asText() }).take(40) }
-            ) { id -> choices.firstOrNull { it.id == id && !it.pending }?.let { s.loadDesc(d, it) } }
+            DescriptionCards(choices, s.descId) { id ->
+                choices.firstOrNull { it.id == id && !it.pending }?.let { s.loadDesc(d, it) }
+            }
             // Who has to say yes.
             Hint(
                 when {

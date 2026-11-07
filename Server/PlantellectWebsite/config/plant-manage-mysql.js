@@ -148,14 +148,58 @@ async function loadPrimaryDescription(executor, plantId, lock) {
 async function loadOwnDescriptions(executor, plantId, accountId) {
     const [rows] = await executor.query(
         `SELECT d.descriptionId, d.accountId, d.partsId, d.uses, d.benefits, d.harmful,
-                d.isPrimary, d.createdAt, ${PART_COLUMNS}
+                d.isPrimary, d.createdAt, d.editedAt, d.editedBy, ${PART_COLUMNS},
+                ea.username AS editorUsername, ep.firstName AS editorFirstName, ep.lastName AS editorLastName
          FROM plant_description d
          LEFT JOIN plant_parts pp ON pp.partId = d.partsId
+         LEFT JOIN accounts ea ON ea.accountId = d.editedBy
+         LEFT JOIN profiles ep ON ep.accountId = d.editedBy
          WHERE d.plantId = ? AND d.accountId = ? AND d.status = 'approved' AND d.archivedAt IS NULL
          ORDER BY d.createdAt ASC`,
         [plantId, accountId]
     );
     return rows;
+}
+
+/**
+ * Every approved description by SOMEONE ELSE, oldest first, with the author's name and whether the
+ * account is still active (an inactive author, such as the system actor, cannot approve anything).
+ */
+async function loadOtherDescriptions(executor, plantId, accountId) {
+    const [rows] = await executor.query(
+        `SELECT d.descriptionId, d.accountId, d.partsId, d.uses, d.benefits, d.harmful,
+                d.isPrimary, d.createdAt, d.editedAt, d.editedBy, ${PART_COLUMNS},
+                a.username AS authorUsername, a.status AS authorStatus,
+                pr.firstName AS authorFirstName, pr.lastName AS authorLastName,
+                ea.username AS editorUsername, ep.firstName AS editorFirstName, ep.lastName AS editorLastName
+         FROM plant_description d
+         LEFT JOIN plant_parts pp ON pp.partId = d.partsId
+         JOIN accounts a ON a.accountId = d.accountId
+         LEFT JOIN profiles pr ON pr.accountId = d.accountId
+         LEFT JOIN accounts ea ON ea.accountId = d.editedBy
+         LEFT JOIN profiles ep ON ep.accountId = d.editedBy
+         WHERE d.plantId = ? AND d.accountId <> ? AND d.status = 'approved' AND d.archivedAt IS NULL
+         ORDER BY d.createdAt ASC`,
+        [plantId, accountId]
+    );
+    return rows;
+}
+
+/** Who last edited a description, and when: null while it has never been edited. */
+function editInfo(row, viewerId) {
+    if (!row.editedAt) return null;
+    const full = [row.editorFirstName, row.editorLastName].filter(Boolean).join(' ');
+    return {
+        editedAt: row.editedAt,
+        editedById: row.editedBy || null,
+        editedByName: full || row.editorUsername || null,
+        editedByMe: Boolean(row.editedBy) && row.editedBy === viewerId
+    };
+}
+
+function authorLabel(row) {
+    const full = [row.authorFirstName, row.authorLastName].filter(Boolean).join(' ');
+    return full || row.authorUsername || 'Another contributor';
 }
 
 function currentSpec(plant) {
@@ -258,6 +302,24 @@ async function getPlantEditable(plantId, accountId) {
                 descriptionId: d.descriptionId,
                 isPrimary: Boolean(d.isPrimary),
                 createdAt: d.createdAt,
+                edit: editInfo(d, accountId),
+                hasPendingChange: Boolean(requestId),
+                pendingRequestId: requestId,
+                values: descriptionValues(d)
+            };
+        }),
+        // Descriptions written by other contributors. A change to one of these is allowed, but it
+        // also needs the author's approval (see owner-approval.js), on top of the admin's.
+        otherDescriptions: others.map((d) => {
+            const requestId = pending.descriptions.get(d.descriptionId) || pending.legacy || null;
+            return {
+                descriptionId: d.descriptionId,
+                authorId: d.accountId,
+                authorName: authorLabel(d),
+                needsAuthorApproval: d.authorStatus === 'active',
+                isPrimary: Boolean(d.isPrimary),
+                createdAt: d.createdAt,
+                edit: editInfo(d, accountId),
                 hasPendingChange: Boolean(requestId),
                 pendingRequestId: requestId,
                 values: descriptionValues(d)
@@ -671,6 +733,14 @@ async function applyPlantChange(conn, request) {
             );
             await conn.query('UPDATE plant_description SET partsId = ? WHERE descriptionId = ?', [partsId, desc.descriptionId]);
         }
+    }
+
+    // Stamp the description with who changed it last and when (the person who filed the request).
+    if (desc && descKeys.length > 0) {
+        await conn.query(
+            'UPDATE plant_description SET editedAt = NOW(), editedBy = ? WHERE descriptionId = ?',
+            [request.accountId, desc.descriptionId]
+        );
     }
 
     return { plantId: plant.plantId, applied: keys, scope: scope || 'legacy' };
