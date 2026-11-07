@@ -99,7 +99,7 @@ private val PARTS = listOf(
 
 private val TOXICITY = listOf("mild" to "Mild (yellow)", "moderate" to "Moderate (orange)", "severe" to "Severe (red)")
 
-private val CHANGE_LABELS = mapOf(
+internal val CHANGE_LABELS = mapOf(
     "commonName" to "Common name", "scientificName" to "Scientific name",
     "type.typeName" to "Type", "type.isMedicinal" to "Medicinal", "type.isHarmful" to "Harmful",
     "type.toxicityLevel" to "Toxicity level", "type.cautionNote" to "Caution note",
@@ -117,7 +117,7 @@ private val CHANGE_LABELS = mapOf(
  * "October 1, 2021, 12:00 PM" in the phone's time zone. Reads server ISO times ("2021-10-01T04:00:00.000Z"),
  * MySQL times ("2021-10-01 04:00:00", taken as UTC) and epoch milliseconds; unreadable text is shown as is.
  */
-private fun niceDateTime(value: String?): String {
+internal fun niceDateTime(value: String?): String {
     if (value.isNullOrBlank()) return ""
     val instant = runCatching { java.time.Instant.parse(value) }.getOrNull()
         ?: runCatching { java.time.OffsetDateTime.parse(value).toInstant() }.getOrNull()
@@ -132,7 +132,7 @@ private fun niceDateTime(value: String?): String {
 
 private fun norm(s: String?) = (s ?: "").trim().replace(Regex("\\s+"), " ")
 /** Short one-line text for snippets and change summaries: the typed marks are removed. */
-private fun plain(s: String) = RichText.plain(s)
+internal fun plain(s: String) = RichText.plain(s)
 private fun plantLabel(name: String?, sci: String?) = if (sci.isNullOrBlank()) name.orEmpty() else "$name ($sci)"
 
 private fun requestTypeLabel(t: String) = when (t) {
@@ -269,16 +269,77 @@ class ChangeState {
         harmful = t?.isHarmful == true
         toxicity = if (harmful) (t?.toxicityLevel ?: "") else ""
         caution = t?.cautionNote ?: ""
-        d.descriptions.orEmpty().firstOrNull { it.hasPendingChange != true }?.let { loadDesc(d, it) }
+        descChoices(d).firstOrNull { !it.pending }?.let { loadDesc(d, it) }
     }
 
-    fun loadDesc(d: RecEditable, description: RecDescription) {
-        descId = description.descriptionId
+    internal fun loadDesc(d: RecEditable, choice: DescChoice) {
+        descId = choice.id
         desc.clear()
-        descFields(d).forEach { f -> desc[f.key] = description.values?.get(f.valueKey).asText() }
+        descFields(d).forEach { f -> desc[f.key] = choice.values?.get(f.valueKey).asText() }
         descReason = ""
     }
 }
+
+/**
+ * One description of the plant that a change request can target: yours (an admin decides) or another
+ * contributor's (that contributor AND an admin must approve).
+ */
+internal data class DescChoice(
+    val id: String,
+    val mine: Boolean,
+    val author: String?,
+    val primary: Boolean,
+    val pending: Boolean,
+    val needsAuthorApproval: Boolean,
+    val values: Map<String, kotlinx.serialization.json.JsonElement>?,
+    val edit: RecEdit? = null
+)
+
+/** "Nov 7, 2026 3:45 PM" in the phone's own time zone; blank when the server sent nothing usable. */
+private fun editStamp(iso: String?): String = runCatching {
+    java.time.Instant.parse(iso!!).atZone(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a", java.util.Locale.getDefault()))
+}.getOrDefault("")
+
+/**
+ * The "(edited ...)" tag next to a description's name. Newest editor wins:
+ *  - you edited it last  -> "(edited Nov 7, 2026 3:45 PM)"
+ *  - someone else did    -> "(edited: Name · Nov 7, 2026 3:45 PM)"
+ * Nothing at all while it has never been edited.
+ */
+internal fun DescChoice.editTag(): String {
+    val e = edit ?: return ""
+    if (e.editedAt.isNullOrBlank()) return ""
+    val whenText = editStamp(e.editedAt)
+    val byOther = e.editedByMe != true && !e.editedByName.isNullOrBlank()
+    return when {
+        byOther -> "(edited: ${e.editedByName}" + (if (whenText.isNotEmpty()) " · $whenText" else "") + ")"
+        whenText.isNotEmpty() -> "(edited $whenText)"
+        else -> "(edited)"
+    }
+}
+
+/** Display name of a description: "Your description 2 (edited ...)" or "Name's description (edited: Name2 · ...)". */
+internal fun descName(choices: List<DescChoice>, i: Int): String {
+    val o = choices[i]
+    val sameGroup = choices.count { it.mine == o.mine }
+    val nth = choices.take(i + 1).count { it.mine == o.mine }
+    return (if (o.mine) "Your description" else "${o.author ?: "Another contributor"}'s description") +
+        (if (sameGroup > 1) " $nth" else "") +
+        (if (o.primary) " (shown first)" else "") +
+        o.editTag().let { if (it.isEmpty()) "" else " $it" }
+}
+
+/** Yours first, then everyone else's, each in the order the server lists them. */
+internal fun descChoices(d: RecEditable): List<DescChoice> =
+    d.descriptions.orEmpty().map {
+        DescChoice(it.descriptionId, true, null, it.isPrimary == true, it.hasPendingChange == true, false, it.values, it.edit)
+    } + d.otherDescriptions.orEmpty().map {
+        DescChoice(
+            it.descriptionId, false, it.authorName, it.isPrimary == true, it.hasPendingChange == true,
+            it.needsAuthorApproval != false, it.values, it.edit
+        )
+    }
 
 sealed interface RecordPreview {
     data class Local(val uri: Uri) : RecordPreview
@@ -478,11 +539,11 @@ private fun readBase(s: ChangeState, d: RecEditable, types: List<RecTypeName>, e
     }
 }
 
-/** The description half: only a description this botanist wrote. */
+/** The description half: any description of the plant (someone else's also needs its author's approval). */
 private fun readDesc(s: ChangeState, d: RecEditable, errors: MutableMap<String, String>): JsonObject? {
     val before = errors.keys.toSet()
-    val description = d.descriptions.orEmpty().firstOrNull { it.descriptionId == s.descId }
-    if (description == null) { errors["c.desc"] = "Choose which of your descriptions to change."; return null }
+    val description = descChoices(d).firstOrNull { it.id == s.descId }
+    if (description == null) { errors["c.desc"] = "Choose which description to change."; return null }
     val top = linkedMapOf<String, String>()
     val parts = linkedMapOf<String, String>()
     var changed = 0
@@ -493,18 +554,18 @@ private fun readDesc(s: ChangeState, d: RecEditable, errors: MutableMap<String, 
         if (f.part) parts[f.key] = next else top[f.key] = next
         changed++
     }
-    if (changed == 0 && errors.isEmpty()) errors["c.desc"] = "Edit at least one field, or untick \"Change my description\"."
+    if (changed == 0 && errors.isEmpty()) errors["c.desc"] = "Edit at least one field, or untick \"Change a description\"."
     val reason = norm(s.descReason)
     if (reason.isEmpty()) {
         // Reason box first on screen: its message goes ahead of this half's other messages (but after the plant-info half's).
         val mine = errors.filterKeys { it !in before }
         mine.keys.forEach { errors.remove(it) }
-        errors["c.descReason"] = "Say why your description needs changing."
+        errors["c.descReason"] = "Say why this description needs changing."
         errors.putAll(mine)
     }
     if (errors.isNotEmpty()) return null
     return buildJsonObject {
-        put("descriptionId", description.descriptionId)
+        put("descriptionId", description.id)
         top.forEach { (k, v) -> put(k, v) }
         put("parts", buildJsonObject { parts.forEach { (k, v) -> put(k, v) } })
         put("reason", reason)
@@ -515,24 +576,39 @@ private fun readDesc(s: ChangeState, d: RecEditable, errors: MutableMap<String, 
 // Reusable form widgets
 // ============================================================================
 
+/**
+ * The limit the server enforces on a plain text box, found from its error key (names 255, taxonomy 100, a
+ * measurement note 150, a reason 500). Numbers and anything unknown have no limit here.
+ */
+private fun limitForKey(key: String, numeric: Boolean): Int = when {
+    numeric -> Int.MAX_VALUE
+    key.endsWith("commonName") || key == "common" || key.endsWith("scientificName") || key == "sci" -> 255
+    key.startsWith("tax.") || key.startsWith("taxEdit.") || key.startsWith("c.tax.") -> 100
+    key.startsWith("part.") || key.startsWith("cd.") -> 150
+    key.endsWith("Reason") -> 500
+    else -> Int.MAX_VALUE
+}
+
 @Composable
 private fun Field(
     label: String, value: String, key: String, errors: SnapshotStateMap<String, String>,
     numeric: Boolean = false, minLines: Int = 1, placeholder: String? = null, onChange: (String) -> Unit
 ) {
     val focus = remember { FocusRequester() }
-    OutlinedTextField(
+    val max = limitForKey(key, numeric)
+    LimitedOutlinedTextField(
         value = value,
         onValueChange = { onChange(it); errors.remove(key) },
-        modifier = Modifier.fillMaxWidth().errorTarget(key, focus).focusRequester(focus),
-        label = { Text(label) },
-        placeholder = placeholder?.let { { Text(it) } },
-        isError = key in errors,
-        supportingText = errors[key]?.let { { Text(it) } },
+        maxChars = max,
+        modifier = Modifier.fillMaxWidth().errorTarget(key, focus),
+        label = label,
+        placeholder = placeholder,
+        errorText = errors[key],
         minLines = minLines,
         singleLine = minLines == 1,
         keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Decimal else KeyboardType.Text),
-        shape = MaterialTheme.shapes.small
+        showCounter = max != Int.MAX_VALUE && value.charCount() >= max * 8 / 10,
+        focusRequester = focus
     )
 }
 
@@ -576,6 +652,57 @@ private fun Dropdown(
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { (value, text) ->
                 DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(value); open = false })
+            }
+        }
+    }
+}
+
+/**
+ * "Which description" picker, split into two groups: Own (what you contributed to this plant) and
+ * Others (what other contributors wrote). Each row carries its "(edited ...)" tag.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DescriptionPicker(
+    choices: List<DescChoice>, selectedId: String?, snippet: (DescChoice) -> String, onSelect: (String) -> Unit
+) {
+    var open by remember { mutableStateOf(false) }
+    fun row(i: Int): String {
+        val o = choices[i]
+        val snip = snippet(o)
+        return descName(choices, i) + (if (snip.isNotEmpty()) " · $snip" else "") + (if (o.pending) " · change pending" else "")
+    }
+    val selectedIndex = choices.indexOfFirst { it.id == selectedId }
+    ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {
+        OutlinedTextField(
+            value = if (selectedIndex >= 0) row(selectedIndex) else "", onValueChange = {}, readOnly = true,
+            label = { Text("Which description") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
+            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+            shape = MaterialTheme.shapes.small
+        )
+        ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            listOf("Own" to true, "Others" to false).forEach { (title, mine) ->
+                val indexes = choices.indices.filter { choices[it].mine == mine }
+                Text(
+                    title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                if (indexes.isEmpty()) {
+                    Text(
+                        if (mine) "You have not contributed a description to this plant." else "Nobody else has described this plant.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
+                indexes.forEach { i ->
+                    DropdownMenuItem(
+                        text = { Text(row(i)) },
+                        enabled = !choices[i].pending,
+                        onClick = { onSelect(choices[i].id); open = false }
+                    )
+                }
+                if (mine) HorizontalDivider()
             }
         }
     }
@@ -1030,7 +1157,7 @@ private fun NewPlantTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordFo
 // ============================================================================
 
 @Composable
-private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms) {
+private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms, fixedName: String? = null) {
     val c = f.contrib
     val plant = ui.contribPlant
     val safe = plant?.isSafeType == true
@@ -1047,9 +1174,15 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
         // ------------------------------------------------------------ REQUIRED: cannot be left blank
-        FormGroupLabel("Required", "Choose the plant, then add something about it.")
+        FormGroupLabel("Required", if (fixedName != null) "Add something about this plant." else "Choose the plant, then add something about it.")
 
-        PlantPicker(
+        if (fixedName != null) {
+            // Opened from a plant's card: the plant is fixed and cannot be changed here.
+            Text(
+                "Contributing to: " + (plant?.let { plantLabel(it.name, it.scientificName) } ?: fixedName),
+                style = MaterialTheme.typography.titleSmall
+            )
+        } else PlantPicker(
             vm, ui, plant?.let { "Adding to: ${plantLabel(it.name, it.scientificName)}" }, c.errors["plant"], "plant",
             onPick = { p -> c.errors.remove("plant"); vm.selectContribPlant(p.id) },
             onClear = { vm.clearContribPlant() }
@@ -1153,18 +1286,28 @@ private fun ContributeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: Record
 // ============================================================================
 
 @Composable
-private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms) {
+private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms, fixedName: String? = null) {
     val s = f.change
     val d = ui.editable
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Hint("Pick a plant, edit what is wrong and say why. Nothing changes until an admin approves it. A blank field means no change.")
-        PlantPicker(
-            vm, ui,
-            d?.let { "Requesting a change to: ${plantLabel(it.values?.get("commonName").asText(), it.values?.get("scientificName").asText())}" },
-            s.errors["c.plant"], "c.plant",
-            onPick = { p -> s.errors.remove("c.plant"); vm.selectChangePlant(p.id) },
-            onClear = { vm.clearEditable() }
-        )
+        if (fixedName != null) {
+            // Opened from a plant's card: the plant is fixed and cannot be changed here.
+            Hint("Edit what is wrong and say why. Nothing changes until it is approved. A blank field means no change.")
+            Text(
+                "Requesting a change to: " + (d?.let { plantLabel(it.values?.get("commonName").asText(), it.values?.get("scientificName").asText()) } ?: fixedName),
+                style = MaterialTheme.typography.titleSmall
+            )
+            if (d == null) Text("Loading…", style = MaterialTheme.typography.bodySmall)
+        } else {
+            Hint("Pick a plant, edit what is wrong and say why. Nothing changes until it is approved. A blank field means no change.")
+            PlantPicker(
+                vm, ui,
+                d?.let { "Requesting a change to: ${plantLabel(it.values?.get("commonName").asText(), it.values?.get("scientificName").asText())}" },
+                s.errors["c.plant"], "c.plant",
+                onPick = { p -> s.errors.remove("c.plant"); vm.selectChangePlant(p.id) },
+                onClear = { vm.clearEditable() }
+            )
+        }
         if (d == null) return@Column
 
         // ---- the plant info half
@@ -1172,7 +1315,7 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
         ErrorText(s.errors["c.pick"], "c.pick")
         Hint(
             if (d.hasPendingBase == true) "A change to this plant's info is already waiting for review (${d.pendingBaseRequestId})."
-            else "Common name, scientific name, plant type and taxonomy. This is the plant's shared record."
+            else "Common name, scientific name, plant type and taxonomy. This is the plant's shared record, so an admin decides it."
         )
         if (s.baseOn) {
             // Required first: the reason. Then the fields to edit, then the optional taxonomy.
@@ -1207,30 +1350,38 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
 
         HorizontalDivider()
 
-        // ---- the description half: only descriptions this botanist wrote
-        val own = d.descriptions.orEmpty()
-        val canEdit = own.any { it.hasPendingChange != true }
-        CheckRow("Change my description", s.descOn, enabled = canEdit) { s.descOn = it; s.errors.remove("c.pick") }
+        // ---- the description half: yours (admin decides) or another contributor's (they AND an admin decide)
+        val choices = descChoices(d)
+        val canEdit = choices.any { !it.pending }
+        val chosen = choices.firstOrNull { it.id == s.descId }
+        CheckRow("Change a description", s.descOn, enabled = canEdit) { s.descOn = it; s.errors.remove("c.pick") }
         Hint(
             when {
-                own.isEmpty() -> "You have no approved description on this plant yet, so there is nothing of yours to change. Add one under Add to existing."
-                !canEdit -> "Every description of yours on this plant already has a change waiting for review."
-                else -> "Uses, benefits, things to watch out for and measurements. This only changes a description you wrote."
+                choices.isEmpty() -> "This plant has no approved description yet, so there is nothing to change. Add one under Contribute."
+                !canEdit -> "Every description of this plant already has a change waiting for review."
+                else -> "Uses, benefits, things to watch out for and measurements. Your own descriptions need an admin's approval. " +
+                        "Changing another contributor's also needs theirs: they get a notification and can approve or decline."
             }
         )
         if (s.descOn) {
-            if (own.size >= 2) {
-                val opts = own.mapIndexed { i, o ->
-                    val snip = plain(o.values?.get("uses").asText().ifBlank { o.values?.get("benefits").asText() }).take(40)
-                    o.descriptionId to ("Description ${i + 1}" + (if (o.isPrimary == true) " (shown first)" else "") +
-                            (if (snip.isNotEmpty()) " · $snip" else "") + (if (o.hasPendingChange == true) " · change pending" else ""))
+            DescriptionPicker(
+                choices = choices,
+                selectedId = s.descId,
+                snippet = { o -> plain(o.values?.get("uses").asText().ifBlank { o.values?.get("benefits").asText() }).take(40) }
+            ) { id -> choices.firstOrNull { it.id == id && !it.pending }?.let { s.loadDesc(d, it) } }
+            // Who has to say yes.
+            Hint(
+                when {
+                    chosen == null -> "Choose the description to change."
+                    chosen.mine -> "This is yours, so only an admin has to approve the change."
+                    chosen.needsAuthorApproval ->
+                        "This is ${chosen.author ?: "another contributor"}'s description. They will be notified and must approve, " +
+                                "and then an admin must approve too."
+                    else -> "This description's author is no longer active, so only an admin has to approve the change."
                 }
-                Dropdown("Which description", opts.firstOrNull { it.first == s.descId }?.second ?: "", opts) { id ->
-                    own.firstOrNull { it.descriptionId == id && it.hasPendingChange != true }?.let { s.loadDesc(d, it) }
-                }
-            }
+            )
             // Required first: the reason. Then the text to edit, then the optional measurements.
-            Field("Why does your description need changing? *", s.descReason, "c.descReason", s.errors, minLines = 2) { s.descReason = it }
+            Field("Why does this description need changing? *", s.descReason, "c.descReason", s.errors, minLines = 2) { s.descReason = it }
             val fields = descFields(d)
             fields.filter { !it.part }.forEach { fld ->
                 RichField(fld.label, s.desc[fld.key].orEmpty(), "cd.${fld.key}", s.errors, minLines = 3) {
@@ -1332,6 +1483,11 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
                         )
                     }
                     r.changeReason?.let { Hint("Reason: $it") }
+                    // A change to somebody else's description also needs that contributor.
+                    r.ownerApproval?.let { o ->
+                        val answer = when (o.status) { "approved" -> "approved"; "denied" -> "declined"; else -> "has not answered yet" }
+                        Hint("Contributor ${o.ownerName ?: ""}: $answer. An admin also has to approve.")
+                    }
 
                     Hint(
                         "Submitted ${niceDateTime(r.createdAt)}" +
@@ -1391,27 +1547,58 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
 // Screen
 // ============================================================================
 
+/**
+ * The Record Plant page.
+ *
+ * [fixedPlantId] / [fixedPlantName]: set when the person tapped "Contribute" on a plant's card. The page then
+ * works on THAT plant only: two tabs, "Contribute" and "Request change", with the plant fixed (no picker, no
+ * "Change" button). The app shell puts a Back button above it. Left null, this is the normal four-tab page
+ * opened from the sidebar.
+ */
 @Composable
-fun RecordPlantScreen() {
+fun RecordPlantScreen(fixedPlantId: String? = null, fixedPlantName: String = "") {
     val app = LocalContext.current.applicationContext as PlantellectApp
     val vm: RecordPlantViewModel = viewModel(factory = app.container.viewModelFactory)
     val ui by vm.ui.collectAsState()
     val f = remember { RecordForms() }
     val c = MaterialTheme.colorScheme
+    val fixed = fixedPlantId != null
 
-    // A submission went through: clear the form it came from and show My submissions.
+    // A submission went through: clear the form it came from. The normal page then shows My submissions;
+    // the fixed-plant page has no such tab, so it stays put and shows the confirmation banner.
     LaunchedEffect(ui.completed) {
         when (ui.completed) {
             RecordDone.NEW_PLANT -> { f.new.clear(); f.tab = 3 }
-            RecordDone.CONTRIBUTION -> { f.contrib.desc.clear(); f.contrib.taxOpen = false; vm.clearContribPlant(); f.tab = 3 }
-            RecordDone.CHANGE -> { f.change.reset(); vm.clearEditable(); f.tab = 3 }
+            RecordDone.CONTRIBUTION -> {
+                f.contrib.desc.clear(); f.contrib.taxOpen = false
+                if (fixed) f.tab = 1 else { vm.clearContribPlant(); f.tab = 3 }
+            }
+            RecordDone.CHANGE -> {
+                f.change.reset()
+                if (fixedPlantId != null) vm.selectChangePlant(fixedPlantId)   // read the plant again: pending flags changed
+                else { vm.clearEditable(); f.tab = 3 }
+            }
             RecordDone.TAXONOMY -> f.contrib.taxOpen = false
             RecordDone.WITHDRAWN, null -> {}
         }
         if (ui.completed != null) vm.consumeCompleted()
     }
-    // A plant was chosen on the change tab (or cleared): build / drop the form.
-    LaunchedEffect(ui.editable?.id) { ui.editable?.let { f.change.load(it) } ?: f.change.reset() }
+    // Opened from a plant's card: fix the plant on both tabs. The view model is shared with the normal page, so
+    // whatever plant it held before is dropped first, and dropped again on the way out.
+    LaunchedEffect(fixedPlantId) {
+        if (fixedPlantId != null) {
+            f.tab = 1
+            vm.clearMessages()
+            vm.clearContribPlant(); vm.clearEditable()
+            vm.selectContribPlant(fixedPlantId)
+            vm.selectChangePlant(fixedPlantId)
+        }
+    }
+    DisposableEffect(fixedPlantId) {
+        onDispose { if (fixedPlantId != null) { vm.clearContribPlant(); vm.clearEditable(); vm.clearMessages() } }
+    }
+    // The plant was loaded on the change tab (or cleared): build / drop the form.
+    LaunchedEffect(ui.editable) { ui.editable?.let { f.change.load(it) } ?: f.change.reset() }
     LaunchedEffect(f.tab) { if (f.tab == 3 && ui.requests.isEmpty()) vm.loadRequests(reset = true) }
 
     f.preview?.let { PreviewDialog(it) { f.preview = null } }
@@ -1420,13 +1607,19 @@ fun RecordPlantScreen() {
     CompositionLocalProvider(LocalErrorFocus provides f.focus) {
         PlantellectPage {
             PageHeading(
-                null, "Record Plant",
-                "Add new species, contribute to existing ones, or request a correction. Every submission is reviewed."
+                null, if (fixed) "Contribute" else "Record Plant",
+                if (fixed) "Add to ${fixedPlantName.ifBlank { "this plant" }}, or request a change to it. Every submission is reviewed."
+                else "Add new species, contribute to existing ones, or request a correction. Every submission is reviewed."
             )
 
             PlantSurface(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ScrollableTabStrip(listOf("New plant", "Add to existing", "Request change", "My submissions"), f.tab, { f.tab = it })
+                    if (fixed) {
+                        // Two tabs; inside, tab 1 is "Contribute" and tab 2 is "Request change".
+                        ScrollableTabStrip(listOf("Contribute", "Request change"), if (f.tab == 2) 1 else 0, { f.tab = if (it == 1) 2 else 1 })
+                    } else {
+                        ScrollableTabStrip(listOf("New plant", "Add to existing", "Request change", "My submissions"), f.tab, { f.tab = it })
+                    }
                     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         val errorText = f.problem ?: ui.error
                         val banner = errorText ?: ui.notice
@@ -1438,10 +1631,12 @@ fun RecordPlantScreen() {
                                 }
                             }
                         }
-                        when (f.tab) {
-                            0 -> NewPlantTab(vm, ui, f)
-                            1 -> ContributeTab(vm, ui, f)
-                            2 -> ChangeTab(vm, ui, f)
+                        when {
+                            fixed && f.tab == 2 -> ChangeTab(vm, ui, f, fixedName = fixedPlantName.ifBlank { "this plant" })
+                            fixed -> ContributeTab(vm, ui, f, fixedName = fixedPlantName.ifBlank { "this plant" })
+                            f.tab == 0 -> NewPlantTab(vm, ui, f)
+                            f.tab == 1 -> ContributeTab(vm, ui, f)
+                            f.tab == 2 -> ChangeTab(vm, ui, f)
                             else -> MineTab(vm, ui, f)
                         }
                     }

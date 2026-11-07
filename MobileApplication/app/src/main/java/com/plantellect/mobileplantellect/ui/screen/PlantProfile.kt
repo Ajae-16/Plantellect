@@ -135,6 +135,10 @@ fun PlantProfileDialog(
                                     }
                                     is ProfileLoad.Ready -> ProfileBody(
                                         p = s.data, fallbackHero = heroUrl, votes = votes,
+                                        // Only people who may record plants see Contribute; it opens Record Plant on this plant.
+                                        onContribute = if (nav != null && "record_plant" in nav.permissions) {
+                                            { onClose(); nav.contribute(plantId, s.data.name) }
+                                        } else null,
                                         // A description just got hidden by down votes: draw the page again.
                                         onHidden = { attempt++ },
                                         onView = { viewing = it },
@@ -321,6 +325,7 @@ private fun ProfileBody(
     p: PlantProfileData,
     fallbackHero: String?,
     votes: VotesController,
+    onContribute: (() -> Unit)?,
     onHidden: () -> Unit,
     onView: (String) -> Unit,
     onOpenBotanist: (String) -> Unit
@@ -368,6 +373,10 @@ private fun ProfileBody(
                 null -> {}
                 else -> Pill("Toxicity: $tox", c.errorContainer, c.onErrorContainer)
             }
+        }
+
+        if (onContribute != null) {
+            PlantButton(onClick = onContribute) { Text("Contribute") }
         }
 
         if (primary != null && p.descriptions.size > 1 && primary.author != null) {

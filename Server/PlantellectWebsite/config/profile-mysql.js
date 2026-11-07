@@ -122,6 +122,45 @@ async function changePassword(accountId, currentPassword, newPassword) {
     return { ok: true };
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_MAX_LENGTH = 255;
+
+/**
+ * Changes the account's sign-in email. The current password must be right (a stolen session must not be able
+ * to take the account over by swapping the email). Returns { ok: true, email } or { error, code, reason },
+ * where reason 'wrong_password' is the one the route counts towards its attempt limit.
+ */
+async function changeEmail(accountId, currentPassword, newEmail) {
+    const email = typeof newEmail === 'string' ? newEmail.trim() : '';
+    if (!email) return { error: 'Enter your new email address', code: 400, reason: 'invalid' };
+    if (email.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(email)) {
+        return { error: 'Enter a valid email address', code: 400, reason: 'invalid' };
+    }
+    if (typeof currentPassword !== 'string' || currentPassword === '') {
+        return { error: 'currentPassword is required', code: 400, reason: 'invalid' };
+    }
+
+    const [rows] = await mysqlPool.query('SELECT passwordHash, email FROM accounts WHERE accountId = ?', [accountId]);
+    if (rows.length === 0) return { error: 'Account not found', code: 404, reason: 'missing' };
+
+    const matches = await bcrypt.compare(currentPassword, rows[0].passwordHash);
+    if (!matches) return { error: 'Current password is incorrect', code: 403, reason: 'wrong_password' };
+
+    if (String(rows[0].email).toLowerCase() === email.toLowerCase()) {
+        return { error: 'That is already your email address', code: 400, reason: 'same' };
+    }
+    const [taken] = await mysqlPool.query('SELECT accountId FROM accounts WHERE email = ? AND accountId <> ?', [email, accountId]);
+    if (taken.length > 0) return { error: 'That email is already used by another account', code: 409, reason: 'taken' };
+
+    try {
+        await mysqlPool.query('UPDATE accounts SET email = ? WHERE accountId = ?', [email, accountId]);
+    } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY') return { error: 'That email is already used by another account', code: 409, reason: 'taken' };
+        throw err;
+    }
+    return { ok: true, email };
+}
+
 /** Deletes one stored photo. Never throws: a leftover file is harmless. */
 async function removeStoredFile(relative) {
     const file = resolveStoredPath(relative);
@@ -190,6 +229,7 @@ module.exports = {
     getPhotoPath,
     updateBio,
     changePassword,
+    changeEmail,
     setPhoto,
     removePhoto
 };

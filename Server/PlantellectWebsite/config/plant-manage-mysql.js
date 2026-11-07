@@ -14,8 +14,9 @@
 //   scope 'description'  ONE contributor's own description of the plant. A plant has
 //       one plant_description row (plus its plant_parts row) per contribution, so
 //       there is one request per description: uses, benefits, harmful and the
-//       measurements (parts.*). payload.descriptionId says which one. A contributor
-//       can only ask to change a description they wrote themselves.
+//       measurements (parts.*). payload.descriptionId says which one. A contributor may
+//       change their own description (the admin decides) or someone else's (the author AND the
+//       admin must approve; the author's answer is payload.ownerApproval, see owner-approval.js).
 //
 // The two never write into each other. A base request cannot touch a description,
 // a description request cannot touch the plant's record, and approving or denying
@@ -38,6 +39,7 @@
 // keys with the plant's primary description. applyPlantChange still honours them.
 
 const { insertRow } = require('./ids.js');
+const { stateOf, OWNER_PENDING } = require('./owner-approval');
 const { mysqlPool } = require('./pool-mysql');
 const {
     normalizeName, normalizeRichText, normalizeScientificName, loadModelClasses, parsePayload,
@@ -148,14 +150,58 @@ async function loadPrimaryDescription(executor, plantId, lock) {
 async function loadOwnDescriptions(executor, plantId, accountId) {
     const [rows] = await executor.query(
         `SELECT d.descriptionId, d.accountId, d.partsId, d.uses, d.benefits, d.harmful,
-                d.isPrimary, d.createdAt, ${PART_COLUMNS}
+                d.isPrimary, d.createdAt, d.editedAt, d.editedBy, ${PART_COLUMNS},
+                ea.username AS editorUsername, ep.firstName AS editorFirstName, ep.lastName AS editorLastName
          FROM plant_description d
          LEFT JOIN plant_parts pp ON pp.partId = d.partsId
+         LEFT JOIN accounts ea ON ea.accountId = d.editedBy
+         LEFT JOIN profiles ep ON ep.accountId = d.editedBy
          WHERE d.plantId = ? AND d.accountId = ? AND d.status = 'approved'
          ORDER BY d.createdAt ASC`,
         [plantId, accountId]
     );
     return rows;
+}
+
+/**
+ * Every approved description by SOMEONE ELSE, oldest first, with the author's name and whether the
+ * account is still active (an inactive author, such as the system actor, cannot approve anything).
+ */
+async function loadOtherDescriptions(executor, plantId, accountId) {
+    const [rows] = await executor.query(
+        `SELECT d.descriptionId, d.accountId, d.partsId, d.uses, d.benefits, d.harmful,
+                d.isPrimary, d.createdAt, d.editedAt, d.editedBy, ${PART_COLUMNS},
+                a.username AS authorUsername, a.status AS authorStatus,
+                pr.firstName AS authorFirstName, pr.lastName AS authorLastName,
+                ea.username AS editorUsername, ep.firstName AS editorFirstName, ep.lastName AS editorLastName
+         FROM plant_description d
+         LEFT JOIN plant_parts pp ON pp.partId = d.partsId
+         JOIN accounts a ON a.accountId = d.accountId
+         LEFT JOIN profiles pr ON pr.accountId = d.accountId
+         LEFT JOIN accounts ea ON ea.accountId = d.editedBy
+         LEFT JOIN profiles ep ON ep.accountId = d.editedBy
+         WHERE d.plantId = ? AND d.accountId <> ? AND d.status = 'approved'
+         ORDER BY d.createdAt ASC`,
+        [plantId, accountId]
+    );
+    return rows;
+}
+
+/** Who last edited a description, and when: null while it has never been edited. */
+function editInfo(row, viewerId) {
+    if (!row.editedAt) return null;
+    const full = [row.editorFirstName, row.editorLastName].filter(Boolean).join(' ');
+    return {
+        editedAt: row.editedAt,
+        editedById: row.editedBy || null,
+        editedByName: full || row.editorUsername || null,
+        editedByMe: Boolean(row.editedBy) && row.editedBy === viewerId
+    };
+}
+
+function authorLabel(row) {
+    const full = [row.authorFirstName, row.authorLastName].filter(Boolean).join(' ');
+    return full || row.authorUsername || 'Another contributor';
 }
 
 function currentSpec(plant) {
@@ -230,6 +276,7 @@ async function getPlantEditable(plantId, accountId) {
     const plant = await loadPlantRecord(mysqlPool, plantId, false);
     if (!plant) return null;
     const own = await loadOwnDescriptions(mysqlPool, plantId, accountId);
+    const others = await loadOtherDescriptions(mysqlPool, plantId, accountId);
     const pending = await loadPendingChanges(mysqlPool, plantId);
 
     const taxonomy = {};
@@ -258,6 +305,24 @@ async function getPlantEditable(plantId, accountId) {
                 descriptionId: d.descriptionId,
                 isPrimary: Boolean(d.isPrimary),
                 createdAt: d.createdAt,
+                edit: editInfo(d, accountId),
+                hasPendingChange: Boolean(requestId),
+                pendingRequestId: requestId,
+                values: descriptionValues(d)
+            };
+        }),
+        // Descriptions written by other contributors. A change to one of these is allowed, but it
+        // also needs the author's approval (see owner-approval.js), on top of the admin's.
+        otherDescriptions: others.map((d) => {
+            const requestId = pending.descriptions.get(d.descriptionId) || pending.legacy || null;
+            return {
+                descriptionId: d.descriptionId,
+                authorId: d.accountId,
+                authorName: authorLabel(d),
+                needsAuthorApproval: d.authorStatus === 'active',
+                isPrimary: Boolean(d.isPrimary),
+                createdAt: d.createdAt,
+                edit: editInfo(d, accountId),
                 hasPendingChange: Boolean(requestId),
                 pendingRequestId: requestId,
                 values: descriptionValues(d)
@@ -458,12 +523,34 @@ async function createPlantChangeRequest(accountId, plantId, body) {
                 await conn.rollback();
                 return failure('Choose which of your descriptions to change', 400);
             }
-            // Own descriptions only, and only approved ones: the row is the
-            // uploader's, so nobody else's request can rewrite it.
+            // Any approved description of this plant. Changing your own needs only the admin; changing
+            // someone else's also needs that contributor's approval, recorded below in the payload.
             const desc = await loadDescription(conn, plantId, descriptionId, false);
-            if (!desc || desc.accountId !== accountId) {
+            if (!desc) {
                 await conn.rollback();
-                return failure('That description is not one of yours, or it is not approved yet', 403);
+                return failure('That description does not exist on this plant, or it is not approved yet', 404);
+            }
+            let ownerApproval = null;
+            if (desc.accountId !== accountId) {
+                const [owners] = await conn.query(
+                    `SELECT a.accountId, a.status, a.username, pr.firstName, pr.lastName
+                     FROM accounts a LEFT JOIN profiles pr ON pr.accountId = a.accountId
+                     WHERE a.accountId = ?`,
+                    [desc.accountId]
+                );
+                const owner = owners[0];
+                // Nobody can answer for an inactive account, so only the admin decides those.
+                if (owner && owner.status === 'active') {
+                    ownerApproval = {
+                        required: true,
+                        ownerId: owner.accountId,
+                        ownerName: [owner.firstName, owner.lastName].filter(Boolean).join(' ') || owner.username,
+                        status: OWNER_PENDING,
+                        requestedAt: new Date().toISOString(),
+                        decidedAt: null,
+                        note: null
+                    };
+                }
             }
 
             const asked = collectDescription(descSection, errors);
@@ -499,11 +586,11 @@ async function createPlantChangeRequest(accountId, plantId, body) {
                 await conn.rollback();
                 return failure(`A change to that description is already waiting for review (${waiting}).`, 409);
             }
-            filed.push({
-                scope: SCOPE_DESCRIPTION,
-                changes,
-                payload: { scope: SCOPE_DESCRIPTION, descriptionId, changes, reason: descReason }
-            });
+            const descPayload = {
+                scope: SCOPE_DESCRIPTION, descriptionId, descriptionOwnerId: desc.accountId, changes, reason: descReason
+            };
+            if (ownerApproval) descPayload.ownerApproval = ownerApproval;
+            filed.push({ scope: SCOPE_DESCRIPTION, changes, payload: descPayload });
         }
 
         const requests = [];
@@ -513,7 +600,14 @@ async function createPlantChangeRequest(accountId, plantId, body) {
                 ['accountId', 'requestType', 'targetPlantId', 'payload', 'status'],
                 [accountId, 'plant_change', plantId, JSON.stringify(item.payload), 'pending']
             );
-            requests.push({ requestId, scope: item.scope, changes: item.changes });
+            // The state the requester has "seen" at filing: nothing new until someone decides.
+            item.payload.requesterSeenState = stateOf('pending', item.payload);
+            await conn.query('UPDATE approval_requests SET payload = ? WHERE requestId = ?', [JSON.stringify(item.payload), requestId]);
+            requests.push({
+                requestId, scope: item.scope, changes: item.changes,
+                needsOwnerApproval: Boolean(item.payload.ownerApproval),
+                ownerName: item.payload.ownerApproval ? item.payload.ownerApproval.ownerName : null
+            });
         }
         await conn.commit();
         return { requests, requestId: requests[0].requestId };
@@ -563,8 +657,13 @@ async function applyPlantChange(conn, request) {
         if (scope === SCOPE_DESCRIPTION) {
             desc = await loadDescription(conn, request.targetPlantId, payload.descriptionId, true);
             if (!desc) return { error: 'That description no longer exists or is no longer approved', code: 409 };
-            if (desc.accountId !== request.accountId) {
-                return { error: 'That description does not belong to the person who filed this request', code: 409 };
+            // Whose description this was when the request was filed. Older requests (and own-description
+            // requests) carry no descriptionOwnerId, and there the author is the person who filed it.
+            const expectedAuthor = payload.descriptionOwnerId
+                || (payload.ownerApproval && payload.ownerApproval.ownerId)
+                || request.accountId;
+            if (desc.accountId !== expectedAuthor) {
+                return { error: 'That description now belongs to someone else, so this request is out of date', code: 409 };
             }
         } else {
             desc = await loadPrimaryDescription(conn, request.targetPlantId, true);   // legacy
@@ -671,6 +770,14 @@ async function applyPlantChange(conn, request) {
             );
             await conn.query('UPDATE plant_description SET partsId = ? WHERE descriptionId = ?', [partsId, desc.descriptionId]);
         }
+    }
+
+    // Stamp the description with who changed it last and when (the person who filed the request).
+    if (desc && descKeys.length > 0) {
+        await conn.query(
+            'UPDATE plant_description SET editedAt = NOW(), editedBy = ? WHERE descriptionId = ?',
+            [request.accountId, desc.descriptionId]
+        );
     }
 
     return { plantId: plant.plantId, applied: keys, scope: scope || 'legacy' };

@@ -66,6 +66,12 @@ PlantellectWebsite/
 │   │                          #   payload.descriptionId; one pending per description). Neither scope can write
 │   │                          #   into the other. getPlantEditable(plantId, accountId) returns only the caller's
 │   │                          #   own descriptions; applyPlantChange runs in approvePlantRequest's transaction
+│   ├── owner-approval.js      # Pure: contributor approval on a change request. A 'description' change to ANOTHER
+│   │                          #   contributor's description keeps that contributor's answer in payload.ownerApproval
+│   │                          #   (pending | approved | denied); the admin cannot approve until it is 'approved'.
+│   ├── owner-approval-mysql.js # Profile > Pending approval: awaitingMe / mine lists, the sidebar badge count
+│   │                          #   (waiting for me + my requests whose state changed since I last looked), mark-seen,
+│   │                          #   and the author's approve / decline (decline ends the request). Routes: /api/profile/approvals*
 │   ├── discovery-mysql.js     # Discovery reports, votes and image access
 │   ├── description-vote-settings.js # The two admin-editable numbers (system_settings key descriptionVotes:
 │   │                          #   upvoteAlert, downvoteHide >= 2), per-field fallback to settings.descriptionVotes, version-checked save.

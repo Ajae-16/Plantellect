@@ -38,6 +38,16 @@ class ProfileRepository(
 
     suspend fun withdraw(requestId: String) = caller.call { discoveries.cancel(requestId) }
 
+    // ====================================================================== pending approvals
+
+    suspend fun approvals() = caller.call { profileApi.approvals() }
+    suspend fun approvalCount() = caller.call { profileApi.approvalCount() }
+    suspend fun approvalsSeen() = caller.call { profileApi.approvalsSeen() }
+    suspend fun answerChange(requestId: String, approve: Boolean, note: String?) = caller.call {
+        val body = ApprovalNoteRequest(note?.trim()?.ifBlank { null })
+        if (approve) profileApi.approveChange(requestId, body) else profileApi.denyChange(requestId, body)
+    }
+
     // ====================================================================== own profile
 
     /** A loadable URL for [AccountDto.photoUrl]. Cached by URL: it carries ?v=<timestamp>, new with every photo. */
@@ -64,6 +74,15 @@ class ProfileRepository(
     suspend fun changePassword(current: String, new: String): ApiResult<MessageDto> {
         ProfileValidator.passwordProblem(current, new)?.let { return ApiResult.Failure(AppError.Unexpected(it)) }
         return caller.call { profileApi.changePassword(PasswordChangeRequest(current, new)) }
+    }
+
+    /** Same errors as [changePassword] (403 wrong password, 429 locked), plus 409 when the email belongs to someone else. */
+    suspend fun changeEmail(current: String, newEmail: String, oldEmail: String?): ApiResult<EmailChangeResponse> {
+        ProfileValidator.emailProblem(newEmail, oldEmail)?.let { return ApiResult.Failure(AppError.Unexpected(it)) }
+        if (current.isEmpty()) return ApiResult.Failure(AppError.Unexpected("Enter your current password."))
+        return caller.call { profileApi.changeEmail(EmailChangeRequest(current, newEmail.trim())) }.also { r ->
+            if (r is ApiResult.Success) auth.updateAccount { it.copy(email = r.value.email) }
+        }
     }
 
     /**

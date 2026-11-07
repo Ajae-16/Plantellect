@@ -663,6 +663,7 @@ async function listMyRequests(accountId, { page, pageSize } = {}) {
                 changeReason: r.requestType === 'plant_change' ? (payload.reason || null) : null,
                 changeScope: r.requestType === 'plant_change' ? (payload.scope || 'legacy') : null,
                 changeDescriptionId: r.requestType === 'plant_change' ? (payload.descriptionId || null) : null,
+                ownerApproval: r.requestType === 'plant_change' ? (payload.ownerApproval || null) : null,
                 note: r.note,
                 createdAt: r.createdAt,
                 reviewedAt: r.reviewedAt,

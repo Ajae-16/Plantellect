@@ -49,9 +49,30 @@ import kotlinx.serialization.json.JsonPrimitive
     val cautionNote: String? = null
 )
 
+/** Who last edited a description and when. Absent while the description has never been edited. */
+@Serializable data class RecEdit(
+    val editedAt: String? = null,
+    val editedById: String? = null,
+    val editedByName: String? = null,
+    val editedByMe: Boolean? = null
+)
+
 @Serializable data class RecDescription(
     val descriptionId: String,
     val isPrimary: Boolean? = null,
+    val edit: RecEdit? = null,
+    val hasPendingChange: Boolean? = null,
+    val values: Map<String, JsonElement>? = null
+)
+
+/** A description written by SOMEONE ELSE. Changing it needs its author's approval as well as the admin's. */
+@Serializable data class RecOtherDescription(
+    val descriptionId: String,
+    val authorId: String? = null,
+    val authorName: String? = null,
+    val needsAuthorApproval: Boolean? = null,
+    val isPrimary: Boolean? = null,
+    val edit: RecEdit? = null,
     val hasPendingChange: Boolean? = null,
     val values: Map<String, JsonElement>? = null
 )
@@ -66,10 +87,17 @@ import kotlinx.serialization.json.JsonPrimitive
     val taxonomy: Map<String, String?>? = null,
     val hasPendingBase: Boolean? = null,
     val pendingBaseRequestId: String? = null,
-    val descriptions: List<RecDescription>? = null
+    /** Only the signed-in contributor's own descriptions. */
+    val descriptions: List<RecDescription>? = null,
+    /** Everyone else's descriptions of this plant. */
+    val otherDescriptions: List<RecOtherDescription>? = null
 )
 
-@Serializable data class RecRequestRef(val requestId: String? = null)
+@Serializable data class RecRequestRef(
+    val requestId: String? = null,
+    val needsOwnerApproval: Boolean? = null,
+    val ownerName: String? = null
+)
 @Serializable data class RecChangeResult(val requests: List<RecRequestRef>? = null, val requestId: String? = null)
 
 @Serializable data class RecChange(
@@ -86,6 +114,14 @@ import kotlinx.serialization.json.JsonPrimitive
     val originalFilename: String? = null
 )
 
+/** The other contributor's answer on a change to their description. status: pending | approved | denied. */
+@Serializable data class RecOwnerApproval(
+    val ownerId: String? = null,
+    val ownerName: String? = null,
+    val status: String? = null,
+    val note: String? = null
+)
+
 @Serializable data class RecMyRequest(
     val id: String,
     val requestType: String,
@@ -96,6 +132,7 @@ import kotlinx.serialization.json.JsonPrimitive
     val changes: Map<String, RecChange>? = null,
     val changeReason: String? = null,
     val changeScope: String? = null,
+    val ownerApproval: RecOwnerApproval? = null,
     val note: String? = null,
     val createdAt: String? = null,
     val reviewedAt: String? = null,

@@ -2,7 +2,9 @@ package com.plantellect.mobileplantellect.ui.screen
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +29,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.plantellect.mobileplantellect.data.logic.ProfileValidator
+import com.plantellect.mobileplantellect.data.logic.UploadLimits
+import com.plantellect.mobileplantellect.viewmodel.ProfileMessage
 import com.plantellect.mobileplantellect.data.remote.dto.AccountDto
 import com.plantellect.mobileplantellect.data.remote.dto.ProfilePlantDto
 import com.plantellect.mobileplantellect.ui.theme.LeafMedium
@@ -91,12 +95,19 @@ fun ProfileScreen(
     val s by vm.state.collectAsState()
     val b by vm.botanist.collectAsState()
     val edit by vm.edit.collectAsState()
+    val approvals by vm.approvals.collectAsState()
     val uriHandler = LocalUriHandler.current
 
     val isOwn = viewAccountId == null || viewAccountId == myAccountId
     val target = if (isOwn) myAccountId else viewAccountId
 
     var showChangePassword by remember { mutableStateOf(false) }
+    var showChangeEmail by remember { mutableStateOf(false) }
+    var showPhotoChoice by remember { mutableStateOf(false) }
+    var zoomPhoto by remember { mutableStateOf<String?>(null) }
+    var emailNotice by remember { mutableStateOf<String?>(null) }
+    var editingBio by rememberSaveable { mutableStateOf(false) }
+    var bioDraft by rememberSaveable { mutableStateOf("") }
     var passwordNotice by remember { mutableStateOf<String?>(null) }
     var tab by rememberSaveable(target) { mutableIntStateOf(0) }
 
@@ -141,7 +152,7 @@ fun ProfileScreen(
     // Own: reports + own profile refresh. Anyone: the public profile (photo, counts, plants).
     // A person with nothing public simply gets no profile data (the server answers 404).
     LaunchedEffect(account != null, target, isOwn) {
-        if (isOwn && account != null) { vm.load(1); vm.loadOwnProfile() }
+        if (isOwn && account != null) { vm.load(1); vm.loadOwnProfile(); vm.loadApprovals() }
         target?.let { if (account != null) vm.loadBotanist(it) }
     }
 
@@ -185,7 +196,9 @@ fun ProfileScreen(
                             name = account.username,
                             initials = account.username.take(2).uppercase(),
                             busy = edit.uploadingPhoto,
-                            onClick = { if (!edit.uploadingPhoto) pickPhoto() }
+                            // Tap = change the photo, hold = look at it big.
+                            onClick = { if (!edit.uploadingPhoto) { vm.clearEditMessages(); showPhotoChoice = true } },
+                            onLongClick = { vm.photoUrl(account.photoUrl)?.let { zoomPhoto = it } }
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(account.username.ifBlank { "-" }, style = MaterialTheme.typography.titleLarge, color = c.onSurface)
@@ -196,21 +209,23 @@ fun ProfileScreen(
                             )
                         }
                     }
-                    account.bio?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, style = MaterialTheme.typography.bodyMedium, color = c.onSurface)
-                    }
-
-                    // ---- profile picture ----
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        PlantOutlinedButton(onClick = { pickPhoto() }, enabled = !edit.uploadingPhoto) {
-                            Text(if (account.photoUrl == null) "Add profile photo" else "Change photo")
-                        }
-                        PlantOutlinedButton(onClick = { useCamera() }, enabled = !edit.uploadingPhoto) {
-                            Text("Use camera")
-                        }
-                        if (account.photoUrl != null) {
-                            PlantTextButton(onClick = { vm.removePhoto() }, enabled = !edit.uploadingPhoto) { Text("Remove") }
-                        }
+                    // ---- bio, with the photo button beside Edit bio ----
+                    BioSection(
+                        bio = account.bio,
+                        editing = editingBio,
+                        draft = bioDraft,
+                        saving = edit.savingBio,
+                        message = edit.bioMessage,
+                        photoButtonLabel = if (account.photoUrl == null) "Add photo" else "Change photo",
+                        photoBusy = edit.uploadingPhoto,
+                        onDraftChange = { bioDraft = it },
+                        onEdit = { vm.clearEditMessages(); bioDraft = account.bio.orEmpty(); editingBio = true },
+                        onCancel = { vm.clearEditMessages(); editingBio = false },
+                        onSave = { vm.saveBio(bioDraft) { editingBio = false } },
+                        onChangePhoto = { vm.clearEditMessages(); showPhotoChoice = true }
+                    )
+                    if (account.photoUrl != null) {
+                        PlantTextButton(onClick = { vm.removePhoto() }, enabled = !edit.uploadingPhoto) { Text("Remove photo") }
                     }
                     if (edit.uploadingPhoto) LinearProgressIndicator(Modifier.fillMaxWidth())
                     edit.photoMessage?.let {
@@ -240,7 +255,8 @@ fun ProfileScreen(
                             ProfilePicture(
                                 url = vm.photoUrl(other.photoUrl),
                                 name = other.name,
-                                initials = other.name.take(2).uppercase()
+                                initials = other.name.take(2).uppercase(),
+                                onLongClick = { vm.photoUrl(other.photoUrl)?.let { zoomPhoto = it } }
                             )
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(other.name, style = MaterialTheme.typography.titleLarge, color = c.onSurface)
@@ -265,30 +281,14 @@ fun ProfileScreen(
             }
         }
 
-        // ---- counts (anyone with a public profile) ----
-        p?.let {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Stat("Recorded", it.metrics.verifiedPlants, Modifier.weight(1f))
-                Stat("Reviewed", it.metrics.reviewedPlants, Modifier.weight(1f))
-                Stat("Reported", it.metrics.reportedPlants, Modifier.weight(1f))
-            }
-        }
-
-        // ---- security: own only ----
-        if (isOwn) {
-            SectionTitle("Security")
-            PlantOutlinedButton(onClick = { passwordNotice = null; vm.clearEditMessages(); showChangePassword = true }) {
-                Text("Change password")
-            }
-            passwordNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.primary) }
-        }
-
         // ---- tabs ----
         // Own:    My reports | My contributions
         // Other:  Contributions | Reported plants
         val canRecord = "record_plant" in account.permissions
         val tabs = buildList<Pair<String, String>> {
             if (isOwn) {
+                // First, so a request waiting for you is the first thing you see.
+                if (canRecord) add("approvals" to "Pending approval (${approvals.data.awaitingMe.size + approvals.data.mine.size})")
                 add("reports" to "My reports (${s.total})")
                 if (p != null || canRecord) add("contributions" to "My contributions (${p?.contributions?.size ?: 0})")
             } else if (p != null) {
@@ -299,7 +299,18 @@ fun ProfileScreen(
         if (tabs.isNotEmpty()) {
             val selected = tab.coerceIn(0, tabs.lastIndex)
             ScrollableTabStrip(tabs.map { it.second }, selected, { tab = it })
+            // Looking at the tab is what clears the "new" mark on the requests you asked for.
+            val onApprovals = tabs[selected].first == "approvals"
+            LaunchedEffect(onApprovals, approvals.loaded, approvals.data.mine) {
+                if (onApprovals && approvals.loaded) vm.markApprovalsSeen()
+            }
             when (tabs[selected].first) {
+                "approvals" -> PendingApprovalSection(
+                    state = approvals,
+                    onAnswer = vm::answerChange,
+                    onOpenPlant = onOpenPlant,
+                    onDismissMessage = vm::clearApprovalMessage
+                )
                 "reports" -> MyReportsSection(s.total, s.loading, s.notice, s.reports, s.withdrawingId,
                     s.page, s.pageCount, s.pageSize, s.hasPrev, s.hasNext,
                     onWithdraw = vm::withdraw, onPrev = vm::prevPage, onNext = vm::nextPage,
@@ -312,9 +323,55 @@ fun ProfileScreen(
                 "reported" -> PlantList(p?.reported.orEmpty(), "No reported plants yet.", onOpenPlant)
             }
         }
+
+        // ---- security: own only, below the reports and contributions ----
+        if (isOwn) {
+            SectionTitle("Security")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PlantOutlinedButton(
+                    onClick = { passwordNotice = null; emailNotice = null; vm.clearEditMessages(); showChangePassword = true },
+                    modifier = Modifier.weight(1f)
+                ) { Text("Change password") }
+                PlantOutlinedButton(
+                    onClick = { passwordNotice = null; emailNotice = null; vm.clearEditMessages(); showChangeEmail = true },
+                    modifier = Modifier.weight(1f)
+                ) { Text("Change email") }
+            }
+            passwordNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.primary) }
+            emailNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.primary) }
+        }
     }
 
     // Dialogs live outside the page column so they never add spacing to it.
+    if (showPhotoChoice && isOwn) {
+        AlertDialog(
+            onDismissRequest = { showPhotoChoice = false },
+            title = { Text(if (account?.photoUrl == null) "Add profile photo" else "Change profile photo") },
+            text = { Text("Where should the new photo come from?") },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    PlantTextButton(onClick = { showPhotoChoice = false; pickPhoto() }) { Text("Gallery") }
+                    PlantTextButton(onClick = { showPhotoChoice = false; useCamera() }) { Text("Camera") }
+                }
+            },
+            dismissButton = { PlantTextButton(onClick = { showPhotoChoice = false }) { Text("Cancel") } }
+        )
+    }
+    zoomPhoto?.let { url -> PhotoZoomDialog(url, if (isOwn) "Your profile photo" else (p?.name ?: "Profile photo"), onClose = { zoomPhoto = null }) }
+    if (showChangeEmail && account != null && isOwn) {
+        ChangeEmailDialog(
+            currentEmail = account.email,
+            busy = edit.changingEmail,
+            serverError = edit.emailMessage?.takeIf { it.isError }?.text,
+            onDismiss = { showChangeEmail = false },
+            onSubmit = { password, newEmail ->
+                vm.changeEmail(password, newEmail, account.email) { saved ->
+                    showChangeEmail = false
+                    emailNotice = "Your email was changed to $saved."
+                }
+            }
+        )
+    }
     if (showChangePassword && account != null && isOwn) {
         ChangePasswordDialog(
             busy = edit.changingPassword,
@@ -332,29 +389,34 @@ fun ProfileScreen(
 }
 
 /**
- * Profile picture in the app's leaf shape; initials when there is no photo. With [onClick] it is tappable
- * (your own picture: tap to change it) and wears a small camera badge; [busy] covers it with a spinner
- * while a new photo is being sent.
+ * Profile picture in the app's leaf shape; initials when there is no photo.
+ *  - [onClick] (your own picture): tap to change it; wears a small camera badge.
+ *  - [onLongClick]: hold to see the photo full screen (also on other people's pictures).
+ * [busy] covers it with a spinner while a new photo is being sent.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProfilePicture(
     url: String?, name: String, initials: String,
-    busy: Boolean = false, onClick: (() -> Unit)? = null
+    busy: Boolean = false, onClick: (() -> Unit)? = null, onLongClick: (() -> Unit)? = null
 ) {
     val c = MaterialTheme.colorScheme
-    val picture: @Composable () -> Unit = {
-        Box(contentAlignment = Alignment.Center) {
-            if (url != null) PlantPhoto(url, name, Modifier.fillMaxSize(), maxPx = 256, placeholder = false)
-            else Text(initials, style = MaterialTheme.typography.titleLarge, color = c.onPrimaryContainer)
-            if (busy) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
-        }
-    }
     Box(Modifier.size(72.dp)) {
+        Surface(shape = LeafMedium, color = c.primaryContainer, modifier = Modifier.fillMaxSize()) {
+            Box(
+                Modifier.fillMaxSize().combinedClickable(
+                    enabled = onClick != null || (onLongClick != null && url != null),
+                    onClick = { onClick?.invoke() },
+                    onLongClick = if (url != null) onLongClick else null
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (url != null) PlantPhoto(url, name, Modifier.fillMaxSize(), maxPx = 256, placeholder = false)
+                else Text(initials, style = MaterialTheme.typography.titleLarge, color = c.onPrimaryContainer)
+                if (busy) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
+            }
+        }
         if (onClick != null) {
-            Surface(
-                onClick = onClick, shape = LeafMedium, color = c.primaryContainer,
-                modifier = Modifier.fillMaxSize()
-            ) { picture() }
             Surface(
                 shape = CircleShape, color = c.primary, shadowElevation = 2.dp,
                 modifier = Modifier.align(Alignment.BottomEnd).size(24.dp)
@@ -363,19 +425,69 @@ private fun ProfilePicture(
                     Icon(Icons.Filled.PhotoCamera, contentDescription = "Change profile photo", tint = c.onPrimary, modifier = Modifier.size(14.dp))
                 }
             }
-        } else {
-            Surface(shape = LeafMedium, color = c.primaryContainer, modifier = Modifier.fillMaxSize()) { picture() }
         }
     }
 }
 
+/**
+ * Your own bio: shown as text with "Add bio" / "Edit bio" and the photo button side by side. Editing opens a small
+ * editor docked above the keyboard (Save and Cancel stay visible), that stops at [UploadLimits.MAX_BIO_CHARS]
+ * characters and keeps the newest letter in view. Saving a blank box clears the bio.
+ */
 @Composable
-private fun Stat(label: String, value: Int, modifier: Modifier) {
-    Surface(modifier, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$value", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun BioSection(
+    bio: String?,
+    editing: Boolean,
+    draft: String,
+    saving: Boolean,
+    message: ProfileMessage?,
+    photoButtonLabel: String,
+    photoBusy: Boolean,
+    onDraftChange: (String) -> Unit,
+    onEdit: () -> Unit,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+    onChangePhoto: () -> Unit
+) {
+    val c = MaterialTheme.colorScheme
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Bio", style = MaterialTheme.typography.titleSmall, color = c.onSurface)
+        if (bio.isNullOrBlank()) {
+            Text(
+                "You have not written a bio yet. It shows on your public profile.",
+                style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant
+            )
+        } else {
+            Text(bio, style = MaterialTheme.typography.bodyMedium, color = c.onSurface)
         }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PlantOutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+                Text(if (bio.isNullOrBlank()) "Add bio" else "Edit bio")
+            }
+            PlantOutlinedButton(onClick = onChangePhoto, enabled = !photoBusy, modifier = Modifier.weight(1f)) {
+                Text(photoButtonLabel)
+            }
+        }
+        message?.let {
+            Text(it.text, style = MaterialTheme.typography.bodySmall, color = if (it.isError) c.error else c.primary)
+        }
+    }
+
+    if (editing) {
+        KeyboardEditDialog(
+            title = "Your bio",
+            value = draft,
+            onValueChange = onDraftChange,
+            maxChars = UploadLimits.MAX_BIO_CHARS,
+            saveLabel = "Save bio",
+            saving = saving,
+            saveEnabled = ProfileValidator.bioProblem(draft) == null,
+            onSave = onSave,
+            onCancel = onCancel,
+            placeholder = "Tell people a little about yourself and your plant interests.",
+            // A server error (for example a lost connection) shows next to the box it belongs to.
+            errorText = message?.takeIf { it.isError }?.text
+        )
     }
 }
 
@@ -562,6 +674,61 @@ private fun ChangePasswordDialog(
             dismissButton = {
                 PlantTextButton(onClick = { confirming = false }) { Text("Go back") }
             }
+        )
+    }
+}
+
+/**
+ * New email + current password, then an "Are you sure?" step. [serverError] is the server's answer to the last
+ * attempt (wrong password, email already used, locked after 5 wrong guesses, ...).
+ */
+@Composable
+private fun ChangeEmailDialog(
+    currentEmail: String,
+    busy: Boolean,
+    serverError: String?,
+    onDismiss: () -> Unit,
+    onSubmit: (password: String, newEmail: String) -> Unit
+) {
+    var newEmail by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirming by remember { mutableStateOf(false) }
+
+    val problem = if (newEmail.isNotEmpty()) ProfileValidator.emailProblem(newEmail, currentEmail) else null
+    val canSubmit = !busy && password.isNotEmpty() && ProfileValidator.emailProblem(newEmail, currentEmail) == null
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Change email") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Current email: ${currentEmail.ifBlank { "-" }}", style = MaterialTheme.typography.bodySmall)
+                LimitedOutlinedTextField(
+                    value = newEmail, onValueChange = { newEmail = it }, maxChars = UploadLimits.EMAIL_MAX_CHARS,
+                    modifier = Modifier.fillMaxWidth(), label = "New email", singleLine = true,
+                    errorText = problem,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                )
+                PasswordField("Current password", password) { password = it }
+                serverError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = { PlantButton(onClick = { confirming = true }, enabled = canSubmit) { Text("Change email") } },
+        dismissButton = { PlantTextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } }
+    )
+
+    if (confirming) {
+        AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text("Confirm email change") },
+            text = { Text("Change your email to ${newEmail.trim()}? You will use it to sign in from now on.") },
+            confirmButton = {
+                PlantButton(onClick = { confirming = false; onSubmit(password, newEmail.trim()) }) { Text("Yes, change it") }
+            },
+            dismissButton = { PlantTextButton(onClick = { confirming = false }) { Text("Go back") } }
         )
     }
 }

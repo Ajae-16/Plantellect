@@ -3,9 +3,15 @@
 //   GET    /api/profile            name, email, bio, photoUrl
 //   PUT    /api/profile/bio        { bio }                          (null or "" clears it)
 //   POST   /api/profile/password   { currentPassword, newPassword }
+//   POST   /api/profile/email      { currentPassword, newEmail }
 //   GET    /api/profile/photo      the caller's own photo (image/webp)
 //   POST   /api/profile/photo      multipart/form-data, field "image", at most 10 MB
 //   DELETE /api/profile/photo
+//   GET    /api/profile/approvals              { awaitingMe, mine, badge }   (Pending approval tab)
+//   GET    /api/profile/approvals/count        { count }                     (the number next to Profile)
+//   POST   /api/profile/approvals/seen         the requester looked at their requests
+//   POST   /api/profile/approvals/:id/approve  { note? }  the author approves a change to their description
+//   POST   /api/profile/approvals/:id/deny     { note? }  the author declines it (the request ends)
 //
 // Everything here needs a signed-in session (the same connect.sid cookie as the rest of the API)
 // and only ever touches the caller's own account: there is no accountId in any path or body.
@@ -18,6 +24,7 @@ const { createUploader, handleUploadError } = require('../config/upload');
 const { ingestUploads } = require('../config/image-ingest');
 const { logAuthEvent } = require('../mongoose-schemas/Authlog');
 const profile = require('../config/profile-mysql');
+const approvals = require('../config/owner-approval-mysql');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -122,6 +129,40 @@ router.post('/password', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Email
+// ---------------------------------------------------------------------------
+
+// Asking for the current password makes this a password guess too, so it shares the password brake.
+router.post('/email', async (req, res) => {
+    const accountId = req.session.accountId;
+    const { currentPassword, newEmail } = req.body || {};
+
+    try {
+        const wait = lockedFor(accountId);
+        if (wait > 0) {
+            res.setHeader('Retry-After', String(Math.ceil(wait / 1000)));
+            return res.status(429).json({ error: 'Too many wrong passwords. Try again later.' });
+        }
+
+        const result = await profile.changeEmail(accountId, currentPassword, newEmail);
+        if (result.error) {
+            if (result.reason === 'wrong_password') {
+                countWrongGuess(accountId);
+                await Promise.resolve(audit(req, 'email_change_failed', { reason: 'wrong_password' })).catch(() => {});
+            }
+            return res.status(result.code).json({ error: result.error });
+        }
+
+        wrongGuesses.delete(accountId);
+        await Promise.resolve(audit(req, 'email_changed', {})).catch(() => {});
+        res.json({ email: result.email, message: 'Email changed' });
+    } catch (err) {
+        console.error('Change email error:', err.message);
+        res.status(500).json({ error: 'Failed to change email' });
+    }
+});
+
+// ---------------------------------------------------------------------------
 // Photo
 // ---------------------------------------------------------------------------
 
@@ -197,6 +238,65 @@ router.delete('/photo', async (req, res) => {
         res.status(500).json({ error: 'Failed to remove the photo' });
     }
 });
+
+// ---------------------------------------------------------------------------
+// Pending approvals (changes to descriptions: the ones I asked for, and the ones waiting for me)
+// ---------------------------------------------------------------------------
+
+router.get('/approvals', async (req, res) => {
+    try {
+        const result = await approvals.getApprovals(req.session.accountId);
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.json(result);
+    } catch (err) {
+        console.error('List approvals error:', err.message);
+        res.status(500).json({ error: 'Failed to load your pending approvals' });
+    }
+});
+
+router.get('/approvals/count', async (req, res) => {
+    try {
+        const count = await approvals.getBadgeCount(req.session.accountId);
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.json({ count });
+    } catch (err) {
+        console.error('Approvals count error:', err.message);
+        res.status(500).json({ error: 'Failed to load the count' });
+    }
+});
+
+router.post('/approvals/seen', async (req, res) => {
+    try {
+        res.json(await approvals.markSeen(req.session.accountId));
+    } catch (err) {
+        console.error('Approvals seen error:', err.message);
+        res.status(500).json({ error: 'Failed to update your notifications' });
+    }
+});
+
+function decide(decision) {
+    return async (req, res) => {
+        try {
+            const result = await approvals.decideAsOwner(
+                req.session.accountId, req.params.requestId, decision, (req.body || {}).note
+            );
+            if (result.error) return res.status(result.code).json({ error: result.error });
+            // The audit log is best effort here: its action list may not know this event yet.
+            await Promise.resolve(audit(req, 'change_request_answered', { requestId: req.params.requestId, decision })).catch(() => {});
+            res.json({
+                ...result,
+                message: decision === 'approve'
+                    ? 'Approved. The change now waits for an admin.'
+                    : 'Declined. The change was cancelled.'
+            });
+        } catch (err) {
+            console.error('Answer approval error:', err.message);
+            res.status(500).json({ error: 'Failed to save your answer' });
+        }
+    };
+}
+router.post('/approvals/:requestId/approve', decide('approve'));
+router.post('/approvals/:requestId/deny', decide('deny'));
 
 // A wrong field name is not "too many files": say what the app should send.
 // eslint-disable-next-line no-unused-vars

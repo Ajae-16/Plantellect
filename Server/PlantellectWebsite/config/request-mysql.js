@@ -102,6 +102,8 @@ async function listPlantRequests({ requestType, page, pageSize }) {
                 // 'legacy' for a request filed before the split.
                 changeScope: isChange ? (payload.scope || 'legacy') : null,
                 changeDescriptionId: isChange ? (payload.descriptionId || null) : null,
+                // The other contributor's answer, when the change is to their description.
+                ownerApproval: isChange ? (payload.ownerApproval || null) : null,
                 images: imageIds.map((imageId) => ({
                     imageId,
                     url: `/admin/api/plant-images/${encodeURIComponent(imageId)}`

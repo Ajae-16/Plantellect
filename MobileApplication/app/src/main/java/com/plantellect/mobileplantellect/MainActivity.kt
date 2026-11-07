@@ -5,6 +5,7 @@ import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -51,6 +52,7 @@ import com.plantellect.mobileplantellect.ui.theme.resolveDark
 import com.plantellect.mobileplantellect.viewmodel.AuthViewModel
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 import com.plantellect.mobileplantellect.viewmodel.ProfileViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -150,11 +152,37 @@ private fun AppShell(
     // True when your own profile was opened by tapping your name (it then gets a Back button);
     // false when it was opened from the sidebar (no Back button).
     var profileViaLink by rememberSaveable { mutableStateOf(false) }
+    // The page a contributor's profile was opened from ("inventory" = Plant Library). The sidebar keeps that page
+    // highlighted while the profile is open, instead of lighting up the sidebar's own Profile page.
+    var profileOrigin by rememberSaveable { mutableStateOf("home") }
+    // The plant to bring back when Back is pressed on a profile that was opened from it (kept here, not inside the
+    // screens, so it can be dropped when you leave that profile through the sidebar).
+    var libraryResume by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
+    var homeResume by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
+    // Set by "Contribute" on a plant's profile: the page the plant was opened from ("home", "inventory", "profile"...)
+    // and the plant's name, so Back can bring that plant's card back.
+    var contributeOrigin by rememberSaveable { mutableStateOf("home") }
+    var contributeName by rememberSaveable { mutableStateOf("") }
+    val approvals by profileVm.approvals.collectAsState()
+    // "Profile (n)" in the sidebar: requests waiting for my answer + answers to the ones I asked for.
+    val navBadges = remember(approvals.badge) { mapOf("profile" to approvals.badge) }
     val c = MaterialTheme.colorScheme
+
+    /** A profile that sits on top of another page (a contributor's, or yours opened by tapping your name). */
+    fun isLinkedProfile(route: String?): Boolean =
+        route?.startsWith("profile/") == true || (route == "profile" && profileViaLink)
 
     fun go(route: String) {
         scope.launch { drawerState.close() }
-        if (route == "profile") profileViaLink = false
+        // Leaving a contributor's profile through the sidebar: close it (and forget the plant that was open) BEFORE
+        // the page you were on is saved, so coming back to that page later shows the page, not the profile.
+        libraryResume = null
+        homeResume = null
+        var guard = 0
+        while (isLinkedProfile(navController.currentBackStackEntry?.destination?.route) && guard++ < 20) {
+            if (!navController.popBackStack()) break
+        }
+        profileViaLink = false
         if (route == "home") navController.popBackStack("home", inclusive = false)
         else navController.navigate(route) {
             popUpTo("home") { saveState = true }
@@ -170,15 +198,51 @@ private fun AppShell(
      */
     fun openPerson(accountId: String) {
         scope.launch { drawerState.close() }
+        // Remember which page this started from (a profile opened from another profile keeps the first origin).
+        val here = navController.currentBackStackEntry?.destination?.route
+        if (!isLinkedProfile(here)) profileOrigin = here ?: "home"
         if (accountId == account.accountId) {
             profileViaLink = true
             navController.navigate("profile") { launchSingleTop = true }
         } else navController.navigate("profile/$accountId") { launchSingleTop = true }
     }
 
+    /** The Contribute page of one plant. Plain navigate (no popUpTo), so Back returns to where the card was opened. */
+    fun openContribute(plantId: String, plantName: String) {
+        scope.launch { drawerState.close() }
+        val here = navController.currentBackStackEntry?.destination?.route
+        if (here?.startsWith("contribute/") != true) contributeOrigin = here ?: "home"
+        contributeName = plantName
+        navController.navigate("contribute/$plantId") { launchSingleTop = true }
+    }
+
+    /** Back from the Contribute page: reopen the plant card on the Home or Library page it came from. */
+    fun backFromContribute(plantId: String) {
+        when (contributeOrigin) {
+            "home" -> homeResume = plantId to contributeName
+            "inventory" -> libraryResume = plantId to contributeName
+        }
+        if (!navController.popBackStack()) go("home")
+    }
+
     // Lets the plant profile (a separate full-screen window) show the same sidebar.
     val appNav = remember(permissions) {
-        AppNav(permissions, go = { route -> go(route) }, signOut = { showSignOutDialog = true })
+        AppNav(
+            permissions,
+            go = { route -> go(route) },
+            signOut = { showSignOutDialog = true },
+            contribute = { plantId, name -> openContribute(plantId, name) }
+        )
+    }
+
+    // The sidebar number: ask now, again whenever the page or the sidebar changes, and every 45 seconds.
+    LaunchedEffect(account.accountId) { profileVm.resetApprovals() }
+    LaunchedEffect(account.accountId, "record_plant" in permissions) {
+        if ("record_plant" in permissions) while (true) { profileVm.refreshBadge(); delay(45_000) }
+    }
+    LaunchedEffect(currentRoute) { if ("record_plant" in permissions) profileVm.refreshBadge() }
+    LaunchedEffect(drawerState.currentValue) {
+        if (drawerState.currentValue == DrawerValue.Open && "record_plant" in permissions) profileVm.refreshBadge()
     }
 
     authUi.notice?.let { notice ->
@@ -206,14 +270,20 @@ private fun AppShell(
         )
     }
 
-    CompositionLocalProvider(LocalAppNav provides appNav) {
+    CompositionLocalProvider(LocalAppNav provides appNav, LocalNavBadges provides navBadges) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             // Seven pages; Sign out is the icon at the top of the sheet.
             PlantellectDrawerSheet(
                 permissions = permissions,
-                currentRoute = currentRoute,
+                // A contributor's profile counts as part of the page it was opened from (for example the Plant Library).
+                currentRoute = when {
+                    isLinkedProfile(currentRoute) -> profileOrigin
+                    // The Contribute page counts as part of the page the plant was opened from.
+                    currentRoute?.startsWith("contribute/") == true -> contributeOrigin
+                    else -> currentRoute
+                },
                 onGo = { route -> go(route) },
                 onSignOut = { scope.launch { drawerState.close() }; showSignOutDialog = true }
             )
@@ -250,12 +320,35 @@ private fun AppShell(
                             onNavigateToScan = { go("scan") },
                             onNavigateToInventory = { go("inventory") },
                             vm = libraryVm,
-                            onOpenBotanist = { id -> openPerson(id) }
+                            onOpenBotanist = { id -> openPerson(id) },
+                            resume = homeResume,
+                            onResumeChange = { homeResume = it }
                         )
                     }
-                    composable("inventory") { PlantInventoryScreen(vm = libraryVm, onOpenBotanist = { id -> openPerson(id) }) }
+                    composable("inventory") {
+                        PlantInventoryScreen(
+                            vm = libraryVm,
+                            onOpenBotanist = { id -> openPerson(id) },
+                            resume = libraryResume,
+                            onResumeChange = { libraryResume = it }
+                        )
+                    }
                     composable("scan") { ScanPlantScreen() }
                     composable("record") { RecordPlantScreen() }
+                    // Contribute from a plant's card: the plant is fixed, with Contribute and Request change for it only.
+                    composable(
+                        "contribute/{plantId}",
+                        arguments = listOf(navArgument("plantId") { type = NavType.StringType })
+                    ) { entry ->
+                        val plantId = entry.arguments?.getString("plantId").orEmpty()
+                        BackHandler { backFromContribute(plantId) }
+                        Column(Modifier.fillMaxSize()) {
+                            BackBar { backFromContribute(plantId) }
+                            Box(Modifier.weight(1f)) {
+                                RecordPlantScreen(fixedPlantId = plantId, fixedPlantName = contributeName)
+                            }
+                        }
+                    }
                     composable("discoveries") {
                         DiscoveriesScreen(
                             myAccountId = account.accountId,

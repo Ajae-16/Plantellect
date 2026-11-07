@@ -12,6 +12,19 @@ object ProfileValidator {
     /** The text to send: trimmed. A blank string is what clears the bio on the server. */
     fun bioToSend(bio: String): String = bio.trim()
 
+    private val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+
+    /** Null when fine. Same shape rule as the server (config/user-mysql.js). */
+    fun emailProblem(email: String, current: String? = null): String? {
+        val e = email.trim()
+        return when {
+            e.isEmpty() -> "Enter your new email address."
+            e.length > UploadLimits.EMAIL_MAX_CHARS || !EMAIL_PATTERN.matches(e) -> "Enter a valid email address."
+            current != null && e.equals(current.trim(), ignoreCase = true) -> "That is already your email address."
+            else -> null
+        }
+    }
+
     /** Null when the shape is acceptable. Whether the current password is right is the server's call. */
     fun passwordProblem(current: String, new: String, confirm: String? = null): String? = when {
         current.isEmpty() -> "Enter your current password."

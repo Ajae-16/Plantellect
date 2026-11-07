@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.plantellect.mobileplantellect.data.logic.*
+import com.plantellect.mobileplantellect.data.remote.dto.ApprovalsDto
 import com.plantellect.mobileplantellect.data.remote.dto.BotanistProfileDto
 import com.plantellect.mobileplantellect.data.repository.ProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,18 @@ data class BotanistUiState(
     val error: String? = null
 )
 
+/** The Pending approval tab: changes waiting for my answer, and the changes I asked for. */
+data class ApprovalsUiState(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val data: ApprovalsDto = ApprovalsDto(),
+    /** The number shown next to Profile in the sidebar. */
+    val badge: Int = 0,
+    /** Request being answered right now. */
+    val answeringId: String? = null,
+    val message: ProfileMessage? = null
+)
+
 /** Result line for one action on the profile (bio / password / photo). */
 data class ProfileMessage(val text: String, val isError: Boolean)
 
@@ -52,12 +65,14 @@ data class ProfileMessage(val text: String, val isError: Boolean)
 data class ProfileEditState(
     val savingBio: Boolean = false,
     val changingPassword: Boolean = false,
+    val changingEmail: Boolean = false,
     val uploadingPhoto: Boolean = false,
     val bioMessage: ProfileMessage? = null,
     val passwordMessage: ProfileMessage? = null,
+    val emailMessage: ProfileMessage? = null,
     val photoMessage: ProfileMessage? = null
 ) {
-    val busy: Boolean get() = savingBio || changingPassword || uploadingPhoto
+    val busy: Boolean get() = savingBio || changingPassword || changingEmail || uploadingPhoto
 }
 
 class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
@@ -68,8 +83,69 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
     private val _edit = MutableStateFlow(ProfileEditState())
     val edit: StateFlow<ProfileEditState> = _edit.asStateFlow()
 
+    private val _approvals = MutableStateFlow(ApprovalsUiState())
+    val approvals: StateFlow<ApprovalsUiState> = _approvals.asStateFlow()
+
     private val _botanist = MutableStateFlow(BotanistUiState())
     val botanist: StateFlow<BotanistUiState> = _botanist.asStateFlow()
+
+    // ---- pending approvals ---------------------------------------------------
+
+    /** Cheap: only the number for the sidebar. Quiet on failure (the old number stays). */
+    fun refreshBadge() {
+        viewModelScope.launch {
+            (repo.approvalCount() as? ApiResult.Success)?.let { r -> _approvals.update { it.copy(badge = r.value.count) } }
+        }
+    }
+
+    /** The full lists for the tab. */
+    fun loadApprovals() {
+        if (_approvals.value.loading) return
+        _approvals.update { it.copy(loading = true) }
+        viewModelScope.launch {
+            when (val r = repo.approvals()) {
+                is ApiResult.Success -> _approvals.update {
+                    it.copy(loading = false, loaded = true, data = r.value, badge = r.value.badge)
+                }
+                is ApiResult.Failure -> _approvals.update {
+                    it.copy(loading = false, message = ProfileMessage("Your pending approvals could not be loaded.", true))
+                }
+            }
+        }
+    }
+
+    /**
+     * The person opened the tab, so what they asked for and has now been answered stops counting as new.
+     * Their own waiting-for-me items keep counting until they answer.
+     */
+    fun markApprovalsSeen() {
+        if (_approvals.value.data.mine.none { it.unread }) return
+        viewModelScope.launch {
+            repo.approvalsSeen()
+            refreshBadge()
+        }
+    }
+
+    /** Approve or decline a change to my own description. */
+    fun answerChange(requestId: String, approve: Boolean, note: String?) {
+        if (_approvals.value.answeringId != null) return
+        _approvals.update { it.copy(answeringId = requestId, message = null) }
+        viewModelScope.launch {
+            val message = when (val r = repo.answerChange(requestId, approve, note)) {
+                is ApiResult.Success -> ProfileMessage(r.value.message ?: if (approve) "Approved." else "Declined.", false)
+                is ApiResult.Failure -> ProfileMessage(r.error.userMessage(), true)
+            }
+            _approvals.update { it.copy(answeringId = null, message = message) }
+            // The server's answer is the truth, so read the lists again either way.
+            _approvals.update { it.copy(loading = false) }
+            loadApprovals()
+        }
+    }
+
+    /** A different account signed in: drop the previous person's lists and number. */
+    fun resetApprovals() { _approvals.value = ApprovalsUiState() }
+
+    fun clearApprovalMessage() = _approvals.update { it.copy(message = null) }
 
     /** Loadable photo URL for a relative photoUrl (send the session cookie: use the app's OkHttp client). */
     fun photoUrl(relative: String?): String? = repo.photoUrl(relative)
@@ -92,15 +168,17 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
     }
 
     /** A blank [bio] clears it. */
-    fun saveBio(bio: String) {
+    fun saveBio(bio: String, onDone: () -> Unit = {}) {
         if (_edit.value.savingBio) return
         _edit.update { it.copy(savingBio = true, bioMessage = null) }
         viewModelScope.launch {
-            val message = when (val r = repo.updateBio(bio)) {
+            val r = repo.updateBio(bio)
+            val message = when (r) {
                 is ApiResult.Success -> ProfileMessage(if (r.value.bio == null) "Bio cleared." else "Bio saved.", false)
                 is ApiResult.Failure -> ProfileMessage(r.error.userMessage(), true)
             }
             _edit.update { it.copy(savingBio = false, bioMessage = message) }
+            if (r is ApiResult.Success) onDone()
         }
     }
 
@@ -116,6 +194,21 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
             }
             _edit.update { it.copy(changingPassword = false, passwordMessage = message) }
             if (r is ApiResult.Success) onDone()
+        }
+    }
+
+    /** [onDone] runs on success only, so the dialog can close. [oldEmail] is checked so a no-op change is refused early. */
+    fun changeEmail(current: String, newEmail: String, oldEmail: String?, onDone: (String) -> Unit = {}) {
+        if (_edit.value.changingEmail) return
+        _edit.update { it.copy(changingEmail = true, emailMessage = null) }
+        viewModelScope.launch {
+            val r = repo.changeEmail(current, newEmail, oldEmail)
+            val message = when (r) {
+                is ApiResult.Success -> ProfileMessage("Your email was changed.", false)
+                is ApiResult.Failure -> ProfileMessage(passwordErrorText(r.error), true)
+            }
+            _edit.update { it.copy(changingEmail = false, emailMessage = message) }
+            if (r is ApiResult.Success) onDone(r.value.email)
         }
     }
 
@@ -143,7 +236,7 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
         }
     }
 
-    fun clearEditMessages() = _edit.update { it.copy(bioMessage = null, passwordMessage = null, photoMessage = null) }
+    fun clearEditMessages() = _edit.update { it.copy(bioMessage = null, passwordMessage = null, emailMessage = null, photoMessage = null) }
 
     /** 403 wrong password, 429 locked: both keep the server's text, the lock also says for how long. */
     private fun passwordErrorText(e: AppError): String {

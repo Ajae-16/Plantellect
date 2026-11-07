@@ -70,13 +70,18 @@ import kotlin.math.roundToInt
  * [onOpenBotanist] opens a contributor's profile when their name is tapped inside the plant profile.
  */
 @Composable
-fun LibraryScreen(vm: LibraryViewModel, onOpenBotanist: (String) -> Unit = {}) {
+fun LibraryScreen(
+    vm: LibraryViewModel,
+    onOpenBotanist: (String) -> Unit = {},
+    resume: Pair<String, String>? = null,
+    onResumeChange: (Pair<String, String>?) -> Unit = {}
+) {
     val ui by vm.ui.collectAsState()
     val gridState = rememberLazyGridState()
     var open by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
-    var resume by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }   // plant to bring back after a profile
-    // Back from a profile opened out of this plant: bring the plant back.
-    LaunchedEffect(Unit) { if (resume != null) { open = resume; resume = null } }
+    // [resume] (kept by the app shell) is the plant to bring back after a profile; the shell clears it when you
+    // leave that profile through the sidebar, so coming back to the library later shows just the library.
+    LaunchedEffect(Unit) { resume?.let { open = it; onResumeChange(null) } }
 
     // false = filters hidden, true = filters shown. Change to true to start expanded.
     var filtersOpen by remember { mutableStateOf(false) }
@@ -231,7 +236,7 @@ fun LibraryScreen(vm: LibraryViewModel, onOpenBotanist: (String) -> Unit = {}) {
             heroUrl = null,
             vm = vm,
             // Remember the plant so Back on the profile returns to it.
-            onOpenBotanist = { person -> resume = open; open = null; onOpenBotanist(person) },
+            onOpenBotanist = { person -> onResumeChange(open); open = null; onOpenBotanist(person) },
             onClose = { open = null }
         )
     }

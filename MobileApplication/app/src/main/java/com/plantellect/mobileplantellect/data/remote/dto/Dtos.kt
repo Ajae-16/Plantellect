@@ -88,6 +88,12 @@ data class ProfileDto(
 /** POST /api/profile/password. */
 @Serializable data class PasswordChangeRequest(val currentPassword: String, val newPassword: String)
 
+/** POST /api/profile/email. */
+@Serializable data class EmailChangeRequest(val currentPassword: String, val newEmail: String)
+
+/** 200 { email, message }: the address the server stored (trimmed). */
+@Serializable data class EmailChangeResponse(val email: String = "", val message: String = "")
+
 /** 201 { photoUrl, message } for POST, 200 { photoUrl: null, message } for DELETE. */
 @Serializable data class PhotoResponse(val photoUrl: String? = null, val message: String = "")
 

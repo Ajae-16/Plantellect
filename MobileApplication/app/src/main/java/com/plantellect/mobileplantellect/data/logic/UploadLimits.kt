@@ -17,5 +17,7 @@ object UploadLimits {
     const val MAX_BIO_CHARS = 500
     /** config/profile-rules.js */
     const val PASSWORD_MIN_CHARS = 6
+    /** config/user-mysql.js: an email is at most 255 characters. */
+    const val EMAIL_MAX_CHARS = 255
     const val PASSWORD_MAX_BYTES = 72
 }

@@ -7,7 +7,9 @@ import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 @Composable
 fun PlantInventoryScreen(
     vm: LibraryViewModel = libraryViewModel(),
-    onOpenBotanist: (String) -> Unit = {}
+    onOpenBotanist: (String) -> Unit = {},
+    resume: Pair<String, String>? = null,
+    onResumeChange: (Pair<String, String>?) -> Unit = {}
 ) {
-    LibraryScreen(vm, onOpenBotanist)
+    LibraryScreen(vm, onOpenBotanist, resume, onResumeChange)
 }

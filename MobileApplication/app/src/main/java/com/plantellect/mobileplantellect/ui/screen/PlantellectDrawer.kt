@@ -64,10 +64,21 @@ internal val drawerEntries = listOf(
 internal class AppNav(
     val permissions: List<String>,
     val go: (String) -> Unit,
-    val signOut: () -> Unit
+    val signOut: () -> Unit,
+    /**
+     * Opens the Contribute page for one plant (its id and name): the plant is fixed, and the page offers
+     * "Contribute" and "Request change" for that plant only, with a Back button.
+     */
+    val contribute: (plantId: String, plantName: String) -> Unit = { _, _ -> }
 )
 
 internal val LocalAppNav = compositionLocalOf<AppNav?> { null }
+
+/**
+ * New-notification counts per page route, shown in the sidebar as "Profile (1)". Provided once by the app
+ * shell, so the sidebar inside the plant profile window shows the same numbers.
+ */
+internal val LocalNavBadges = compositionLocalOf<Map<String, Int>> { emptyMap() }
 
 /** Compact sidebar: 208 dp, wider only when the phone's font size is large so labels still fit. */
 @Composable
@@ -86,6 +97,7 @@ internal fun PlantellectDrawerSheet(
     val c = MaterialTheme.colorScheme
     // Rows and width grow with the phone's font size, so larger text is never cut off.
     val rowHeight = (48 * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)).dp
+    val badges = LocalNavBadges.current
     ModalDrawerSheet(drawerContainerColor = c.background, modifier = Modifier.width(drawerWidth())) {
         Row(
             Modifier.padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 8.dp),
@@ -105,7 +117,7 @@ internal fun PlantellectDrawerSheet(
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
             drawerEntries.filter { it.requires == null || it.requires in permissions }.forEach { e ->
                 NavigationDrawerItem(
-                    label = { Text(e.label, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                    label = { Text(e.label + (badges[e.route]?.takeIf { it > 0 }?.let { " ($it)" } ?: ""), style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                     icon = { Icon(e.icon, contentDescription = null) },
                     selected = currentRoute == e.route,
                     onClick = { onGo(e.route) },

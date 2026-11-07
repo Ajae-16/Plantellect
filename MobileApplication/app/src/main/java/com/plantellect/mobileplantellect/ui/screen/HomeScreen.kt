@@ -67,13 +67,14 @@ fun HomeScreen(
     onNavigateToScan: () -> Unit,
     onNavigateToInventory: () -> Unit,
     vm: LibraryViewModel = libraryViewModel(),
-    onOpenBotanist: (String) -> Unit = {}
+    onOpenBotanist: (String) -> Unit = {},
+    resume: Pair<String, String>? = null,
+    onResumeChange: (Pair<String, String>?) -> Unit = {}
 ) {
     val ui by vm.ui.collectAsState()
     var open by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }   // plant id to name
-    var resume by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }  // plant to bring back after a profile
-    // Back from a profile opened out of this plant: bring the plant back.
-    LaunchedEffect(Unit) { if (resume != null) { open = resume; resume = null } }
+    // [resume] (kept by the app shell) is the plant to bring back after a profile.
+    LaunchedEffect(Unit) { resume?.let { open = it; onResumeChange(null) } }
     val featured = remember(ui.items) { ui.items.take(10) }
     val more = remember(ui.items) { ui.items.drop(10).take(6) }
 
@@ -159,7 +160,7 @@ fun HomeScreen(
             heroUrl = null,
             vm = vm,
             // Remember the plant so Back on the profile returns to it.
-            onOpenBotanist = { person -> resume = open; open = null; onOpenBotanist(person) },
+            onOpenBotanist = { person -> onResumeChange(open); open = null; onOpenBotanist(person) },
             onClose = { open = null }
         )
     }
