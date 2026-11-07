@@ -54,6 +54,8 @@ data class ApprovalsUiState(
     val data: ApprovalsDto = ApprovalsDto(),
     /** The number shown next to Profile in the sidebar. */
     val badge: Int = 0,
+    /** True once the server has answered for [badge] at least once (until then 0 means "not known yet"). */
+    val badgeLoaded: Boolean = false,
     /** Request being answered right now. */
     val answeringId: String? = null,
     val message: ProfileMessage? = null
@@ -97,7 +99,7 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
     /** Cheap: only the number for the sidebar. Quiet on failure (the old number stays). */
     fun refreshBadge() {
         viewModelScope.launch {
-            (repo.approvalCount() as? ApiResult.Success)?.let { r -> _approvals.update { it.copy(badge = r.value.count) } }
+            (repo.approvalCount() as? ApiResult.Success)?.let { r -> _approvals.update { it.copy(badge = r.value.count, badgeLoaded = true) } }
         }
     }
 
@@ -115,7 +117,7 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
         viewModelScope.launch {
             when (val r = repo.approvals()) {
                 is ApiResult.Success -> _approvals.update {
-                    it.copy(loading = false, loaded = true, data = r.value, badge = r.value.badge)
+                    it.copy(loading = false, loaded = true, data = r.value, badge = r.value.badge, badgeLoaded = true)
                 }
                 is ApiResult.Failure -> _approvals.update {
                     it.copy(loading = false, message = ProfileMessage("Your pending approvals could not be loaded.", true))

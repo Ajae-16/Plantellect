@@ -1,8 +1,10 @@
 package com.plantellect.mobileplantellect.ui.screen
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,6 +29,7 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -104,41 +107,50 @@ internal fun PlantellectDrawerSheet(
     val rowHeight = (48 * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)).dp
     val badges = LocalNavBadges.current
     ModalDrawerSheet(drawerContainerColor = c.background, modifier = Modifier.width(drawerWidth())) {
-        Row(
-            Modifier.padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            LogoMark(32.dp)
-            Text(
-                "Plantellect", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = c.onSurface,
-                maxLines = 2, overflow = TextOverflow.Ellipsis
-            )
-            IconButton(onClick = onSignOut, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sign out", tint = c.error)
-            }
-        }
-        HorizontalDivider(color = c.outlineVariant)
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-            drawerEntries.filter { it.requires == null || it.requires in permissions }.forEach { e ->
-                NavigationDrawerItem(
-                    label = { Text(e.label, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                    // The number of new things waiting on this page, as a pill at the right end of the row.
-                    badge = badges[e.route]?.takeIf { it > 0 }?.let { n -> { CountBadge(n) } },
-                    icon = { Icon(e.icon, contentDescription = null) },
-                    selected = currentRoute == e.route,
-                    onClick = { onGo(e.route) },
-                    shape = MaterialTheme.shapes.small,
-                    colors = NavigationDrawerItemDefaults.colors(
-                        selectedContainerColor = c.primaryContainer,
-                        unselectedContainerColor = Color.Transparent,
-                        selectedIconColor = c.primary,
-                        unselectedIconColor = c.onSurfaceVariant,
-                        selectedTextColor = c.onSurface,
-                        unselectedTextColor = c.onSurface
-                    ),
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).height(rowHeight)
-                )
+        // A meadow sways behind the rows: it bends away from your finger, puffs seeds when tapped, and reacts to
+        // shaking or tilting the phone. It only watches the finger, so taps on the rows and every navigation work
+        // exactly as before.
+        val leaves = remember { LeafField() }
+        Box(Modifier.fillMaxSize().leafBlow(leaves)) {
+            LeafLayer(leaves, Modifier.matchParentSize())
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    LogoMark(32.dp)
+                    Text(
+                        "Plantellect", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = c.onSurface,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis
+                    )
+                    HapticIconButton(onClick = onSignOut, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sign out", tint = c.error)
+                    }
+                }
+                HorizontalDivider(color = c.outlineVariant)
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+                    drawerEntries.filter { it.requires == null || it.requires in permissions }.forEach { e ->
+                        NavigationDrawerItem(
+                            label = { Text(e.label, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            // The number of new things waiting on this page, as a pill at the right end of the row.
+                            badge = badges[e.route]?.takeIf { it > 0 }?.let { n -> { CountBadge(n) } },
+                            icon = { Icon(e.icon, contentDescription = null) },
+                            selected = currentRoute == e.route,
+                            onClick = hapticClick { onGo(e.route) },
+                            shape = MaterialTheme.shapes.small,
+                            colors = NavigationDrawerItemDefaults.colors(
+                                selectedContainerColor = c.primaryContainer,
+                                unselectedContainerColor = Color.Transparent,
+                                selectedIconColor = c.primary,
+                                unselectedIconColor = c.onSurfaceVariant,
+                                selectedTextColor = c.onSurface,
+                                unselectedTextColor = c.onSurface
+                            ),
+                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).height(rowHeight)
+                        )
+                    }
+                }
             }
         }
     }

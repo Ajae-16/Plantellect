@@ -61,6 +61,18 @@ class SettingsStore(context: Context) {
      */
     val offlineMode: StateFlow<Boolean> = _offlineMode.asStateFlow()
 
+    private val _hapticsEnabled = MutableStateFlow(prefs.getBoolean(KEY_HAPTICS, true))
+    /**
+     * Settings > Touch feedback: a short vibration on every button, and a shake plus a "no" buzz when something
+     * is wrong (typing past a limit, a field with an error). On by default.
+     */
+    val hapticsEnabled: StateFlow<Boolean> = _hapticsEnabled.asStateFlow()
+
+    fun setHapticsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_HAPTICS, enabled).apply()
+        _hapticsEnabled.value = enabled
+    }
+
     fun setOfflineMode(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_OFFLINE, enabled).apply()
         _offlineMode.value = enabled
@@ -105,5 +117,6 @@ class SettingsStore(context: Context) {
         const val KEY_DYNAMIC = "dynamic_color"
         const val KEY_DEBUG = "debug_mode"
         const val KEY_OFFLINE = "offline_mode"
+        const val KEY_HAPTICS = "haptics_enabled"
     }
 }

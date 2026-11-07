@@ -152,7 +152,7 @@ fun PhotoZoomDialog(url: String, name: String, onChangePhoto: (() -> Unit)? = nu
                 ) {
                     // Your own profile picture only: pick a new photo from here.
                     if (onChangePhoto != null) {
-                        androidx.compose.material3.Button(onClick = onChangePhoto) { Text("Change profile photo") }
+                        androidx.compose.material3.Button(onClick = hapticClick(onChangePhoto)) { Text("Change profile photo") }
                     }
                     Text(
                         "Pinch or double-tap to zoom",

@@ -1,7 +1,10 @@
 package com.plantellect.mobileplantellect.ui.screen
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -18,8 +21,10 @@ import androidx.compose.material.icons.filled.Menu
 import kotlinx.coroutines.launch
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -28,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -73,6 +79,8 @@ internal fun PlantellectPage(scroll: Boolean = true, compact: Boolean = false, c
 /**
  * THE top bar: Menu, then Back (only on a page you can go back from), then the logo and "Plantellect", with
  * [trailing] at the right end. Back sits in the same row as the title on every page, including the plant profile.
+ * The Menu button carries the sidebar's notification count (the sum of the sidebar's badges), so something
+ * waiting inside the sidebar is visible without opening it.
  */
 @Composable
 internal fun PlantellectTopBar(
@@ -82,12 +90,34 @@ internal fun PlantellectTopBar(
     trailing: @Composable RowScope.() -> Unit = {}
 ) {
     val c = MaterialTheme.colorScheme
+    // New things waiting in the sidebar (for example approvals on the Profile page), shown on the Menu button.
+    val waiting = LocalNavBadges.current.values.sum()
     Row(
         modifier.fillMaxWidth().statusBarsPadding().height(48.dp).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (onMenu != null) IconButton(onMenu, Modifier.size(40.dp)) {
-            Icon(Icons.Filled.Menu, contentDescription = "Menu")
+        if (onMenu != null) HapticIconButton(onMenu, Modifier.size(40.dp)) {
+            // A small pop whenever the number changes, so a new notification catches the eye.
+            val pop = remember { Animatable(1f) }
+            LaunchedEffect(waiting) {
+                if (waiting > 0) {
+                    pop.animateTo(1.3f, tween(110))
+                    pop.animateTo(1f, spring())
+                }
+            }
+            BadgedBox(
+                badge = {
+                    if (waiting > 0) {
+                        Badge(
+                            Modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value },
+                            containerColor = c.primary,
+                            contentColor = c.onPrimary
+                        ) { Text(if (waiting > 99) "99+" else waiting.toString()) }
+                    }
+                }
+            ) {
+                Icon(Icons.Filled.Menu, contentDescription = if (waiting > 0) "Menu, $waiting new" else "Menu")
+            }
         }
         if (onBack != null) AppBackButton(onBack, Modifier.padding(horizontal = 2.dp))
         Row(
@@ -212,7 +242,7 @@ internal fun FoldSection(
         Row(
             Modifier.fillMaxWidth()
                 .clip(MaterialTheme.shapes.small)
-                .clickable(onClickLabel = if (expanded) "Collapse $title" else "Expand $title", role = Role.Button) { expanded = !expanded }
+                .hapticClickable(onClickLabel = if (expanded) "Collapse $title" else "Expand $title", role = Role.Button) { expanded = !expanded }
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -244,7 +274,7 @@ internal fun PlantSurface(
     val shape = MaterialTheme.shapes.medium
     val colors = CardDefaults.cardColors(containerColor = container)
     val elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    if (onClick != null) Card(onClick = onClick, modifier = modifier, shape = shape, colors = colors, elevation = elevation, content = content)
+    if (onClick != null) Card(onClick = hapticClick(onClick), modifier = modifier, shape = shape, colors = colors, elevation = elevation, content = content)
     else Card(modifier = modifier, shape = shape, colors = colors, elevation = elevation, content = content)
 }
 
@@ -341,7 +371,7 @@ internal fun OptionRow(title: String, description: String, modifier: Modifier = 
 private fun BoxScope.EdgeArrow(start: Boolean, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Surface(
-        onClick = onClick,
+        onClick = hapticClick(onClick),
         shape = androidx.compose.foundation.shape.CircleShape,
         color = c.surface.copy(alpha = 0.92f),
         shadowElevation = 3.dp,
@@ -398,7 +428,7 @@ internal fun ScrollableTabStrip(
                 val on = i == selected
                 // Height grows with the font size; the underline hugs the bottom of the tab.
                 Column(
-                    Modifier.clickable { onSelect(i) }.defaultMinSize(minHeight = 48.dp),
+                    Modifier.hapticClickable { onSelect(i) }.defaultMinSize(minHeight = 48.dp),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
                 ) {
                     Row(

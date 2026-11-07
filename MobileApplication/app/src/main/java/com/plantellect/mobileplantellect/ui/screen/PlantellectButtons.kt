@@ -42,10 +42,12 @@ internal fun PlantButton(
     colors: ButtonColors = ButtonDefaults.buttonColors(),
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit
-) = Button(
-    onClick = onClick, modifier = modifier.heightIn(min = MinButtonHeight), enabled = enabled, shape = shape,
-    colors = colors, contentPadding = contentPadding, content = content
-)
+) {
+    Button(
+        onClick = hapticClick(onClick), modifier = modifier.heightIn(min = MinButtonHeight), enabled = enabled, shape = shape,
+        colors = colors, contentPadding = contentPadding, content = content
+    )
+}
 
 @Composable
 internal fun PlantTonalButton(
@@ -56,10 +58,12 @@ internal fun PlantTonalButton(
     colors: ButtonColors = ButtonDefaults.filledTonalButtonColors(),
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit
-) = FilledTonalButton(
-    onClick = onClick, modifier = modifier.heightIn(min = MinButtonHeight), enabled = enabled, shape = shape,
-    colors = colors, contentPadding = contentPadding, content = content
-)
+) {
+    FilledTonalButton(
+        onClick = hapticClick(onClick), modifier = modifier.heightIn(min = MinButtonHeight), enabled = enabled, shape = shape,
+        colors = colors, contentPadding = contentPadding, content = content
+    )
+}
 
 @Composable
 internal fun PlantOutlinedButton(
@@ -74,7 +78,7 @@ internal fun PlantOutlinedButton(
 ) {
     val c = MaterialTheme.colorScheme
     OutlinedButton(
-        onClick = onClick, modifier = modifier.heightIn(min = MinButtonHeight), enabled = enabled, shape = shape,
+        onClick = hapticClick(onClick), modifier = modifier.heightIn(min = MinButtonHeight), enabled = enabled, shape = shape,
         colors = colors,
         border = border ?: BorderStroke(1.dp, if (enabled) c.primary.copy(alpha = 0.6f) else c.onSurface.copy(alpha = 0.12f)),
         contentPadding = contentPadding, content = content
@@ -90,10 +94,12 @@ internal fun PlantTextButton(
     colors: ButtonColors = ButtonDefaults.textButtonColors(),
     contentPadding: PaddingValues = ButtonDefaults.TextButtonContentPadding,
     content: @Composable RowScope.() -> Unit
-) = TextButton(
-    onClick = onClick, modifier = modifier.heightIn(min = MinButtonHeight), enabled = enabled, shape = shape,
-    colors = colors, contentPadding = contentPadding, content = content
-)
+) {
+    TextButton(
+        onClick = hapticClick(onClick), modifier = modifier.heightIn(min = MinButtonHeight), enabled = enabled, shape = shape,
+        colors = colors, contentPadding = contentPadding, content = content
+    )
+}
 
 /**
  * THE Back button: every screen that can go back uses this one, in the same place (the top bar, right after the
@@ -104,7 +110,7 @@ internal fun PlantTextButton(
 internal fun AppBackButton(onClick: () -> Unit, modifier: Modifier = Modifier, label: String = "Back") {
     val c = MaterialTheme.colorScheme
     androidx.compose.material3.Surface(
-        onClick = onClick,
+        onClick = hapticClick(onClick),
         modifier = modifier.size(36.dp),
         shape = androidx.compose.foundation.shape.CircleShape,
         color = c.primaryContainer,

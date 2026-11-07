@@ -286,7 +286,7 @@ private fun HeroGallery(
     val urls = images.ifEmpty { listOfNotNull(fallback) }
     if (urls.size <= 1) {
         val u = urls.firstOrNull()
-        PlantPhoto(u, name, Modifier.heroModifier().clickable(enabled = u != null) { u?.let(onView) }, maxPx = 1024)
+        PlantPhoto(u, name, Modifier.heroModifier().hapticClickable(enabled = u != null) { u?.let(onView) }, maxPx = 1024)
         return
     }
     val extra = MaterialTheme.extraColors
@@ -321,7 +321,7 @@ private fun HeroGallery(
                 urls[page], name,
                 Modifier.heroPhoto()
                     .graphicsLayer { alpha = 1f - 0.4f * distance; val s = 1f - 0.04f * distance; scaleX = s; scaleY = s }
-                    .clickable { onView(urls[page]) },
+                    .hapticClickable { onView(urls[page]) },
                 maxPx = 1024
             )
         }
@@ -409,7 +409,7 @@ private fun ProfileBody(
                             if (i == heroShowing) c.primary else androidx.compose.ui.graphics.Color.Transparent,
                             RoundedCornerShape(12.dp)
                         )
-                        .clickable { heroRequest = i to (heroRequest.second + 1); if (i == heroShowing) onView(u) }
+                        .hapticClickable { heroRequest = i to (heroRequest.second + 1); if (i == heroShowing) onView(u) }
                 )
             }
         }
@@ -495,8 +495,8 @@ private fun ProfileBody(
             Text("More details from other contributors", style = MaterialTheme.typography.titleMedium, color = c.onSurface)
             if (shown.size > 1) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FilterChip(selected = sort == "recent", onClick = { sort = "recent" }, label = { Text("Most recent") })
-                    FilterChip(selected = sort == "upvoted", onClick = { sort = "upvoted" }, label = { Text("Most upvoted") })
+                    HapticFilterChip(selected = sort == "recent", onClick = { sort = "recent" }, label = { Text("Most recent") })
+                    HapticFilterChip(selected = sort == "upvoted", onClick = { sort = "upvoted" }, label = { Text("Most upvoted") })
                 }
                 NameSearchField(query, { query = it }, "Search by contributor name")
             }
@@ -641,15 +641,18 @@ internal fun EditedLine(d: ProfileDescription, color: Color, onOpen: (String) ->
 /** One-line search box with a clear button: the app's "search by name" field. */
 @Composable
 internal fun NameSearchField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier) {
+    // The box holds 60 characters: typing past that shakes it and buzzes.
+    val shake = rememberShakeState()
+    val haptics = rememberHaptics()
     OutlinedTextField(
         value = value,
-        onValueChange = { onChange(it.take(60)) },
-        modifier = modifier.fillMaxWidth(),
+        onValueChange = { if (it.length > 60) { shake.shake(); haptics.reject() }; onChange(it.take(60)) },
+        modifier = modifier.fillMaxWidth().shake(shake),
         singleLine = true,
         label = { Text(label) },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         trailingIcon = {
-            if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) {
+            if (value.isNotEmpty()) HapticIconButton(onClick = { onChange("") }) {
                 Icon(Icons.Filled.Close, contentDescription = "Clear search")
             }
         },

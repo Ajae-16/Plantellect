@@ -213,6 +213,7 @@ PlantellectWebsite/
 │   ├── profile.js             # /api/profile (mobile app, signed-in user only): GET profile (bio, name, photoUrl),
 │   │                          #   PUT /bio, POST /password (current password checked, 5 wrong guesses = 15 min lock),
 │   │                          #   GET / POST / DELETE /photo (multipart field "image", 10 MB, same ingest as plant photos)
+│   ├── about.js               # Public About text for the app's Home page (GET /api/about, from config/about-content.js)
 │   ├── contributors.js        # Public contributor profile (/api/contributors; /api/botanists kept as an alias)
 │   ├── ml.js                  # ML inference proxy; scan_plant gate, bounded upload, quota, logs,
 │   │                          #   contribute_offer in the /predict answer when eligible;

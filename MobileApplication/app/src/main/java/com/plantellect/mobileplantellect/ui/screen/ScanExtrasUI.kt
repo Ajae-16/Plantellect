@@ -205,7 +205,7 @@ fun NotIdentifiedCard(
     ) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(
-                Modifier.fillMaxWidth().clickable {
+                Modifier.fillMaxWidth().hapticClickable {
                     expanded = !expanded
                     if (expanded) onOpened()
                 },
@@ -234,6 +234,7 @@ fun NotIdentifiedCard(
                     ui.message?.let {
                         Text(
                             it,
+                            Modifier.shakeWhen(if (ui.isError) it else null),
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (ui.isError) colors.error else colors.primary
                         )
@@ -292,12 +293,12 @@ fun NotIdentifiedCard(
                     )
 
                     Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !atCap && !ui.sending) { allowContribution = !allowContribution },
+                        Modifier.fillMaxWidth().hapticClickable(enabled = !atCap && !ui.sending) { allowContribution = !allowContribution },
                         verticalAlignment = Alignment.Top
                     ) {
                         Checkbox(
                             checked = allowContribution,
-                            onCheckedChange = { allowContribution = it },
+                            onCheckedChange = hapticToggle { allowContribution = it },
                             enabled = !atCap && !ui.sending
                         )
                         Column(Modifier.padding(top = 12.dp)) {
@@ -314,6 +315,7 @@ fun NotIdentifiedCard(
                     ui.message?.let {
                         Text(
                             it,
+                            Modifier.shakeWhen(if (ui.isError) it else null),
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (ui.isError) colors.error else colors.onSurfaceVariant
                         )
@@ -356,7 +358,7 @@ private fun ChecklistDropdown(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onToggleOpen)
+                    .hapticClickable(onClick = onToggleOpen)
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -388,7 +390,7 @@ private fun ChecklistDropdown(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items.forEach { item ->
-                        FilterChip(
+                        HapticFilterChip(
                             selected = item in ticked,
                             onClick = { if (item in ticked) ticked.remove(item) else ticked.add(item) },
                             enabled = enabled,

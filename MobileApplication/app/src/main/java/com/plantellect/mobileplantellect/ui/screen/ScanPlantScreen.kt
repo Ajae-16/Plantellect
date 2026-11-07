@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.media.AudioAttributes
+import android.media.SoundPool
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -64,6 +66,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.plantellect.mobileplantellect.PlantellectApp
+import com.plantellect.mobileplantellect.R
 import com.plantellect.mobileplantellect.data.local.LocalResult
 import com.plantellect.mobileplantellect.data.logic.ImagePreparer
 import com.plantellect.mobileplantellect.data.logic.ServerStatus
@@ -174,6 +177,25 @@ fun ScanPlantScreen() {
             vm.scan(picked)
         }
     }
+
+    // Shutter click played when the capture button is pressed (res/raw/shutter_click.wav). It is played on the
+    // MEDIA stream, so its loudness follows the phone's media volume (the volume keys while in the app).
+    // Loaded up front so there is no delay on the first tap.
+    val haptics = rememberHaptics()
+    val shutter = remember {
+        val pool = SoundPool.Builder()
+            .setMaxStreams(2)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            .build()
+        val soundId = pool.load(context, R.raw.shutter_click, 1)
+        pool to soundId
+    }
+    DisposableEffect(Unit) { onDispose { shutter.first.release() } }
 
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
     val lastAnalysisTime = remember { mutableStateOf(0L) }
@@ -325,6 +347,8 @@ fun ScanPlantScreen() {
         if (capturing) return
         captureError = null
         capturing = true
+        shutter.first.play(shutter.second, 1f, 1f, 1, 0, 1f)   // full SoundPool volume; media volume sets the loudness
+        haptics.shutter()
         val file = File(context.cacheDir, "scan_${System.currentTimeMillis()}.jpg")
         val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
 
@@ -422,7 +446,7 @@ fun ScanPlantScreen() {
                         )
 
                         if (!showingPhoto) {
-                            IconButton(
+                            HapticIconButton(
                                 onClick = {
                                     lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
                                         CameraSelector.LENS_FACING_FRONT
@@ -717,7 +741,7 @@ private fun CaptureControls(
                 modifier = Modifier
                     .width(64.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable(onClick = onGallery)
+                    .hapticClickable(onClick = onGallery)
                     .padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -742,7 +766,7 @@ private fun CaptureButton(
         modifier = modifier
             .size(76.dp)
             .clip(CircleShape)
-            .clickable(enabled = enabled, onClick = onClick)
+            .hapticClickable(enabled = enabled, onClick = onClick)
             .border(4.dp, if (enabled || busy) colors.primary else colors.primary.copy(alpha = 0.4f), CircleShape)
             .padding(8.dp)
             .clip(CircleShape)

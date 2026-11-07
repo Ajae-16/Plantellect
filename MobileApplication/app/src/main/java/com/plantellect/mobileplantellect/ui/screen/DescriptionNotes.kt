@@ -188,17 +188,17 @@ fun DescriptionVoteBar(
             ) { pick("down") }
             // The three dots: Request change, Votes summary.
             Box {
-                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
+                HapticIconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Filled.MoreVert, contentDescription = "More for this description")
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     if (onRequestChange != null) {
-                        DropdownMenuItem(
+                        HapticDropdownMenuItem(
                             text = { Text("Request change") },
                             onClick = { menuOpen = false; onRequestChange(id) }
                         )
                     }
-                    DropdownMenuItem(
+                    HapticDropdownMenuItem(
                         text = { Text(if (tableOpen) "Hide votes summary" else "Votes summary") },
                         onClick = { menuOpen = false; tableOpen = !tableOpen }
                     )
@@ -242,7 +242,7 @@ fun DescriptionVoteBar(
                             Text("What is wrong with it?", style = MaterialTheme.typography.titleSmall)
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 summary.reasons.forEach { r ->
-                                    FilterChip(
+                                    HapticFilterChip(
                                         selected = reason == r.code,
                                         onClick = { reason = r.code; message = null },
                                         label = { Text(r.label) }
@@ -305,7 +305,7 @@ private fun VoteButton(
 ) {
     val c = MaterialTheme.colorScheme
     Surface(
-        onClick = onClick,
+        onClick = hapticClick(onClick),
         enabled = enabled,
         shape = RoundedCornerShape(50),
         color = if (active) activeContainer else androidx.compose.ui.graphics.Color.Transparent,

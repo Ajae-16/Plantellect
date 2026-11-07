@@ -48,10 +48,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.plantellect.mobileplantellect.data.logic.ApiResult
 import com.plantellect.mobileplantellect.data.remote.dto.AccountDto
 import com.plantellect.mobileplantellect.data.repository.AuthState
 import com.plantellect.mobileplantellect.ui.screen.*
 import com.plantellect.mobileplantellect.ui.theme.ColorTheme
+import com.plantellect.mobileplantellect.ui.screen.LocalHapticsEnabled
 import com.plantellect.mobileplantellect.ui.theme.MobilePlantellectTheme
 import com.plantellect.mobileplantellect.ui.theme.TypeCombo
 import com.plantellect.mobileplantellect.ui.theme.resolveDark
@@ -75,6 +77,7 @@ class MainActivity : ComponentActivity() {
             val darkTheme = themeMode.resolveDark(isSystemInDarkTheme())
             val typeComboName by container.settings.typeCombo.collectAsState()
             val colorThemeName by container.settings.colorTheme.collectAsState()
+            val hapticsOn by container.settings.hapticsEnabled.collectAsState()
 
             DisposableEffect(darkTheme) {
                 this@MainActivity.enableEdgeToEdge(
@@ -93,6 +96,7 @@ class MainActivity : ComponentActivity() {
                 val authState by auth.authState.collectAsState()
                 val authUi by auth.ui.collectAsState()
 
+                CompositionLocalProvider(LocalHapticsEnabled provides hapticsOn) {
                 GradientBackground {
                     when (val state = authState) {
                         AuthState.Unknown -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -118,6 +122,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+                }
             }
         }
     }
@@ -137,7 +142,11 @@ private fun GradientBackground(content: @Composable () -> Unit) {
     // The one background of the app (see plantBackdrop): every screen, the login page and the plant profile share it.
     Box(Modifier.fillMaxSize().plantBackdrop()) {
         // Default text color for everything on the gradient: light in dark mode, dark in light mode.
-        CompositionLocalProvider(LocalContentColor provides c.onBackground) { content() }
+        // The idle bloom lives here, above every page (and the login screen), so the plant grows over the whole screen
+        // wherever you are, and wilts the moment the screen is touched.
+        CompositionLocalProvider(LocalContentColor provides c.onBackground) {
+            IdleBloomHost(Modifier.fillMaxSize()) { content() }
+        }
     }
 }
 
@@ -165,6 +174,17 @@ private fun AppShell(
     // Same instance Home and the Library use (it is scoped to the Activity).
     val libraryVm = libraryViewModel()
     var showSignOutDialog by remember { mutableStateOf(false) }
+    // "Discoveries (n)" in the sidebar: reports nobody has claimed yet (the same number the website's sidebar shows).
+    // Only people who can work the queue (record_plant) ever see it.
+    val appContainer = (LocalContext.current.applicationContext as PlantellectApp).container
+    var discoveryBadge by remember { mutableStateOf(0) }
+    var discoveryLoaded by remember { mutableStateOf(false) }
+    fun refreshDiscoveryBadge() {
+        if ("record_plant" !in permissions) { discoveryBadge = 0; return }
+        scope.launch {
+            (appContainer.discoveries.count() as? ApiResult.Success)?.let { discoveryBadge = it.value.unclaimed; discoveryLoaded = true }
+        }
+    }
     // Pull-to-refresh: going up re-creates the page that is showing, so it reads everything again.
     var refreshNonce by remember { mutableStateOf(0) }
     var confirmRefresh by remember { mutableStateOf(false) }
@@ -172,6 +192,7 @@ private fun AppShell(
         refreshNonce++
         libraryVm.reload()
         profileVm.refreshBadge()
+        refreshDiscoveryBadge()
     }
     // True when your own profile was opened by tapping your name (it then gets a Back button);
     // false when it was opened from the sidebar (no Back button).
@@ -189,12 +210,81 @@ private fun AppShell(
     var contributeName by rememberSaveable { mutableStateOf("") }
     val approvals by profileVm.approvals.collectAsState()
     // "Profile (n)" in the sidebar: requests waiting for my answer + answers to the ones I asked for.
-    val navBadges = remember(approvals.badge) { mapOf("profile" to approvals.badge) }
+    // One number per sidebar page: whatever is waiting inside that page. The Menu button shows the total.
+    // Plant Library: plants added since the last time the Library page was open (counted on this phone, per account).
+    // The count is only taken from the unfiltered list, and it is cleared while the Library is showing.
+    val libraryUi by libraryVm.ui.collectAsState()
+    val prefsContext = LocalContext.current
+    val navPrefs = remember { prefsContext.getSharedPreferences("nav_seen", android.content.Context.MODE_PRIVATE) }
+    var libraryBadge by remember { mutableStateOf(0) }
+    LaunchedEffect(libraryUi.total, libraryUi.loading, libraryUi.query, libraryUi.typeName, currentRoute, account.accountId) {
+        if (libraryUi.loading || libraryUi.query.isNotBlank() || libraryUi.typeName != null || libraryUi.total <= 0) return@LaunchedEffect
+        val key = "plants_seen_${account.accountId}"
+        val seen = navPrefs.getInt(key, -1)
+        if (currentRoute == "inventory" || seen < 0) {
+            // On the page itself (or the very first run): everything counts as seen.
+            navPrefs.edit().putInt(key, libraryUi.total).apply()
+            libraryBadge = 0
+        } else libraryBadge = (libraryUi.total - seen).coerceAtLeast(0)
+    }
+    // Every sidebar page reads its number from this one map (route -> count); a page with nothing waiting shows none.
+    // What is waiting on each sidebar page (route -> count). What the sidebar SHOWS is worked out below, once it is
+    // known which page is open: a page you have seen drops its pill.
+    val rawBadges = remember(approvals.badge, discoveryBadge, libraryBadge) {
+        mapOf(
+            "home" to 0,
+            "inventory" to libraryBadge,
+            "scan" to 0,
+            "record" to 0,
+            "discoveries" to discoveryBadge,
+            "profile" to approvals.badge,
+            "settings" to 0
+        )
+    }
     val c = MaterialTheme.colorScheme
 
     /** A profile that sits on top of another page (a contributor's, or yours opened by tapping your name). */
     fun isLinkedProfile(route: String?): Boolean =
         route?.startsWith("profile/") == true || (route == "profile" && profileViaLink)
+
+    // The sidebar page that counts as open (a contributor's profile or the Contribute page belong to the page they
+    // were opened from). Used for the highlighted row and for clearing that row's pill.
+    val navRoute = when {
+        isLinkedProfile(currentRoute) -> profileOrigin
+        currentRoute?.startsWith("contribute/") == true -> contributeOrigin
+        else -> currentRoute
+    }
+
+    // Seen counts, per account and page, kept on the phone. Opening a page marks everything waiting there as seen, so
+    // its pill leaves the sidebar (only the sidebar: the page itself still shows its own numbers). The pill comes back
+    // with the number of NEW things when more arrive than you have seen.
+    val seenBadges = remember(account.accountId) {
+        mutableStateMapOf<String, Int>().apply {
+            rawBadges.keys.forEach { r ->
+                val n = navPrefs.getInt("badge_seen_${account.accountId}_$r", 0)
+                if (n > 0) put(r, n)
+            }
+        }
+    }
+    val badgeKnown = mapOf(
+        "profile" to approvals.badgeLoaded,
+        "discoveries" to (discoveryLoaded || "record_plant" !in permissions)
+    )
+    LaunchedEffect(navRoute, rawBadges, approvals.badgeLoaded, discoveryLoaded) {
+        rawBadges.forEach { (route, n) ->
+            val seen = seenBadges[route] ?: 0
+            val next = when {
+                route == navRoute -> n                                  // on that page right now: all of it is seen
+                badgeKnown[route] ?: true -> minOf(seen, n)             // fewer waiting than seen: forget the extra
+                else -> seen                                            // the server has not answered yet: keep as is
+            }
+            if (next != seen) {
+                seenBadges[route] = next
+                navPrefs.edit().putInt("badge_seen_${account.accountId}_$route", next).apply()
+            }
+        }
+    }
+    val navBadges = rawBadges.mapValues { (route, n) -> (n - (seenBadges[route] ?: 0)).coerceAtLeast(0) }
 
     fun go(route: String) {
         scope.launch { drawerState.close() }
@@ -272,14 +362,19 @@ private fun AppShell(
         )
     }
 
-    // The sidebar number: ask now, again whenever the page or the sidebar changes, and every 45 seconds.
+    // The sidebar numbers: ask now, again whenever the page or the sidebar changes, and every 45 seconds.
+    // Profile's number (pending approvals) is for EVERY signed-in account; only Discoveries needs record_plant.
+    fun refreshNavBadges() {
+        profileVm.refreshBadge()
+        if ("record_plant" in permissions) refreshDiscoveryBadge() else discoveryBadge = 0
+    }
     LaunchedEffect(account.accountId) { profileVm.resetApprovals() }
     LaunchedEffect(account.accountId, "record_plant" in permissions) {
-        if ("record_plant" in permissions) while (true) { profileVm.refreshBadge(); delay(45_000) }
+        while (true) { refreshNavBadges(); delay(45_000) }
     }
-    LaunchedEffect(currentRoute) { if ("record_plant" in permissions) profileVm.refreshBadge() }
+    LaunchedEffect(currentRoute) { refreshNavBadges() }
     LaunchedEffect(drawerState.currentValue) {
-        if (drawerState.currentValue == DrawerValue.Open && "record_plant" in permissions) profileVm.refreshBadge()
+        if (drawerState.currentValue == DrawerValue.Open) refreshNavBadges()
     }
 
     authUi.notice?.let { notice ->
@@ -325,12 +420,7 @@ private fun AppShell(
             PlantellectDrawerSheet(
                 permissions = permissions,
                 // A contributor's profile counts as part of the page it was opened from (for example the Plant Library).
-                currentRoute = when {
-                    isLinkedProfile(currentRoute) -> profileOrigin
-                    // The Contribute page counts as part of the page the plant was opened from.
-                    currentRoute?.startsWith("contribute/") == true -> contributeOrigin
-                    else -> currentRoute
-                },
+                currentRoute = navRoute,
                 onGo = { route -> go(route) },
                 onSignOut = { scope.launch { drawerState.close() }; showSignOutDialog = true }
             )

@@ -23,11 +23,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Eco
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocalFlorist
 import androidx.compose.material.icons.filled.Park
 import androidx.compose.material3.*
@@ -35,6 +40,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -54,11 +60,15 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.plantellect.mobileplantellect.PlantellectApp
+import com.plantellect.mobileplantellect.data.remote.dto.AboutDto
+import com.plantellect.mobileplantellect.data.remote.dto.AboutSectionDto
+import com.plantellect.mobileplantellect.viewmodel.AboutViewModel
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 import kotlinx.coroutines.delay
 
 /**
- * Home: quick actions, an auto-scrolling row of plant cards, and a short list below it.
+ * Home: a short welcome, two quick actions, an auto-scrolling row of plant cards, the About text (read from the
+ * server) just below those cards, and a short list of more plants.
  * Tapping a card opens that plant's profile directly. Pull down to refresh.
  * [onOpenBotanist] opens a contributor's profile when their name is tapped inside the plant profile.
  */
@@ -69,24 +79,35 @@ fun HomeScreen(
     vm: LibraryViewModel = libraryViewModel(),
     onOpenBotanist: (String) -> Unit = {},
     resume: Pair<String, String>? = null,
-    onResumeChange: (Pair<String, String>?) -> Unit = {}
+    onResumeChange: (Pair<String, String>?) -> Unit = {},
+    aboutVm: AboutViewModel = aboutViewModel()
 ) {
     val ui by vm.ui.collectAsState()
+    val aboutUi by aboutVm.ui.collectAsState()
     var open by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }   // plant id to name
     // [resume] (kept by the app shell) is the plant to bring back after a profile.
     LaunchedEffect(Unit) { resume?.let { open = it; onResumeChange(null) } }
     val featured = remember(ui.items) { ui.items.take(10) }
     val more = remember(ui.items) { ui.items.drop(10).take(6) }
 
-    Refreshable(refreshing = ui.loading, onRefresh = { vm.reload() }, modifier = Modifier.fillMaxSize()) {
+    Refreshable(
+        refreshing = ui.loading,
+        onRefresh = { vm.reload(); aboutVm.reload() },
+        modifier = Modifier.fillMaxSize()
+    ) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 10.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Welcome: one strong line and a quiet one, aligned with everything below.
             item {
                 Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Plantellect", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "Discover the plants around you",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
                     Text(
                         "Identify, learn and record plants.",
                         style = MaterialTheme.typography.bodyMedium,
@@ -95,17 +116,27 @@ fun HomeScreen(
                 }
             }
 
+            // Two equal quick actions, each with a one-line hint.
             item {
-                Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionTile(Icons.Filled.CameraAlt, "Capture Plant", Modifier.weight(1f), onNavigateToScan)
-                    ActionTile(Icons.Filled.LocalFlorist, "Plant Library", Modifier.weight(1f), onNavigateToInventory)
+                Row(
+                    Modifier.padding(horizontal = 16.dp).height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ActionTile(
+                        Icons.Filled.CameraAlt, "Capture Plant", "Identify a plant from a photo",
+                        Modifier.weight(1f).fillMaxHeight(), onNavigateToScan
+                    )
+                    ActionTile(
+                        Icons.Filled.LocalFlorist, "Plant Library", "Browse every plant",
+                        Modifier.weight(1f).fillMaxHeight(), onNavigateToInventory
+                    )
                 }
             }
 
             item {
-                Text(
-                    "Featured plants", Modifier.padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.titleLarge
+                SectionHeader(
+                    "Featured plants", Modifier.padding(top = 6.dp),
+                    actionLabel = "See all", onAction = onNavigateToInventory
                 )
             }
 
@@ -132,13 +163,11 @@ fun HomeScreen(
                 }
             }
 
+            // The About text, straight from the server, right under the plant cards.
+            item { AboutSection(aboutUi.about, Modifier.padding(top = 10.dp)) }
+
             if (more.isNotEmpty()) {
-                item {
-                    Text(
-                        "More plants", Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                }
+                item { SectionHeader("More plants", Modifier.padding(top = 10.dp)) }
                 items(more, key = { it.cardId }) { p ->
                     PlantCard(
                         plantId = p.cardId, name = p.cardName, scientificName = p.cardScientific,
@@ -166,21 +195,98 @@ fun HomeScreen(
     }
 }
 
+/** A section title with a short green bar in front of it and, optionally, a "See all" style action at the right. */
 @Composable
-private fun ActionTile(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
-    Card(
-        modifier.clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+private fun SectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    val c = MaterialTheme.colorScheme
+    Row(
+        modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(icon, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
-            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Box(Modifier.size(width = 4.dp, height = 22.dp).background(c.primary, RoundedCornerShape(2.dp)))
+        Spacer(Modifier.width(10.dp))
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, color = c.onBackground)
+        if (actionLabel != null && onAction != null) {
+            TextButton(onClick = hapticClick(onAction), contentPadding = PaddingValues(start = 12.dp, end = 6.dp)) {
+                Text(actionLabel, style = MaterialTheme.typography.labelLarge)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(18.dp))
+            }
         }
     }
+}
+
+@Composable
+private fun ActionTile(icon: ImageVector, label: String, hint: String, modifier: Modifier, onClick: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    PlantSurface(modifier, onClick = onClick, container = c.primaryContainer) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(c.primary), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, Modifier.size(22.dp), tint = c.onPrimary)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(label, style = MaterialTheme.typography.titleMedium, color = c.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(hint, style = MaterialTheme.typography.bodySmall, color = c.onPrimaryContainer.copy(alpha = 0.78f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/**
+ * About Plantellect, as the server sends it: a welcome card with the title and intro, then one card per section
+ * (what we do, our mission, community). The icon of a section is picked by its id; an unknown id gets a plain one.
+ */
+@Composable
+private fun AboutSection(about: AboutDto, modifier: Modifier = Modifier) {
+    val c = MaterialTheme.colorScheme
+    Column(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        PlantSurface(Modifier.fillMaxWidth(), container = c.primaryContainer) {
+            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.size(40.dp).clip(CircleShape).background(c.primary), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Info, contentDescription = null, Modifier.size(22.dp), tint = c.onPrimary)
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text("ABOUT US", style = MaterialTheme.typography.labelSmall, color = c.primary, letterSpacing = 1.2.sp)
+                        Text(about.title.ifBlank { "About Plantellect" }, style = MaterialTheme.typography.titleLarge, color = c.onPrimaryContainer)
+                    }
+                }
+                if (about.intro.isNotBlank()) {
+                    Text(about.intro, style = MaterialTheme.typography.bodyMedium, color = c.onPrimaryContainer.copy(alpha = 0.9f))
+                }
+            }
+        }
+        about.sections.forEachIndexed { i, section -> AboutItem(section, aboutIcon(section.id, i)) }
+    }
+}
+
+@Composable
+private fun AboutItem(section: AboutSectionDto, icon: ImageVector) {
+    val c = MaterialTheme.colorScheme
+    PlantSurface(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            IconBadge(icon, 44.dp)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(section.heading, style = MaterialTheme.typography.titleMedium, color = c.onSurface)
+                Text(section.body, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+private fun aboutIcon(id: String, index: Int): ImageVector = when (id) {
+    "what-we-do" -> Icons.Filled.Eco
+    "our-mission" -> Icons.Filled.Flag
+    "community" -> Icons.Filled.Groups
+    else -> listOf(Icons.Filled.Eco, Icons.Filled.Flag, Icons.Filled.Groups)[index % 3]
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +299,17 @@ private fun ActionTile(icon: ImageVector, label: String, modifier: Modifier, onC
  */
 @Composable
 fun libraryViewModel(): LibraryViewModel {
+    val context = LocalContext.current
+    val app = context.applicationContext as PlantellectApp
+    return viewModel(
+        viewModelStoreOwner = context as ComponentActivity,
+        factory = app.container.viewModelFactory
+    )
+}
+
+/** The shared About view model (lives in the activity, like the library's), so the text is read from the server once. */
+@Composable
+fun aboutViewModel(): AboutViewModel {
     val context = LocalContext.current
     val app = context.applicationContext as PlantellectApp
     return viewModel(
@@ -419,7 +536,7 @@ fun PlantCard(
                     scaleX = s
                     scaleY = s
                 }
-                .combinedClickable(onClick = onClick, onLongClick = zoomPhoto),
+                .hapticCombinedClickable(onClick = onClick, onLongClick = zoomPhoto),
             shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(containerColor = phB),
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)

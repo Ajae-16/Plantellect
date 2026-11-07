@@ -159,8 +159,16 @@ fun RichTextField(
     modifier: Modifier = Modifier,
     minLines: Int = 3,
     isError: Boolean = false,
-    supportingText: String? = null
+    supportingText: String? = null,
+    /** "The same error again": when it changes while [isError] is still true, the box shakes again. */
+    errorTrigger: Any? = null
 ) {
+    // Typing or pasting past MAX_CHARS, or an error on the box, shakes it and buzzes (Settings > Touch feedback).
+    val shake = rememberShakeState()
+    val haptics = rememberHaptics()
+    LaunchedEffect(isError, errorTrigger) {
+        if (isError) { shake.shake(); haptics.reject() }
+    }
     var doc by remember { mutableStateOf(RichEditing.fromMarked(value)) }
     var lastEmitted by remember { mutableStateOf(value) }
     var selection by remember { mutableStateOf(TextRange(doc.text.length)) }
@@ -292,7 +300,8 @@ fun RichTextField(
         OutlinedTextField(
             value = TextFieldValue(doc.text, selection, composition),
             onValueChange = { raw ->
-                // At most MAX_CHARS characters: extra typed or pasted text is cut off.
+                // At most MAX_CHARS characters: extra typed or pasted text is cut off (and the box shakes).
+                if (raw.text.length > MAX_CHARS) { shake.shake(); haptics.reject() }
                 val v = if (raw.text.length > MAX_CHARS) raw.copy(
                     text = raw.text.take(MAX_CHARS),
                     selection = TextRange(raw.selection.start.coerceAtMost(MAX_CHARS), raw.selection.end.coerceAtMost(MAX_CHARS)),
@@ -313,7 +322,8 @@ fun RichTextField(
                 }
             },
             modifier = Modifier.fillMaxWidth().bringIntoViewRequester(bringIntoView)
-                .onFocusChanged { focused = it.isFocused; if (!it.isFocused) clipboard.hide() },
+                .onFocusChanged { focused = it.isFocused; if (!it.isFocused) clipboard.hide() }
+                .shake(shake),
             label = { Text(label) },
             isError = isError,
             supportingText = {
@@ -350,7 +360,7 @@ fun RichTextField(
 private fun ClipButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Surface(
-        onClick = onClick,
+        onClick = hapticClick(onClick),
         shape = MaterialTheme.shapes.small,
         color = colors.secondaryContainer,
         border = BorderStroke(1.dp, colors.outlineVariant)
@@ -443,7 +453,7 @@ private fun ToolCell(
         Modifier
             .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
             .background(if (active) colors.primaryContainer else Color.Transparent)
-            .clickable(onClickLabel = description, role = Role.Button, onClick = onClick)
+            .hapticClickable(onClickLabel = description, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = if (active) "$description, on" else description }
             .padding(horizontal = 10.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center

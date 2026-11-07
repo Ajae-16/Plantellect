@@ -34,8 +34,13 @@ internal fun String.takeChars(max: Int): String =
  *    delete something.
  *  - The cursor stays at the end of what you typed, and the box scrolls so the newest letter is visible.
  *
+ *  - Every extra character you try to type (or paste) past the limit makes the box shake and buzz, so holding
+ *    down a key or tapping on keeps it shaking until you stop. A new [errorText] shakes it too.
+ *
  * Pass [maxChars] = Int.MAX_VALUE for "no limit" (then it behaves like a plain OutlinedTextField).
  * [errorText] is another problem to show (for example "required"); the limit message wins over it.
+ * [errorTrigger] is for "the same error again": when it changes while [errorText] is still shown, the box shakes
+ * again (a form passes its submit counter).
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -54,12 +59,20 @@ internal fun LimitedOutlinedTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     showCounter: Boolean = false,
     focusRequester: FocusRequester? = null,
-    shape: androidx.compose.ui.graphics.Shape = MaterialTheme.shapes.small
+    shape: androidx.compose.ui.graphics.Shape = MaterialTheme.shapes.small,
+    errorTrigger: Any? = null
 ) {
     var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
     var atLimit by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
     val bring = remember { BringIntoViewRequester() }
+    val shake = rememberShakeState()
+    val haptics = rememberHaptics()
+
+    // A problem showed up (or the same one again): shake and buzz once.
+    LaunchedEffect(errorText, errorTrigger) {
+        if (errorText != null) { shake.shake(); haptics.reject() }
+    }
 
     // Something outside changed the text (a reset, a different description loaded): follow it, cursor at the end.
     LaunchedEffect(value) {
@@ -74,7 +87,7 @@ internal fun LimitedOutlinedTextField(
     val limitMessage = if (atLimit) "You reached the maximum of $maxChars characters. Extra text was not added." else null
     val shownError = limitMessage ?: errorText
 
-    var fieldModifier = modifier.bringIntoViewRequester(bring).onFocusChanged { focused = it.isFocused }
+    var fieldModifier = modifier.bringIntoViewRequester(bring).onFocusChanged { focused = it.isFocused }.shake(shake)
     if (focusRequester != null) fieldModifier = fieldModifier.focusRequester(focusRequester)
 
     OutlinedTextField(
@@ -92,6 +105,9 @@ internal fun LimitedOutlinedTextField(
                     TextFieldValue(cut, TextRange(cut.length))
                 }
                 atLimit = true
+                // Refused: shake and buzz again for every extra character, so it keeps shaking while you keep typing.
+                shake.shake()
+                haptics.reject()
                 if (field.text != value) onValueChange(field.text)
             }
         },

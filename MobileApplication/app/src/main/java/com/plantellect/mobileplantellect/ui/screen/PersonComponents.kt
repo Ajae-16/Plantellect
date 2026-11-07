@@ -40,7 +40,7 @@ fun PersonLink(
     } else {
         Text(
             name,
-            modifier.clickable(onClickLabel = "Open $name's profile") { onOpen(accountId) },
+            modifier.hapticClickable(onClickLabel = "Open $name's profile") { onOpen(accountId) },
             style = style, color = color, fontWeight = fontWeight,
             textDecoration = TextDecoration.Underline
         )
@@ -59,7 +59,7 @@ fun Avatar(
     onClick: (() -> Unit)? = null
 ) {
     var m = modifier.size(size).clip(CircleShape).border(2.dp, ring, CircleShape).background(ring.copy(alpha = 0.25f))
-    if (onClick != null) m = m.clickable(onClickLabel = "Open profile") { onClick() }
+    if (onClick != null) m = m.hapticClickable(onClickLabel = "Open profile") { onClick() }
     Box(m, contentAlignment = Alignment.Center) {
         if (photoUrl != null) PlantPhoto(photoUrl, name ?: "Profile photo", Modifier.fillMaxSize(), maxPx = 128, placeholder = false)
         else Text(

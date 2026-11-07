@@ -12,6 +12,7 @@ import com.plantellect.mobileplantellect.data.logic.NetworkMonitor
 import com.plantellect.mobileplantellect.data.logic.ServerMonitor
 import com.plantellect.mobileplantellect.data.remote.NetworkModule
 import com.plantellect.mobileplantellect.data.remote.ScanExtrasApi
+import com.plantellect.mobileplantellect.data.repository.AboutRepository
 import com.plantellect.mobileplantellect.data.repository.AuthRepository
 import com.plantellect.mobileplantellect.data.repository.DescriptionVoteRepository
 import com.plantellect.mobileplantellect.data.repository.DiscoveryRepository
@@ -20,6 +21,7 @@ import com.plantellect.mobileplantellect.data.repository.PlantRepository
 import com.plantellect.mobileplantellect.data.repository.ProfileRepository
 import com.plantellect.mobileplantellect.data.repository.RecordRepository
 import com.plantellect.mobileplantellect.data.repository.ScanRepository
+import com.plantellect.mobileplantellect.viewmodel.AboutViewModel
 import com.plantellect.mobileplantellect.viewmodel.AuthViewModel
 import com.plantellect.mobileplantellect.viewmodel.DiscoveryViewModel
 import com.plantellect.mobileplantellect.viewmodel.RecordPlantViewModel
@@ -68,6 +70,8 @@ class AppContainer(app: Application) {
     /** One plant's full public profile (cached) and the thumbs up / down on its descriptions. */
     val plantProfiles = PlantProfileRepository(network.plantApi, network.baseUrl)
     val descriptionVotes = DescriptionVoteRepository(network.votesApi, caller)
+    /** The About text of the Home page, from the server. */
+    val about = AboutRepository(network.aboutApi, caller)
 
     val viewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { AuthViewModel(auth, network.sessionExpired) }
@@ -76,6 +80,7 @@ class AppContainer(app: Application) {
         initializer { RecordPlantViewModel(records) }
         initializer { DiscoveryViewModel(discoveries) { auth.hasPermission("record_plant") } }
         initializer { ProfileViewModel(profiles) }
+        initializer { AboutViewModel(about) }
     }
 }
 

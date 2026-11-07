@@ -110,7 +110,7 @@ fun LibraryScreen(
             },
             leadingIcon = { Icon(Icons.Filled.Search, null) },
             trailingIcon = {
-                if (ui.query.isNotEmpty()) IconButton({ vm.setQuery("") }) { Icon(Icons.Filled.Clear, "Clear") }
+                if (ui.query.isNotEmpty()) HapticIconButton({ vm.setQuery("") }) { Icon(Icons.Filled.Clear, "Clear") }
             }
         )
 
@@ -118,7 +118,7 @@ fun LibraryScreen(
         Row(
             Modifier
                 .fillMaxWidth()
-                .clickable { filtersOpen = !filtersOpen }
+                .hapticClickable { filtersOpen = !filtersOpen }
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -159,16 +159,16 @@ fun LibraryScreen(
                 // Search by: all / common / scientific
                 HScroll(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
                     SearchBy.entries.forEach {
-                        FilterChip(ui.searchBy == it, { vm.setSearchBy(it) }, label = { Text(it.label) })
+                        HapticFilterChip(ui.searchBy == it, { vm.setSearchBy(it) }, label = { Text(it.label) })
                     }
                 }
 
                 // Plant type filter
                 if (ui.types.isNotEmpty()) {
                     HScroll(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)) {
-                        FilterChip(ui.typeName == null, { vm.setType(null) }, label = { Text("All types") })
+                        HapticFilterChip(ui.typeName == null, { vm.setType(null) }, label = { Text("All types") })
                         ui.types.forEach { t ->
-                            FilterChip(
+                            HapticFilterChip(
                                 selected = ui.typeName == t.typeName,
                                 onClick = { vm.setType(if (ui.typeName == t.typeName) null else t.typeName) },
                                 label = { Text(t.typeName.replaceFirstChar { it.uppercase() }) }
@@ -283,7 +283,7 @@ fun LibraryPlantCard(
         // Text on the card shrinks a little when the card is narrow (small phones, split screen).
         val ts = (maxWidth.value / 160f).coerceIn(0.85f, 1.2f)
         Card(
-            Modifier.fillMaxWidth().height(imageH + 12.dp + (92 * f).dp).combinedClickable(onClick = onClick, onLongClick = zoomPhoto),
+            Modifier.fillMaxWidth().height(imageH + 12.dp + (92 * f).dp).hapticCombinedClickable(onClick = onClick, onLongClick = zoomPhoto),
             shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(containerColor = c.surface),
             border = BorderStroke(1.dp, MaterialTheme.extraColors.forest.copy(alpha = 0.12f)),

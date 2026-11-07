@@ -89,3 +89,17 @@ sealed interface VoteResult {
     data class Ok(val up: Int, val myVote: String?, val hidden: Boolean) : VoteResult
     data class Err(val message: String) : VoteResult
 }
+
+// ---------------------------------------------------------------------------
+// The About text (GET /api/about, public): shown on the Home page.
+// ---------------------------------------------------------------------------
+
+@Serializable
+data class AboutSectionDto(val id: String = "", val heading: String = "", val body: String = "")
+
+@Serializable
+data class AboutDto(
+    val title: String = "",
+    val intro: String = "",
+    val sections: List<AboutSectionDto> = emptyList()
+)

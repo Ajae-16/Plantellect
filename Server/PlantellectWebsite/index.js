@@ -63,6 +63,8 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'home.html'));
 });
 
+// The About text (public): the mobile app shows it on its Home page.
+app.use('/api/about', require('./routes/about'));
 app.use('/api/auth', require('./routes/auth'));
 // The signed-in user's own bio, password and profile photo (mobile app).
 app.use('/api/profile', require('./routes/profile'));

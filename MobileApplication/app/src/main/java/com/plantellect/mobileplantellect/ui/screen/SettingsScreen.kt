@@ -39,17 +39,26 @@ fun SettingsScreen(isAdmin: Boolean) {
     val colorTheme = ColorTheme.fromName(colorThemeName)
     var confirmContribute by remember { mutableStateOf(false) }
     val serverStatus by app.container.serverMonitor.status.collectAsStateWithLifecycle()
+    val hapticsEnabled by settings.hapticsEnabled.collectAsStateWithLifecycle()
     val divider = MaterialTheme.colorScheme.outlineVariant
+    // Buzzes only while the Touch feedback switch is on. [preview] ignores the switch: it is the buzz you feel
+    // at the moment you turn the switch on (when the normal one is still off).
+    val haptics = rememberHaptics()
+    val preview = rememberHaptics(force = true)
 
     @Composable
     fun Theme(title: String, desc: String, mode: ThemeMode) = OptionRow(
         title, desc,
-        Modifier.selectable(selected = themeMode == mode, role = Role.RadioButton, onClick = { settings.setThemeMode(mode) })
+        Modifier.selectable(
+            selected = themeMode == mode, role = Role.RadioButton,
+            onClick = { haptics.tap(); settings.setThemeMode(mode) }
+        )
     ) { RadioButton(selected = themeMode == mode, onClick = null) }
 
     @Composable
     fun Toggle(title: String, desc: String, checked: Boolean, onChange: (Boolean) -> Unit) = OptionRow(
-        title, desc, Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+        title, desc,
+        Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = { on -> haptics.toggle(on); onChange(on) })
     ) { Switch(checked = checked, onCheckedChange = null) }
 
     PlantellectPage {
@@ -82,7 +91,7 @@ fun SettingsScreen(isAdmin: Boolean) {
                     theme.title, theme.blurb,
                     Modifier.selectable(
                         selected = colorTheme == theme, role = Role.RadioButton,
-                        onClick = { settings.setColorTheme(theme.name) }
+                        onClick = { haptics.tap(); settings.setColorTheme(theme.name) }
                     )
                 ) {
                     ThemeSwatch(theme)
@@ -98,9 +107,22 @@ fun SettingsScreen(isAdmin: Boolean) {
                     combo.title, combo.blurb,
                     Modifier.selectable(
                         selected = typeCombo == combo, role = Role.RadioButton,
-                        onClick = { settings.setTypeCombo(combo.name) }
+                        onClick = { haptics.tap(); settings.setTypeCombo(combo.name) }
                     )
                 ) { RadioButton(selected = typeCombo == combo, onClick = null) }
+            }
+        }
+
+        SectionTitle("Touch feedback")
+        PlantSurface(Modifier.fillMaxWidth()) {
+            Toggle(
+                "Haptic feedback",
+                "Vibrate briefly when you press a button, and shake the field with a short buzz when something is " +
+                        "wrong, such as typing past a character limit. Your phone's own touch-feedback setting still applies.",
+                hapticsEnabled
+            ) { on ->
+                settings.setHapticsEnabled(on)
+                if (on) preview.toggle(true)   // the normal buzz is still off for this one tap
             }
         }
 

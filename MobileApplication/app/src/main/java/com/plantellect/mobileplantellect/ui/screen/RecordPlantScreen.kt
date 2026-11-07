@@ -614,6 +614,7 @@ private fun Field(
         label = label,
         placeholder = placeholder,
         errorText = errors[key],
+        errorTrigger = LocalErrorFocus.current.tick,
         minLines = minLines,
         singleLine = minLines == 1,
         keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Decimal else KeyboardType.Text),
@@ -638,7 +639,8 @@ private fun RichField(
         modifier = Modifier.fillMaxWidth().errorTarget(key),
         minLines = minLines,
         isError = key in errors,
-        supportingText = errors[key]
+        supportingText = errors[key],
+        errorTrigger = LocalErrorFocus.current.tick
     )
 }
 
@@ -656,12 +658,13 @@ private fun Dropdown(
             isError = error != null,
             supportingText = error?.let { { Text(it) } },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
-            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth().errorTarget(errorKey),
+            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth().errorTarget(errorKey)
+                .shakeWhen(error, LocalErrorFocus.current.tick),
             shape = MaterialTheme.shapes.small
         )
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { (value, text) ->
-                DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(value); open = false })
+                HapticDropdownMenuItem(text = { Text(text) }, onClick = { onSelect(value); open = false })
             }
         }
     }
@@ -697,7 +700,7 @@ private fun DescriptionCards(choices: List<DescChoice>, selectedId: String?, onS
                         .ifBlank { o.values?.get("harmful").asText() }
                 ).take(160)
                 Surface(
-                    onClick = { onSelect(o.id) },
+                    onClick = hapticClick { onSelect(o.id) },
                     enabled = !o.pending,
                     shape = MaterialTheme.shapes.small,
                     color = if (selected) c.primaryContainer.copy(alpha = 0.35f) else c.surface,
@@ -734,10 +737,10 @@ private fun DescriptionCards(choices: List<DescChoice>, selectedId: String?, onS
 @Composable
 private fun CheckRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(enabled = enabled) { onChange(!checked) },
+        Modifier.fillMaxWidth().hapticClickable(enabled = enabled) { onChange(!checked) },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Checkbox(checked = checked, onCheckedChange = onChange, enabled = enabled)
+        Checkbox(checked = checked, onCheckedChange = hapticToggle(onChange), enabled = enabled)
         Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
@@ -753,7 +756,7 @@ private fun Hint(text: String) =
 @Composable
 private fun ErrorText(text: String?, key: String? = null) {
     if (text != null) Text(
-        text, Modifier.errorTarget(key),
+        text, Modifier.errorTarget(key).shakeWhen(text, LocalErrorFocus.current.tick),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
     )
 }
@@ -795,7 +798,7 @@ private fun CollapsibleSection(
         Column(Modifier.fillMaxWidth()) {
             Row(
                 Modifier.fillMaxWidth()
-                    .clickable(onClickLabel = if (expanded) "Fold away $title" else "Open $title", onClick = onToggle)
+                    .hapticClickable(onClickLabel = if (expanded) "Fold away $title" else "Open $title", onClick = onToggle)
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -982,10 +985,10 @@ private fun PhotoSection(
         HScroll {
             photos.toList().forEach { u ->
                 Box(Modifier.size(96.dp)) {
-                    LocalImage(u, 256, Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).clickable { onPreview(u) }, ContentScale.Crop)
+                    LocalImage(u, 256, Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).hapticClickable { onPreview(u) }, ContentScale.Crop)
                     Surface(
                         shape = CircleShape, color = MaterialTheme.extraColors.overlay.copy(alpha = 0.6f),
-                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp).clickable { photos.remove(u) }
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp).hapticClickable { photos.remove(u) }
                     ) { Box(contentAlignment = Alignment.Center) { Text("×", color = MaterialTheme.extraColors.onOverlay) } }
                 }
             }
@@ -1037,7 +1040,8 @@ private fun PlantPicker(
     Column(Modifier.fillMaxWidth()) {
         OutlinedTextField(
             value = query, onValueChange = { query = it },
-            modifier = Modifier.fillMaxWidth().errorTarget(errorKey).onFocusChanged { focused = it.isFocused },
+            modifier = Modifier.fillMaxWidth().errorTarget(errorKey).shakeWhen(error, LocalErrorFocus.current.tick)
+                .onFocusChanged { focused = it.isFocused },
             label = { Text("Plant name") }, singleLine = true, isError = error != null,
             supportingText = error?.let { { Text(it) } }, shape = MaterialTheme.shapes.small
         )
@@ -1053,7 +1057,7 @@ private fun PlantPicker(
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     shown.take(8).forEach { p ->
-                        Column(Modifier.fillMaxWidth().clickable { focusManager.clearFocus(); onPick(p) }.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        Column(Modifier.fillMaxWidth().hapticClickable { focusManager.clearFocus(); onPick(p) }.padding(horizontal = 12.dp, vertical = 8.dp)) {
                             Text(p.name, style = MaterialTheme.typography.titleSmall)
                             Text(
                                 listOfNotNull(p.scientificName, p.typeLabel).joinToString(" · "),
@@ -1551,7 +1555,7 @@ private fun MineTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForms)
                                     if (url != null) {
                                         RemoteImage(
                                             url, 256,
-                                            Modifier.size(96.dp).clip(RoundedCornerShape(8.dp)).clickable { f.preview = RecordPreview.Remote(url) },
+                                            Modifier.size(96.dp).clip(RoundedCornerShape(8.dp)).hapticClickable { f.preview = RecordPreview.Remote(url) },
                                             ContentScale.Crop
                                         )
                                     } else Hint(img.originalFilename ?: "photo")
@@ -1700,7 +1704,10 @@ fun RecordPlantScreen(
                         val errorText = f.problem ?: ui.error
                         val banner = errorText ?: ui.notice
                         if (banner != null) {
-                            Card(colors = CardDefaults.cardColors(containerColor = if (errorText != null) c.errorContainer else c.secondaryContainer)) {
+                            Card(
+                                modifier = Modifier.shakeWhen(errorText, f.focus.tick),
+                                colors = CardDefaults.cardColors(containerColor = if (errorText != null) c.errorContainer else c.secondaryContainer)
+                            ) {
                                 Row(Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(banner, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                                     PlantTextButton({ f.problem = null; vm.clearMessages() }) { Text("Dismiss") }

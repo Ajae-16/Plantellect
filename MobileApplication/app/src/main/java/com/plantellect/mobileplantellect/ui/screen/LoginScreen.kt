@@ -107,7 +107,7 @@ private fun PanelIntro(title: String, subtitle: String) {
 
 @Composable
 private fun ErrorText(text: String?) {
-    if (text != null) Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    if (text != null) Text(text, Modifier.shakeWhen(text), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
 }
 
 @Composable
@@ -206,7 +206,7 @@ private fun AuthField(
     val focus = LocalFocusManager.current
     var visible by remember { mutableStateOf(false) }
     OutlinedTextField(
-        value = value, onValueChange = onValueChange, modifier = modifier,
+        value = value, onValueChange = onValueChange, modifier = modifier.shakeWhen(error),
         label = { Text(label, maxLines = 1) },
         trailingIcon = if (isPassword) ({ PlantTextButton({ visible = !visible }) { Text(if (visible) "Hide" else "Show") } }) else null,
         singleLine = true, shape = MaterialTheme.shapes.small, enabled = enabled,
@@ -262,8 +262,9 @@ private fun Requirement(text: String, met: Boolean) {
 @Composable
 private fun ConsentRow(checked: Boolean, enabled: Boolean, text: String, onChange: (Boolean) -> Unit) {
     val c = MaterialTheme.colorScheme
+    val toggled = hapticToggle(onChange)
     Row(
-        Modifier.fillMaxWidth().toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = onChange),
+        Modifier.fillMaxWidth().toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = toggled),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Checkbox(checked, onCheckedChange = null, enabled = enabled)

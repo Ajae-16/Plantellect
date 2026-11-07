@@ -328,6 +328,9 @@ fun ProfileScreen(
         // Other:  Contributions | Reported plants
         val canRecord = "record_plant" in account.permissions
         val tabCounts = mutableMapOf<String, Int>()   // the number beside a tab, drawn as a pill
+        // My contributions lists only the plants you wrote a description for (the ones that carry up / down votes).
+        // A plant you merely edited is not a contribution: it shows under "Your edits" instead.
+        val ownContributions = p?.contributions.orEmpty().filter { it.authored }
         val tabs = buildList<Pair<String, String>> {
             if (isOwn) {
                 // First, so a request waiting for you is the first thing you see.
@@ -337,7 +340,7 @@ fun ProfileScreen(
                     add("approvals" to "Pending approval"); tabCounts["approvals"] = open
                 }
                 add("reports" to "My reports"); tabCounts["reports"] = s.total
-                if (p != null || canRecord) { add("contributions" to "My contributions"); tabCounts["contributions"] = p?.contributions?.size ?: 0 }
+                if (p != null || canRecord) { add("contributions" to "My contributions"); tabCounts["contributions"] = ownContributions.size }
             } else if (p != null) {
                 add("contributions" to "Contributions"); tabCounts["contributions"] = p.contributions.size
                 add("reported" to "Reported plants"); tabCounts["reported"] = p.reported.size
@@ -381,7 +384,7 @@ fun ProfileScreen(
                     onOpenPlant = onOpenPlant, onOpenWeb = ::open)
                 "contributions" -> {
                     PlantList(
-                        p?.contributions.orEmpty(),
+                        if (isOwn) ownContributions else p?.contributions.orEmpty(),
                         if (isOwn) "You have not recorded any plants yet." else "Nothing recorded yet.",
                         onOpenPlant,
                         resolve = vm::photoUrl,
@@ -390,7 +393,8 @@ fun ProfileScreen(
                         // Your own list also shows the votes your descriptions received.
                         showVotes = isOwn
                     )
-                    // The changes you made to descriptions, and what each one changed.
+                    // The changes you made to descriptions, and what each one changed. It sits BELOW the plant list
+                    // (the cards with the up / down votes), never above it.
                     if (isOwn) YourEdits(approvals, vm::photoUrl, { url, name -> plantPreview = url to name }, onOpenPlant)
                 }
                 "reported" -> PlantList(
@@ -499,7 +503,7 @@ private fun ProfilePicture(
     Box(Modifier.size(72.dp)) {
         Surface(shape = LeafMedium, color = c.primaryContainer, modifier = Modifier.fillMaxSize()) {
             Box(
-                Modifier.fillMaxSize().then(if (onClick != null) Modifier.clickable(onClickLabel = "View photo") { onClick() } else Modifier),
+                Modifier.fillMaxSize().then(if (onClick != null) Modifier.hapticClickable(onClickLabel = "View photo") { onClick() } else Modifier),
                 contentAlignment = Alignment.Center
             ) {
                 if (url != null) PlantPhoto(url, name, Modifier.fillMaxSize(), maxPx = 256, placeholder = false)
@@ -550,7 +554,10 @@ private fun BioSection(
             }
         }
         message?.let {
-            Text(it.text, style = MaterialTheme.typography.bodySmall, color = if (it.isError) c.error else c.primary)
+            Text(
+                it.text, Modifier.shakeWhen(if (it.isError) it.text else null),
+                style = MaterialTheme.typography.bodySmall, color = if (it.isError) c.error else c.primary
+            )
         }
     }
 
@@ -613,9 +620,13 @@ private fun PlantList(
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (plants.size > 1) {
+            // The box holds 60 characters: typing past that shakes it and buzzes.
+            val searchShake = rememberShakeState()
+            val searchHaptics = rememberHaptics()
             OutlinedTextField(
-                value = query, onValueChange = { onQuery(it.take(60)) },
-                modifier = Modifier.fillMaxWidth(), singleLine = true, shape = MaterialTheme.shapes.small,
+                value = query,
+                onValueChange = { if (it.length > 60) { searchShake.shake(); searchHaptics.reject() }; onQuery(it.take(60)) },
+                modifier = Modifier.fillMaxWidth().shake(searchShake), singleLine = true, shape = MaterialTheme.shapes.small,
                 placeholder = {
                     Text(when (searchBy) {
                         SearchBy.SCIENTIFIC -> "Search scientific name"
@@ -625,11 +636,11 @@ private fun PlantList(
                 },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 trailingIcon = {
-                    if (query.isNotEmpty()) IconButton({ onQuery("") }) { Icon(Icons.Filled.Clear, "Clear") }
+                    if (query.isNotEmpty()) HapticIconButton({ onQuery("") }) { Icon(Icons.Filled.Clear, "Clear") }
                 }
             )
             Row(
-                Modifier.fillMaxWidth().clickable { filtersOpen = !filtersOpen }.padding(vertical = 4.dp),
+                Modifier.fillMaxWidth().hapticClickable { filtersOpen = !filtersOpen }.padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Filters", style = MaterialTheme.typography.titleSmall, color = c.onSurface)
@@ -646,14 +657,14 @@ private fun PlantList(
             if (filtersOpen) {
                 HScroll(contentPadding = PaddingValues(vertical = 2.dp)) {
                     SearchBy.entries.forEach {
-                        FilterChip(searchBy == it, { searchBy = it }, label = { Text(it.label) })
+                        HapticFilterChip(searchBy == it, { searchBy = it }, label = { Text(it.label) })
                     }
                 }
                 if (types.isNotEmpty()) {
                     HScroll(contentPadding = PaddingValues(vertical = 2.dp)) {
-                        FilterChip(activeType == null, { typeFilter = null }, label = { Text("All types") })
+                        HapticFilterChip(activeType == null, { typeFilter = null }, label = { Text("All types") })
                         types.forEach { t ->
-                            FilterChip(
+                            HapticFilterChip(
                                 selected = activeType.equals(t, ignoreCase = true),
                                 onClick = { typeFilter = if (activeType.equals(t, ignoreCase = true)) null else t },
                                 label = { Text(t.replaceFirstChar { it.uppercase() }) }
@@ -676,7 +687,7 @@ private fun PlantList(
             )
         }
         shown.forEach { pl ->
-            PlantSurface(Modifier.fillMaxWidth().clickable { onOpen(pl.id) }) {
+            PlantSurface(Modifier.fillMaxWidth().hapticClickable { onOpen(pl.id) }) {
                 Row(
                     Modifier.fillMaxWidth().padding(10.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -718,7 +729,7 @@ internal fun PhotoPreviewThumb(
     val c = MaterialTheme.colorScheme
     Box(
         Modifier.size(size).clip(RoundedCornerShape(10.dp))
-            .then(if (url != null) Modifier.clickable(onClickLabel = "Preview photo") { onPreview(url, name) } else Modifier)
+            .then(if (url != null) Modifier.hapticClickable(onClickLabel = "Preview photo") { onPreview(url, name) } else Modifier)
     ) {
         PlantPhoto(url, name, Modifier.fillMaxSize())
         if (url != null) {
@@ -768,7 +779,7 @@ private fun YourEdits(
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         PhotoPreviewThumb(resolve(m.imageUrl), m.plantName ?: "Plant", onPreview, size = 56.dp)
-                        Column(Modifier.weight(1f).clickable(enabled = m.plantId != null) { m.plantId?.let(onOpenPlant) }) {
+                        Column(Modifier.weight(1f).hapticClickable(enabled = m.plantId != null) { m.plantId?.let(onOpenPlant) }) {
                             Text(m.plantName ?: "Plant", style = MaterialTheme.typography.titleSmall, color = c.onSurface)
                             Text(
                                 "You edited ${editedWhat(m)}",
@@ -931,7 +942,7 @@ private fun ChangePasswordDialog(
         PasswordField("New password", next) { next = it }
         PasswordField("Confirm new password", confirm) { confirm = it }
         (problem ?: serverError)?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Text(it, Modifier.shakeWhen(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     }
@@ -989,7 +1000,7 @@ private fun ChangeEmailDialog(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
         )
         PasswordField("Current password", password) { password = it }
-        serverError?.let { Text(it, color = c.error, style = MaterialTheme.typography.bodySmall) }
+        serverError?.let { Text(it, Modifier.shakeWhen(it), color = c.error, style = MaterialTheme.typography.bodySmall) }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     }
 
@@ -1019,7 +1030,7 @@ private fun PasswordField(label: String, value: String, onChange: (String) -> Un
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         trailingIcon = {
-            IconButton(onClick = { visible = !visible }) {
+            HapticIconButton(onClick = { visible = !visible }) {
                 Icon(
                     if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                     contentDescription = if (visible) "Hide password" else "Show password"
