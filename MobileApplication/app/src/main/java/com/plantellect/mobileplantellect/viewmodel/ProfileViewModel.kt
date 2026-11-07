@@ -10,6 +10,7 @@ import com.plantellect.mobileplantellect.data.repository.ProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -86,6 +87,8 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
     private val _approvals = MutableStateFlow(ApprovalsUiState())
     val approvals: StateFlow<ApprovalsUiState> = _approvals.asStateFlow()
 
+    private var botanistJob: Job? = null
+
     private val _botanist = MutableStateFlow(BotanistUiState())
     val botanist: StateFlow<BotanistUiState> = _botanist.asStateFlow()
 
@@ -98,9 +101,16 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
         }
     }
 
-    /** The full lists for the tab. */
+    /** A read was asked for while another was still running: it is done again right after, never dropped. */
+    private var approvalsReloadQueued = false
+
+    /** The full lists for the tab (also "Your edits"). */
     fun loadApprovals() {
-        if (_approvals.value.loading) return
+        if (_approvals.value.loading) {
+            // Used to return here, which threw the newer request away and left the older (stale) answer on screen.
+            approvalsReloadQueued = true
+            return
+        }
         _approvals.update { it.copy(loading = true) }
         viewModelScope.launch {
             when (val r = repo.approvals()) {
@@ -111,6 +121,7 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
                     it.copy(loading = false, message = ProfileMessage("Your pending approvals could not be loaded.", true))
                 }
             }
+            if (approvalsReloadQueued) { approvalsReloadQueued = false; loadApprovals() }
         }
     }
 
@@ -161,7 +172,10 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
         val shownNow = _botanist.value.profile?.takeIf { it.accountId == accountId }
         if (silent && shownNow != null) _botanist.update { it.copy(loading = false, error = null) }
         else _botanist.update { BotanistUiState(loading = true) }
-        viewModelScope.launch {
+        // Only the NEWEST read may write the result. Before, two reads in flight (opening a tab and closing a plant
+        // page at the same moment) could finish in the wrong order and put the older vote totals back on screen.
+        botanistJob?.cancel()
+        botanistJob = viewModelScope.launch {
             when (val r = repo.botanistProfile(accountId)) {
                 is ApiResult.Success -> _botanist.value = BotanistUiState(profile = r.value)
                 is ApiResult.Failure ->

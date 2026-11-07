@@ -201,7 +201,12 @@ fun libraryViewModel(): LibraryViewModel {
     )
 }
 
-/** Drifts to the left, loops forever, pauses while the user touches it. Card width = web --pc-w (230). */
+/**
+ * Keeps drifting to the right by itself, forever, and never turns around. It starts in the middle of an endless row,
+ * so you can also swipe it back to the left as far as you like. Pauses while the user touches it, then carries on
+ * to the right.
+ * Card width = web --pc-w (230).
+ */
 @Composable
 fun <T> AutoScrollRow(
     items: List<T>,
@@ -210,14 +215,19 @@ fun <T> AutoScrollRow(
     content: @Composable (T) -> Unit
 ) {
     if (items.isEmpty()) return
-    val state = rememberLazyListState()
+    // Start far from index 0 (on the first card of a lap), otherwise there is nothing to the left to scroll to.
+    val start = remember { (Int.MAX_VALUE / 4).let { it - it % items.size } }
+    val state = rememberLazyListState(initialFirstVisibleItemIndex = start)
     val dragged by state.interactionSource.collectIsDraggedAsState()
     var resumeTick by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(dragged) { if (!dragged) { delay(2000); resumeTick++ } }
     LaunchedEffect(items.size, dragged, resumeTick) {
         if (dragged) return@LaunchedEffect
-        while (true) { delay(16); state.scrollBy(1.4f) }
+        while (true) {
+            delay(16)
+            state.scrollBy(1.4f)
+        }
     }
 
     LazyRow(

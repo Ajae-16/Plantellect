@@ -208,14 +208,22 @@ async function getContributorProfile(accountId) {
         [accountId]
     );
 
-    // Total up / down votes on the descriptions this account wrote for the plant (approved, not archived).
+    // Total up / down votes on the descriptions this account wrote for the plant. Counted straight from
+    // description_votes (the same rows the vote itself tallies), over the descriptions the plant page still shows
+    // (approved, not hidden by down votes, not archived), so this number always agrees with the plant page.
     // Only the contributions list carries them.
     const voteTotals = (column) => `
-        (SELECT COALESCE(SUM(v.${column}), 0)
+        (SELECT COALESCE(SUM(dv.voteValue = '${column === 'upVotes' ? 'up' : 'down'}'), 0)
          FROM plant_description d
-         JOIN vw_description_votes v ON v.descriptionId = d.descriptionId
+         JOIN description_votes dv ON dv.descriptionId = d.descriptionId
          WHERE d.plantId = p.plantId AND d.accountId = pc.accountId
-           AND d.status = 'approved' AND d.archivedAt IS NULL) AS ${column}`;
+           AND d.status = 'approved' AND d.hiddenAt IS NULL AND d.archivedAt IS NULL) AS ${column}`;
+    // How many descriptions of the plant this account wrote. 0 = it only edited someone else's: no vote totals then.
+    const authoredCount = `
+        (SELECT COUNT(*)
+         FROM plant_description d
+         WHERE d.plantId = p.plantId AND d.accountId = pc.accountId
+           AND d.status = 'approved' AND d.archivedAt IS NULL) AS ownDescriptions`;
     const contributionSelect = (extraColumns = '') => `
         SELECT p.plantId, p.commonName, p.scientificName, pc.role, pc.createdAt,
                 t.typeName, t.typeName AS typeLabel,${extraColumns}
@@ -229,7 +237,7 @@ async function getContributorProfile(accountId) {
         ORDER BY pc.createdAt DESC`;
 
     const [contributions] = await mysqlPool.query(
-        `${contributionSelect(`${voteTotals('upVotes')}, ${voteTotals('downVotes')},`)}
+        `${contributionSelect(`${voteTotals('upVotes')}, ${voteTotals('downVotes')}, ${authoredCount},`)}
          WHERE pc.accountId = ? AND pc.role = 'contributor' AND ${PUBLIC_VISIBILITY}
          ${orderAndVisibility}`,
         [accountId]
@@ -269,6 +277,8 @@ async function getContributorProfile(accountId) {
             // Totals over everything this account wrote for the plant.
             upVotes: Number(c.upVotes) || 0,
             downVotes: Number(c.downVotes) || 0,
+            // false = this person did not write a description of this plant (they only edited one).
+            authored: Number(c.ownDescriptions) > 0,
             ...publicUrls(c.plantId, c.heroImageId)
         })),
         reported: reported.map((c) => ({

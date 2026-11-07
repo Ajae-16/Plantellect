@@ -96,31 +96,24 @@ internal fun PlantTextButton(
 )
 
 /**
- * THE Back button: every screen that can go back uses this one, so they all look and feel the same.
- * A soft green pill with an arrow, never smaller than a comfortable touch target.
+ * THE Back button: every screen that can go back uses this one, in the same place (the top bar, right after the
+ * menu button and in line with the "Plantellect" title), so they all look and feel the same. A soft round button
+ * with an arrow, 40 dp like the other top bar buttons. It follows the color theme (primaryContainer).
  */
 @Composable
 internal fun AppBackButton(onClick: () -> Unit, modifier: Modifier = Modifier, label: String = "Back") {
     val c = MaterialTheme.colorScheme
     androidx.compose.material3.Surface(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 36.dp),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+        modifier = modifier.size(36.dp),
+        shape = androidx.compose.foundation.shape.CircleShape,
         color = c.primaryContainer,
         contentColor = c.onPrimaryContainer
     ) {
-        androidx.compose.foundation.layout.Row(
-            Modifier.padding(start = 10.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)
-        ) {
+        androidx.compose.foundation.layout.Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
             androidx.compose.material3.Icon(
                 androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = null, modifier = Modifier.size(18.dp)
-            )
-            androidx.compose.material3.Text(
-                label, style = MaterialTheme.typography.labelLarge,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1
+                contentDescription = label, modifier = Modifier.size(20.dp)
             )
         }
     }

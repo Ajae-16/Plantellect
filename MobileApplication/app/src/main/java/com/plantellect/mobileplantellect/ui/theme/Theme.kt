@@ -89,15 +89,21 @@ fun MobilePlantellectTheme(
     dynamicColor: Boolean = false,
     /** Which font combo to draw with (Settings > Typography). See TypeCombos.kt. */
     typeCombo: TypeCombo = TypeCombo.DEFAULT,
+    /** Which color theme to draw with (Settings > Appearance). See ColorThemes.kt. */
+    colorTheme: ColorTheme = ColorTheme.PLANTELLECT,
     content: @Composable () -> Unit
 ) {
+    val hue = colorTheme.hue
     val colorScheme = when {
         dynamicColor && darkTheme -> dynamicDarkColorScheme(LocalContext.current)
         dynamicColor -> dynamicLightColorScheme(LocalContext.current)
+        hue != null -> generatedScheme(hue, darkTheme)
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
-    CompositionLocalProvider(LocalExtraColors provides (if (darkTheme) DarkExtraColors else LightExtraColors)) {
+    val baseExtras = if (darkTheme) DarkExtraColors else LightExtraColors
+    val extras = if (hue != null) generatedExtras(baseExtras, hue, darkTheme) else baseExtras
+    CompositionLocalProvider(LocalExtraColors provides extras) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = rememberTypography(typeCombo),

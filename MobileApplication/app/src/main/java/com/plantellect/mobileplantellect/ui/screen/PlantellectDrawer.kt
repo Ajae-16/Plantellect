@@ -122,7 +122,9 @@ internal fun PlantellectDrawerSheet(
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
             drawerEntries.filter { it.requires == null || it.requires in permissions }.forEach { e ->
                 NavigationDrawerItem(
-                    label = { Text(e.label + (badges[e.route]?.takeIf { it > 0 }?.let { " ($it)" } ?: ""), style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                    label = { Text(e.label, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                    // The number of new things waiting on this page, as a pill at the right end of the row.
+                    badge = badges[e.route]?.takeIf { it > 0 }?.let { n -> { CountBadge(n) } },
                     icon = { Icon(e.icon, contentDescription = null) },
                     selected = currentRoute == e.route,
                     onClick = { onGo(e.route) },

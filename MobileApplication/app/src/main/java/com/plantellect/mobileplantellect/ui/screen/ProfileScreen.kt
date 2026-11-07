@@ -10,7 +10,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
@@ -33,6 +36,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.plantellect.mobileplantellect.data.logic.ProfileValidator
 import com.plantellect.mobileplantellect.data.logic.UploadLimits
 import com.plantellect.mobileplantellect.viewmodel.ProfileMessage
@@ -42,6 +47,7 @@ import com.plantellect.mobileplantellect.data.remote.dto.ProfilePlantDto
 import com.plantellect.mobileplantellect.ui.theme.LeafMedium
 import com.plantellect.mobileplantellect.viewmodel.ApprovalsUiState
 import com.plantellect.mobileplantellect.viewmodel.ProfileViewModel
+import com.plantellect.mobileplantellect.viewmodel.SearchBy
 import com.plantellect.mobileplantellect.viewmodel.ReportItem
 import java.text.DateFormat
 import java.time.Instant
@@ -179,6 +185,15 @@ fun ProfileScreen(
         }
     }
 
+    // Coming back to the app or to this screen (other people may have voted or edited meanwhile): read the numbers
+    // again quietly, so the up / down votes are never older than the last time the screen was in front of you.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        if (account != null) {
+            target?.let { vm.loadBotanist(it, silent = true) }
+            if (isOwn) vm.loadApprovals()
+        }
+    }
+
     // The view model is shared: never show the previous person's profile for a frame while this one loads.
     val p = b.profile?.takeIf { it.accountId == target }
 
@@ -219,9 +234,13 @@ fun ProfileScreen(
                             name = account.username,
                             initials = account.username.take(2).uppercase(),
                             busy = edit.uploadingPhoto,
-                            // Tap = change the photo, hold = look at it big.
-                            onClick = { if (!edit.uploadingPhoto) { vm.clearEditMessages(); showPhotoChoice = true } },
-                            onLongClick = { vm.photoUrl(account.photoUrl)?.let { zoomPhoto = it } }
+                            // Tap = look at it big (the big view has "Change profile photo"). With no photo yet, tap adds one.
+                            onClick = {
+                                if (!edit.uploadingPhoto) {
+                                    val big = vm.photoUrl(account.photoUrl)
+                                    if (big != null) zoomPhoto = big else { vm.clearEditMessages(); showPhotoChoice = true }
+                                }
+                            }
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(account.username.ifBlank { "-" }, style = MaterialTheme.typography.titleLarge, color = c.onSurface)
@@ -279,7 +298,7 @@ fun ProfileScreen(
                                 url = vm.photoUrl(other.photoUrl),
                                 name = other.name,
                                 initials = other.name.take(2).uppercase(),
-                                onLongClick = { vm.photoUrl(other.photoUrl)?.let { zoomPhoto = it } }
+                                onClick = vm.photoUrl(other.photoUrl)?.let { big -> { zoomPhoto = big } }
                             )
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(other.name, style = MaterialTheme.typography.titleLarge, color = c.onSurface)
@@ -308,24 +327,30 @@ fun ProfileScreen(
         // Own:    My reports | My contributions
         // Other:  Contributions | Reported plants
         val canRecord = "record_plant" in account.permissions
+        val tabCounts = mutableMapOf<String, Int>()   // the number beside a tab, drawn as a pill
         val tabs = buildList<Pair<String, String>> {
             if (isOwn) {
                 // First, so a request waiting for you is the first thing you see.
                 // The number is what still needs an approval; approved and denied ones sit at the bottom of the tab.
                 if (canRecord) {
                     val open = approvals.data.awaitingMe.count { it.needsAnswer } + approvals.data.mine.count { it.status == "pending" }
-                    add("approvals" to "Pending approval ($open)")
+                    add("approvals" to "Pending approval"); tabCounts["approvals"] = open
                 }
-                add("reports" to "My reports (${s.total})")
-                if (p != null || canRecord) add("contributions" to "My contributions (${p?.contributions?.size ?: 0})")
+                add("reports" to "My reports"); tabCounts["reports"] = s.total
+                if (p != null || canRecord) { add("contributions" to "My contributions"); tabCounts["contributions"] = p?.contributions?.size ?: 0 }
             } else if (p != null) {
-                add("contributions" to "Contributions (${p.contributions.size})")
-                add("reported" to "Reported plants (${p.reported.size})")
+                add("contributions" to "Contributions"); tabCounts["contributions"] = p.contributions.size
+                add("reported" to "Reported plants"); tabCounts["reported"] = p.reported.size
             }
         }
         if (tabs.isNotEmpty()) {
             val selected = tab.coerceIn(0, tabs.lastIndex)
-            ScrollableTabStrip(tabs.map { it.second }, selected, { tab = it })
+            ScrollableTabStrip(
+                tabs.map { it.second }, selected, { tab = it },
+                counts = tabs.map { tabCounts[it.first] },
+                // Only the number of requests waiting on someone is strong; the other counts are quiet.
+                alerts = tabs.indices.filter { tabs[it].first == "approvals" }.toSet()
+            )
             // Looking at the tab is what clears the "new" mark on the requests you asked for.
             val onApprovals = tabs[selected].first == "approvals"
             LaunchedEffect(onApprovals, approvals.loaded, approvals.data.mine) {
@@ -421,7 +446,14 @@ fun ProfileScreen(
             }
         }
     }
-    zoomPhoto?.let { url -> PhotoZoomDialog(url, if (isOwn) "Your profile photo" else (p?.name ?: "Profile photo"), onClose = { zoomPhoto = null }) }
+    zoomPhoto?.let { url ->
+        PhotoZoomDialog(
+            url, if (isOwn) "Your profile photo" else (p?.name ?: "Profile photo"),
+            onClose = { zoomPhoto = null },
+            // Only on your own picture.
+            onChangePhoto = if (isOwn) ({ zoomPhoto = null; vm.clearEditMessages(); showPhotoChoice = true }) else null
+        )
+    }
     plantPreview?.let { (url, name) -> PhotoZoomDialog(url, name, onClose = { plantPreview = null }) }
     if (showChangeEmail && account != null && isOwn) {
         ChangeEmailDialog(
@@ -455,40 +487,24 @@ fun ProfileScreen(
 
 /**
  * Profile picture in the app's leaf shape; initials when there is no photo.
- *  - [onClick] (your own picture): tap to change it; wears a small camera badge.
- *  - [onLongClick]: hold to see the photo full screen (also on other people's pictures).
- * [busy] covers it with a spinner while a new photo is being sent.
+ * [onClick]: tap to see the photo big (no hold gesture, no camera badge). [busy] covers it with a spinner while a
+ * new photo is being sent.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProfilePicture(
     url: String?, name: String, initials: String,
-    busy: Boolean = false, onClick: (() -> Unit)? = null, onLongClick: (() -> Unit)? = null
+    busy: Boolean = false, onClick: (() -> Unit)? = null
 ) {
     val c = MaterialTheme.colorScheme
     Box(Modifier.size(72.dp)) {
         Surface(shape = LeafMedium, color = c.primaryContainer, modifier = Modifier.fillMaxSize()) {
             Box(
-                Modifier.fillMaxSize().combinedClickable(
-                    enabled = onClick != null || (onLongClick != null && url != null),
-                    onClick = { onClick?.invoke() },
-                    onLongClick = if (url != null) onLongClick else null
-                ),
+                Modifier.fillMaxSize().then(if (onClick != null) Modifier.clickable(onClickLabel = "View photo") { onClick() } else Modifier),
                 contentAlignment = Alignment.Center
             ) {
                 if (url != null) PlantPhoto(url, name, Modifier.fillMaxSize(), maxPx = 256, placeholder = false)
                 else Text(initials, style = MaterialTheme.typography.titleLarge, color = c.onPrimaryContainer)
                 if (busy) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
-            }
-        }
-        if (onClick != null) {
-            Surface(
-                shape = CircleShape, color = c.primary, shadowElevation = 2.dp,
-                modifier = Modifier.align(Alignment.BottomEnd).size(24.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.PhotoCamera, contentDescription = "Change profile photo", tint = c.onPrimary, modifier = Modifier.size(14.dp))
-                }
             }
         }
     }
@@ -577,21 +593,87 @@ private fun PlantList(
         Text(empty, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
         return
     }
-    // Search by name: the common or the scientific name contains what was typed, any capitals.
+    // Same search as the Plant Library: the box searches all names, only the common name or only the scientific name
+    // (Filters), and a plant type chip narrows the list to that type. Any capitals.
+    var searchBy by rememberSaveable(showVotes) { mutableStateOf(SearchBy.ALL) }
+    var typeFilter by rememberSaveable(showVotes) { mutableStateOf<String?>(null) }
+    var filtersOpen by rememberSaveable(showVotes) { mutableStateOf(false) }
+    fun typeOf(p: ProfilePlantDto) = p.typeLabel.ifBlank { p.type }
+    val types = plants.map { typeOf(it) }.filter { it.isNotBlank() }.distinctBy { it.lowercase() }.sortedBy { it.lowercase() }
+    // A type that no longer has a plant in the list cannot stay selected.
+    val activeType = typeFilter?.takeIf { t -> types.any { it.equals(t, ignoreCase = true) } }
     val q = query.trim()
-    val shown = if (q.isEmpty()) plants else plants.filter {
-        it.name.contains(q, ignoreCase = true) || it.scientificName.contains(q, ignoreCase = true)
+    val shown = plants.filter { p ->
+        val nameOk = q.isEmpty() || when (searchBy) {
+            SearchBy.COMMON -> p.name.contains(q, ignoreCase = true)
+            SearchBy.SCIENTIFIC -> p.scientificName.contains(q, ignoreCase = true)
+            SearchBy.ALL -> p.name.contains(q, ignoreCase = true) || p.scientificName.contains(q, ignoreCase = true)
+        }
+        nameOk && (activeType == null || typeOf(p).equals(activeType, ignoreCase = true))
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (plants.size > 1) NameSearchField(query, onQuery, "Search plants by name")
-        if (showVotes) {
+        if (plants.size > 1) {
+            OutlinedTextField(
+                value = query, onValueChange = { onQuery(it.take(60)) },
+                modifier = Modifier.fillMaxWidth(), singleLine = true, shape = MaterialTheme.shapes.small,
+                placeholder = {
+                    Text(when (searchBy) {
+                        SearchBy.SCIENTIFIC -> "Search scientific name"
+                        SearchBy.COMMON -> "Search common name"
+                        SearchBy.ALL -> "Search plants"
+                    })
+                },
+                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) IconButton({ onQuery("") }) { Icon(Icons.Filled.Clear, "Clear") }
+                }
+            )
+            Row(
+                Modifier.fillMaxWidth().clickable { filtersOpen = !filtersOpen }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Filters", style = MaterialTheme.typography.titleSmall, color = c.onSurface)
+                if (!filtersOpen) {
+                    Text(
+                        listOfNotNull(searchBy.label, activeType).joinToString(" · "),
+                        Modifier.padding(start = 8.dp).weight(1f),
+                        style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant,
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                } else Spacer(Modifier.weight(1f))
+                Icon(Icons.Filled.ArrowDropDown, if (filtersOpen) "Hide filters" else "Show filters")
+            }
+            if (filtersOpen) {
+                HScroll(contentPadding = PaddingValues(vertical = 2.dp)) {
+                    SearchBy.entries.forEach {
+                        FilterChip(searchBy == it, { searchBy = it }, label = { Text(it.label) })
+                    }
+                }
+                if (types.isNotEmpty()) {
+                    HScroll(contentPadding = PaddingValues(vertical = 2.dp)) {
+                        FilterChip(activeType == null, { typeFilter = null }, label = { Text("All types") })
+                        types.forEach { t ->
+                            FilterChip(
+                                selected = activeType.equals(t, ignoreCase = true),
+                                onClick = { typeFilter = if (activeType.equals(t, ignoreCase = true)) null else t },
+                                label = { Text(t.replaceFirstChar { it.uppercase() }) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (showVotes && plants.any { it.authored }) {
             Text(
                 "Under each plant: the total upvotes and downvotes on the descriptions you wrote for it.",
                 style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant
             )
         }
         if (shown.isEmpty()) {
-            Text("No plant matches “$q”.", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+            Text(
+                if (q.isNotEmpty()) "No plant matches “$q”." else "No plant of this type.",
+                style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant
+            )
         }
         shown.forEach { pl ->
             PlantSurface(Modifier.fillMaxWidth().clickable { onOpen(pl.id) }) {
@@ -609,7 +691,8 @@ private fun PlantList(
                                 fontStyle = FontStyle.Italic, color = c.onSurfaceVariant)
                         if (pl.typeLabel.isNotBlank())
                             Text(pl.typeLabel, style = MaterialTheme.typography.labelMedium, color = c.primary)
-                        if (showVotes) {
+                        // Only for plants where this person wrote a description: an editor of someone else's has no votes.
+                        if (showVotes && pl.authored) {
                             Row(
                                 Modifier.padding(top = 4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -673,7 +756,7 @@ private fun YourEdits(
     val edits = state.data.mine.filter { it.status == "approved" }.sortedByDescending { it.reviewedAt ?: it.createdAt.orEmpty() }
     if (!state.loaded) return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionTitle("Your edits (${edits.size})")
+        TitleWithCount("Your edits", edits.size)
         Text(
             if (edits.isEmpty()) "Changes you ask for show up here once they are approved."
             else "Changes you asked for that were approved and are now on the plant.",

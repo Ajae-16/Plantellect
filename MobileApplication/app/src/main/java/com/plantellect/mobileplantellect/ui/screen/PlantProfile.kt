@@ -9,6 +9,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.draw.alpha
@@ -23,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.LocalFlorist
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalConfiguration
@@ -98,37 +103,19 @@ fun PlantProfileDialog(
             Box(Modifier.fillMaxSize().plantBackdrop()) {
                 val body: @Composable () -> Unit = {
                     Column(Modifier.fillMaxSize()) {
-                        // One row: Menu and Back on the left, Contribute at the right end. It is outside the scrolling
-                        // page, so it stays in view however far you scroll.
-                        Row(
-                            Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 10.dp, top = 2.dp, bottom = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // The same bar as every other page: Menu, Back in line with "Plantellect", Contribute at the
+                        // right end. It is outside the scrolling page, so it stays in view however far you scroll.
+                        PlantellectTopBar(
+                            onMenu = if (nav != null) ({ drawerScope.launch { drawerState.open() } }) else null,
+                            onBack = onClose
                         ) {
-                            if (nav != null) IconButton({ drawerScope.launch { drawerState.open() } }, Modifier.size(40.dp)) {
-                                Icon(Icons.Filled.Menu, contentDescription = "Menu")
-                            }
-                            AppBackButton(onClose, Modifier.padding(start = 2.dp))
-                            // The plant's name takes the free space between Back and the right-hand buttons
-                            // (it replaces the extra "Plant Library > name" row, so the bar is one short line).
-                            Row(
-                                Modifier.weight(1f).padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(Icons.Filled.LocalFlorist, contentDescription = null, tint = c.primary, modifier = Modifier.size(18.dp))
-                                Text(
-                                    (state as? ProfileLoad.Ready)?.data?.name ?: fallbackName,
-                                    style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                                )
-                            }
                             if (zoom.scale > 1.01f) PlantTextButton({ zoom.reset() }) { Text("Reset zoom") }
                             // Only people who may record plants see it; it opens Record Plant on this plant.
                             val ready = state as? ProfileLoad.Ready
                             if (ready != null && nav != null && "record_plant" in nav.permissions) {
                                 PlantButton(
                                     { onClose(); nav.contribute(plantId, ready.data.name) },
-                                    modifier = Modifier.heightIn(max = 40.dp),
+                                    modifier = Modifier.heightIn(max = 40.dp).padding(end = 6.dp),
                                     contentPadding = PaddingValues(start = 12.dp, end = 16.dp)
                                 ) {
                                     Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -138,7 +125,14 @@ fun PlantProfileDialog(
                             }
                         }
 
-                        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().fingerZoom(zoom)) {
+                        // Pull the page down from its top to read the plant, its descriptions and the votes again.
+                        Refreshable(
+                            refreshing = state is ProfileLoad.Loading && attempt > 0,
+                            onRefresh = { attempt++ },
+                            enabled = zoom.scale <= 1.01f,
+                            modifier = Modifier.weight(1f).fillMaxWidth()
+                        ) {
+                        Box(Modifier.fillMaxSize().clipToBounds().fingerZoom(zoom)) {
                             Column(
                                 Modifier.fillMaxSize()
                                     .graphicsLayer {
@@ -178,6 +172,7 @@ fun PlantProfileDialog(
                                     )
                                 }
                             }
+                        }
                         }
                     }
                 }
@@ -263,17 +258,20 @@ private fun Modifier.fingerZoom(z: FingerZoom): Modifier = pointerInput(Unit) {
     }
 }
 
-/** The large photo: the width of the screen, a 16:11 box that grows with the phone (capped on tablets). */
-private fun Modifier.heroModifier(): Modifier =
-    fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 180.dp, max = 420.dp)
-        .aspectRatio(16f / 11f).clip(RoundedCornerShape(16.dp))
+/** One large photo: 16:11, rounded, and it grows with the phone (capped on tablets). */
+private fun Modifier.heroPhoto(): Modifier =
+    fillMaxWidth().heightIn(min = 180.dp, max = 420.dp).aspectRatio(16f / 11f).clip(RoundedCornerShape(20.dp))
+
+/** The single / loading photo: the same box, with the page margin around it. */
+private fun Modifier.heroModifier(): Modifier = padding(horizontal = 16.dp).heroPhoto()
 
 /** How long each large photo stays before the gallery moves to the next one. */
 private const val HERO_AUTO_SCROLL_MS = 4000L
 
 /**
  * The large photo(s). One photo: just the photo. Two or more: swipe sideways between them, they also
- * move on by themselves every [HERO_AUTO_SCROLL_MS] (paused while a finger is on it), with dots underneath.
+ * move on by themselves every [HERO_AUTO_SCROLL_MS] (paused while a finger is on it). The next photo peeks in at
+ * the edge, the photo in front is full size and the others are a little dimmer, with a counter and dots on it.
  * [selectedRequest] (photo number, tap count) lets the thumbnail strip jump to a photo.
  */
 @Composable
@@ -291,6 +289,7 @@ private fun HeroGallery(
         PlantPhoto(u, name, Modifier.heroModifier().clickable(enabled = u != null) { u?.let(onView) }, maxPx = 1024)
         return
     }
+    val extra = MaterialTheme.extraColors
     val pager = rememberPagerState(pageCount = { urls.size })
     val dragged by pager.interactionSource.collectIsDraggedAsState()
 
@@ -298,27 +297,45 @@ private fun HeroGallery(
     LaunchedEffect(selectedRequest) { if (selectedRequest.first in urls.indices) pager.animateScrollToPage(selectedRequest.first) }
     // Tell the strip which photo is showing.
     LaunchedEffect(pager.currentPage) { onPageChange(pager.currentPage) }
-    // Auto scroll: wait, move on, repeat. Restarts after every swipe, so it never fights the finger.
-    LaunchedEffect(pager.currentPage, dragged, urls.size) {
+    // Auto scroll. This effect must NOT depend on the current page: the page number flips half way through the
+    // slide, and restarting the effect then cancelled the slide and left the photos stuck between two pages.
+    // Now it waits, slides one whole page, and repeats. A finger on the gallery stops it; letting go starts it again.
+    LaunchedEffect(urls.size, dragged, selectedRequest) {
         if (dragged) return@LaunchedEffect
-        delay(HERO_AUTO_SCROLL_MS)
-        pager.animateScrollToPage((pager.currentPage + 1) % urls.size)
+        while (true) {
+            delay(HERO_AUTO_SCROLL_MS)
+            // A slide that was cut short (finger, tapped thumbnail) must first settle on its photo.
+            if (pager.currentPageOffsetFraction != 0f) pager.animateScrollToPage(pager.currentPage)
+            pager.animateScrollToPage((pager.currentPage + 1) % urls.size, animationSpec = tween(650, easing = FastOutSlowInEasing))
+        }
     }
 
     Box(Modifier.fillMaxWidth()) {
         HorizontalPager(
             state = pager, modifier = Modifier.fillMaxWidth(), beyondViewportPageCount = 1,
-            pageSpacing = 0.dp
+            // The margin is the pager's own, not each photo's: no wide empty gap between two photos to stop in.
+            contentPadding = PaddingValues(horizontal = 16.dp), pageSpacing = 10.dp
         ) { page ->
+            val distance = kotlin.math.abs((pager.currentPage - page) + pager.currentPageOffsetFraction).coerceIn(0f, 1f)
             PlantPhoto(
                 urls[page], name,
-                Modifier.heroModifier().clickable { onView(urls[page]) },
+                Modifier.heroPhoto()
+                    .graphicsLayer { alpha = 1f - 0.4f * distance; val s = 1f - 0.04f * distance; scaleX = s; scaleY = s }
+                    .clickable { onView(urls[page]) },
                 maxPx = 1024
             )
         }
+        // Which photo of how many.
+        Text(
+            "${pager.currentPage + 1} / ${urls.size}",
+            Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 28.dp)
+                .background(extra.overlay.copy(alpha = 0.45f), RoundedCornerShape(50))
+                .padding(horizontal = 10.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelMedium, color = extra.onOverlay
+        )
         Row(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp)
-                .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(50))
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
+                .background(extra.overlay.copy(alpha = 0.35f), RoundedCornerShape(50))
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -327,7 +344,7 @@ private fun HeroGallery(
                 Box(
                     Modifier.size(if (i == pager.currentPage) 8.dp else 6.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = if (i == pager.currentPage) 1f else 0.55f))
+                        .background(extra.onOverlay.copy(alpha = if (i == pager.currentPage) 1f else 0.55f))
                 )
             }
         }
@@ -385,8 +402,13 @@ private fun ProfileBody(
             p.images.forEachIndexed { i, u ->
                 PlantPhoto(
                     u, p.name,
-                    Modifier.size(72.dp).clip(RoundedCornerShape(10.dp))
+                    Modifier.size(72.dp).clip(RoundedCornerShape(12.dp))
                         .alpha(if (i == heroShowing) 1f else 0.6f)
+                        .border(
+                            if (i == heroShowing) 2.dp else 0.dp,
+                            if (i == heroShowing) c.primary else androidx.compose.ui.graphics.Color.Transparent,
+                            RoundedCornerShape(12.dp)
+                        )
                         .clickable { heroRequest = i to (heroRequest.second + 1); if (i == heroShowing) onView(u) }
                 )
             }
@@ -432,10 +454,20 @@ private fun ProfileBody(
             primary?.harmful?.ifBlank { null }
         )
         if (warnings.isNotEmpty()) {
-            Card(colors = CardDefaults.cardColors(containerColor = c.errorContainer), modifier = Modifier.fillMaxWidth()) {
+            // The card is the theme's own surface with a red outline and a red title, NOT a red fill: on a red
+            // fill the red "important" and the highlight blended into it. On the surface both marks keep their
+            // colors in every color theme and in light and dark mode.
+            Card(
+                colors = CardDefaults.cardColors(containerColor = c.surface),
+                border = BorderStroke(1.5.dp, c.error.copy(alpha = 0.7f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Things to watch out for", style = MaterialTheme.typography.titleSmall, color = c.onErrorContainer)
-                    warnings.forEach { RichTextView(it, style = MaterialTheme.typography.bodyMedium, color = c.onErrorContainer) }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Filled.Warning, contentDescription = null, tint = c.error, modifier = Modifier.size(20.dp))
+                        Text("Things to watch out for", style = MaterialTheme.typography.titleSmall, color = c.error)
+                    }
+                    warnings.forEach { RichTextView(it, style = MaterialTheme.typography.bodyMedium, color = c.onSurface) }
                 }
             }
         } else {
@@ -501,10 +533,11 @@ private fun ProfileBody(
                             MaterialTheme.typography.titleSmall, onOpenBotanist
                         )
                     }
+                    // Right under the contributor's name: who edited this description last, and when.
+                    EditedLine(d, colors.fg.copy(alpha = 0.9f), onOpenBotanist)
                     d.specialization?.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = colors.fg.copy(alpha = 0.8f))
                     }
-                    EditedLine(d, colors.fg.copy(alpha = 0.9f), onOpenBotanist)
                     if (d.descriptionId != null) {
                         CompositionLocalProvider(LocalContentColor provides colors.fg) {
                             DescriptionVoteBar(votes, d.descriptionId, onHidden, onRequestChange)

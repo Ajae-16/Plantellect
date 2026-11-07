@@ -263,7 +263,9 @@ data class ProfilePlantDto(
     val imageUrl: String? = null,
     /** Totals over the descriptions this person wrote for the plant (contributions only; 0 elsewhere). */
     val upVotes: Int = 0,
-    val downVotes: Int = 0
+    val downVotes: Int = 0,
+    /** false = the person only edited a description of this plant and wrote none: no vote totals are shown. */
+    val authored: Boolean = true
 )
 
 @Serializable

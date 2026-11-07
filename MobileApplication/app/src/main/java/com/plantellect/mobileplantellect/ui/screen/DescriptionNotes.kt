@@ -1,6 +1,9 @@
 package com.plantellect.mobileplantellect.ui.screen
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,6 +26,7 @@ import com.plantellect.mobileplantellect.data.remote.dto.VoteResult
 import com.plantellect.mobileplantellect.data.remote.dto.VoteSummary
 import com.plantellect.mobileplantellect.viewmodel.LibraryViewModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 
@@ -90,17 +94,17 @@ fun rememberVotes(client: OkHttpClient, vm: LibraryViewModel, plantId: String, r
 // ---------------------------------------------------------------------------
 
 /**
- * Thumbs up / down for one description. Tapping a thumb only CHOOSES it (nothing is sent yet); a panel opens
- * under the buttons with a Submit button, so a vote is never cast by accident:
- *  - up:   "Submit upvote" / Cancel
- *  - down: the premade reasons as chips (plus a note box for "Other"), then "Submit downvote" / Cancel
- * Tapping the vote you already cast offers "Remove my vote". The "..." menu next to the thumbs holds
+ * Thumbs up / down for one description.
+ *  - up:   one tap casts the upvote (no Submit step). Tapping it again, once cast, offers "Remove my vote".
+ *  - down: tapping the thumb opens a panel with the premade reasons as chips (plus a note box for "Other"), then
+ *          "Submit downvote" / Cancel. Picking a reason scrolls the Submit button into view.
+ * Tapping a downvote you already cast offers "Remove my vote". The "..." menu next to the thumbs holds
  * "Request change" (only when [onRequestChange] is given: it opens the change form for THIS description) and
  * "Votes summary", which opens the table (totals, reasons counted, voters' notes, no names).
  *
  * [onHidden] runs when enough down votes just hid this description: reload the profile.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun DescriptionVoteBar(
     votes: VotesController,
@@ -121,6 +125,11 @@ fun DescriptionVoteBar(
     var reason by remember(id) { mutableStateOf<String?>(null) }
     var note by remember(id) { mutableStateOf("") }
     var message by remember(id) { mutableStateOf<String?>(null) }
+    val submitDownRequester = remember(id) { BringIntoViewRequester() }
+    // Once a reason is picked, bring "Submit downvote" into view (after the note box for "Other" has been laid out).
+    LaunchedEffect(reason) {
+        if (reason != null) { delay(120); runCatching { submitDownRequester.bringIntoView() } }
+    }
 
     val busy = votes.busyId == id
     val locked = st.own || busy
@@ -149,6 +158,12 @@ fun DescriptionVoteBar(
     fun pick(which: String) {
         message = null
         if (needSignIn()) return
+        // An upvote is cast right away. If it is already cast, the panel below offers to take it back.
+        if (which == "up" && st.myVote != "up") {
+            choice = null; reason = null; note = ""
+            votes.up(id, ::done)
+            return
+        }
         // Tapping the same thumb again closes the panel.
         choice = if (choice == which) null else which
         if (which != "down") { reason = null; note = "" }
@@ -223,13 +238,6 @@ fun DescriptionVoteBar(
                                 PlantTextButton(onClick = { choice = null; message = null }) { Text("Cancel") }
                             }
                         }
-                        pending == "up" -> {
-                            Text("Submit your upvote: this description is helpful.", style = MaterialTheme.typography.titleSmall)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                PlantButton(enabled = !busy, onClick = { votes.up(id, ::done) }) { Text("Submit upvote") }
-                                PlantTextButton(onClick = { choice = null; message = null }) { Text("Cancel") }
-                            }
-                        }
                         else -> {
                             Text("What is wrong with it?", style = MaterialTheme.typography.titleSmall)
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -255,7 +263,10 @@ fun DescriptionVoteBar(
                                     shape = RoundedCornerShape(12.dp)
                                 )
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                Modifier.bringIntoViewRequester(submitDownRequester),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 PlantButton(
                                     enabled = !busy,
                                     onClick = {

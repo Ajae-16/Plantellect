@@ -34,9 +34,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material.icons.filled.Refresh
+import androidx.navigation.NamedNavArgument
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -46,6 +51,7 @@ import androidx.navigation.navArgument
 import com.plantellect.mobileplantellect.data.remote.dto.AccountDto
 import com.plantellect.mobileplantellect.data.repository.AuthState
 import com.plantellect.mobileplantellect.ui.screen.*
+import com.plantellect.mobileplantellect.ui.theme.ColorTheme
 import com.plantellect.mobileplantellect.ui.theme.MobilePlantellectTheme
 import com.plantellect.mobileplantellect.ui.theme.TypeCombo
 import com.plantellect.mobileplantellect.ui.theme.resolveDark
@@ -68,6 +74,7 @@ class MainActivity : ComponentActivity() {
             val themeMode by container.settings.themeMode.collectAsState()
             val darkTheme = themeMode.resolveDark(isSystemInDarkTheme())
             val typeComboName by container.settings.typeCombo.collectAsState()
+            val colorThemeName by container.settings.colorTheme.collectAsState()
 
             DisposableEffect(darkTheme) {
                 this@MainActivity.enableEdgeToEdge(
@@ -78,7 +85,10 @@ class MainActivity : ComponentActivity() {
             }
 
             // "Match my wallpaper" removed: the app always uses the Plantellect greens.
-            MobilePlantellectTheme(darkTheme = darkTheme, dynamicColor = false, typeCombo = TypeCombo.fromName(typeComboName)) {
+            MobilePlantellectTheme(
+                darkTheme = darkTheme, dynamicColor = false, typeCombo = TypeCombo.fromName(typeComboName),
+                colorTheme = ColorTheme.fromName(colorThemeName)
+            ) {
                 val auth: AuthViewModel = viewModel(factory = factory)
                 val authState by auth.authState.collectAsState()
                 val authUi by auth.ui.collectAsState()
@@ -140,6 +150,12 @@ private fun AppShell(
     baseUrl: String
 ) {
     val permissions = account.permissions
+    // Developer options are for administrators only: the account must hold "access_admin" (same rule the server uses).
+    val isAdmin = "access_admin" in permissions
+    val settingsStore = (LocalContext.current.applicationContext as PlantellectApp).container.settings
+    // Developer mode is saved on the phone and survives sign-out, so switch it off whenever the signed-in
+    // account is not an admin (for example someone else signs in on the same phone, or the role was removed).
+    LaunchedEffect(isAdmin) { if (!isAdmin) settingsStore.setDebugMode(false) }
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -149,6 +165,14 @@ private fun AppShell(
     // Same instance Home and the Library use (it is scoped to the Activity).
     val libraryVm = libraryViewModel()
     var showSignOutDialog by remember { mutableStateOf(false) }
+    // Pull-to-refresh: going up re-creates the page that is showing, so it reads everything again.
+    var refreshNonce by remember { mutableStateOf(0) }
+    var confirmRefresh by remember { mutableStateOf(false) }
+    fun doRefresh() {
+        refreshNonce++
+        libraryVm.reload()
+        profileVm.refreshBadge()
+    }
     // True when your own profile was opened by tapping your name (it then gets a Back button);
     // false when it was opened from the sidebar (no Back button).
     var profileViaLink by rememberSaveable { mutableStateOf(false) }
@@ -267,6 +291,16 @@ private fun AppShell(
         )
     }
 
+    if (confirmRefresh) {
+        AlertDialog(
+            onDismissRequest = { confirmRefresh = false },
+            title = { Text("Refresh this page?") },
+            text = { Text("The page is loaded again and what you have typed or chosen here is cleared.") },
+            confirmButton = { PlantTextButton({ confirmRefresh = false; doRefresh() }) { Text("Refresh") } },
+            dismissButton = { PlantTextButton({ confirmRefresh = false }) { Text("Cancel") } }
+        )
+    }
+
     if (showSignOutDialog) {
         AlertDialog(
             onDismissRequest = { if (!authUi.signingOut) showSignOutDialog = false },
@@ -305,25 +339,18 @@ private fun AppShell(
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                // A short bar (44 dp under the status bar; the Material one is 64 dp): menu button on the left,
-                // logo and name in the middle. The empty box on the right keeps the title truly centred.
-                Row(
-                    Modifier.fillMaxWidth().statusBarsPadding().height(44.dp).padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton({ scope.launch { drawerState.open() } }, Modifier.size(40.dp)) {
-                        Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                // One bar for every page: Menu, then Back (only on a page you can go back from) in line with the
+                // "Plantellect" title. There is no Refresh button: pull the page down from its top instead.
+                val backEntry = navController.currentBackStackEntry
+                PlantellectTopBar(
+                    onMenu = { scope.launch { drawerState.open() } },
+                    onBack = when {
+                        currentRoute?.startsWith("contribute/") == true ->
+                            ({ backFromContribute(backEntry?.arguments?.getString("plantId").orEmpty()) })
+                        isLinkedProfile(currentRoute) -> ({ navController.popBackStack(); Unit })
+                        else -> null
                     }
-                    Row(
-                        Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
-                    ) {
-                        LogoMark(24.dp)
-                        Text("Plantellect", style = MaterialTheme.typography.titleLarge, color = c.onSurface, maxLines = 1)
-                    }
-                    Spacer(Modifier.size(40.dp))
-                }
+                )
             }
         ) { innerPadding ->
             // imePadding lifts every screen above the keyboard (edge-to-edge mode ignores adjustResize), and the
@@ -332,8 +359,22 @@ private fun AppShell(
             CompositionLocalProvider(LocalRichToolbarHost provides richToolbar) {
                 Column(Modifier.padding(innerPadding).consumeWindowInsets(innerPadding).imePadding()) {
                     Box(Modifier.weight(1f)) {
+                // Pull the page down from its top to reload it (Home and the Library have their own, in place).
+                val formPage = currentRoute == "scan" || currentRoute == "record" || currentRoute?.startsWith("contribute/") == true
+                var pulling by remember { mutableStateOf(false) }
+                LaunchedEffect(pulling) { if (pulling) { delay(700); pulling = false } }
+                Refreshable(
+                    refreshing = pulling,
+                    onRefresh = {
+                        // A page with a form asks first: reloading clears what was typed.
+                        if (formPage) confirmRefresh = true else { pulling = true; doRefresh() }
+                    },
+                    enabled = currentRoute != "home" && currentRoute != "inventory",
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                CompositionLocalProvider(LocalRefreshNonce provides refreshNonce) {
                 NavHost(navController, startDestination = "home", modifier = Modifier.fillMaxSize()) {
-                    composable("home") {
+                    refreshable("home") {
                         HomeScreen(
                             onNavigateToScan = { go("scan") },
                             onNavigateToInventory = { go("inventory") },
@@ -343,7 +384,7 @@ private fun AppShell(
                             onResumeChange = { homeResume = it }
                         )
                     }
-                    composable("inventory") {
+                    refreshable("inventory") {
                         PlantInventoryScreen(
                             vm = libraryVm,
                             onOpenBotanist = { id -> openPerson(id) },
@@ -351,11 +392,11 @@ private fun AppShell(
                             onResumeChange = { libraryResume = it }
                         )
                     }
-                    composable("scan") { ScanPlantScreen() }
-                    composable("record") { RecordPlantScreen() }
+                    refreshable("scan") { ScanPlantScreen() }
+                    refreshable("record") { RecordPlantScreen() }
                     // From a plant's profile, the plant is fixed. "Contribute" opens the contribution form; the "..." menu of a
                     // description opens the change request form (change=1) with that description (desc) already chosen.
-                    composable(
+                    refreshable(
                         "contribute/{plantId}?change={change}&desc={desc}",
                         arguments = listOf(
                             navArgument("plantId") { type = NavType.StringType },
@@ -376,7 +417,7 @@ private fun AppShell(
                             )
                         }
                     }
-                    composable("discoveries") {
+                    refreshable("discoveries") {
                         DiscoveriesScreen(
                             myAccountId = account.accountId,
                             onRecord = { go("record") },
@@ -386,35 +427,27 @@ private fun AppShell(
                     }
                     // Your own profile: identity, security, My reports, My contributions.
                     // Back shows only when it was opened by tapping your name, not from the sidebar.
-                    composable("profile") {
-                        Column(Modifier.fillMaxSize()) {
-                            if (profileViaLink) BackBar { navController.popBackStack() }
-                            Box(Modifier.weight(1f)) {
-                                ProfileHost(
-                                    account = account, profileVm = profileVm, libraryVm = libraryVm, baseUrl = baseUrl,
-                                    viewAccountId = null, onOpenPerson = { id -> openPerson(id) }
-                                )
-                            }
-                        }
+                    refreshable("profile") {
+                        ProfileHost(
+                            account = account, profileVm = profileVm, libraryVm = libraryVm, baseUrl = baseUrl,
+                            viewAccountId = null, onOpenPerson = { id -> openPerson(id) }
+                        )
                     }
                     // Somebody else's profile: the same screen, read-only.
-                    composable(
+                    refreshable(
                         "profile/{accountId}",
                         arguments = listOf(navArgument("accountId") { type = NavType.StringType })
                     ) { entry ->
-                        Column(Modifier.fillMaxSize()) {
-                            // Back to wherever this profile was opened from (the plant, the list, a report).
-                            BackBar { navController.popBackStack() }
-                            Box(Modifier.weight(1f)) {
-                                ProfileHost(
-                                    account = account, profileVm = profileVm, libraryVm = libraryVm, baseUrl = baseUrl,
-                                    viewAccountId = entry.arguments?.getString("accountId"),
-                                    onOpenPerson = { id -> openPerson(id) }
-                                )
-                            }
-                        }
+                        // Back (top bar) returns to wherever this profile was opened from (the plant, the list, a report).
+                        ProfileHost(
+                            account = account, profileVm = profileVm, libraryVm = libraryVm, baseUrl = baseUrl,
+                            viewAccountId = entry.arguments?.getString("accountId"),
+                            onOpenPerson = { id -> openPerson(id) }
+                        )
                     }
-                    composable("settings") { SettingsScreen() }
+                    refreshable("settings") { SettingsScreen(isAdmin = isAdmin) }
+                }
+                }
                 }
                     }
                     RichToolbarBar(richToolbar)
@@ -422,14 +455,6 @@ private fun AppShell(
             }
         }
     }
-    }
-}
-
-/** "← Back", shown above a profile that was opened from somewhere else (a plant, a list, a report). */
-@Composable
-private fun BackBar(onBack: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 0.dp)) {
-        AppBackButton(onBack)
     }
 }
 
@@ -475,3 +500,14 @@ private fun ProfileHost(
         )
     }
 }
+
+
+/** Goes up when the top bar's Refresh button is pressed. */
+private val LocalRefreshNonce = compositionLocalOf { 0 }
+
+/** Like composable(), but the page is built again (and so reads its data again) every time Refresh is pressed. */
+private fun NavGraphBuilder.refreshable(
+    route: String,
+    arguments: List<NamedNavArgument> = emptyList(),
+    content: @Composable (NavBackStackEntry) -> Unit
+) = composable(route, arguments) { entry -> key(LocalRefreshNonce.current) { content(entry) } }

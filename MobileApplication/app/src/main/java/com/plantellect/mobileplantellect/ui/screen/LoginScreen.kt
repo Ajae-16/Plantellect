@@ -68,7 +68,7 @@ fun LoginScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             LogoMark(96.dp)
-            Text("PLANTELLECT", style = MaterialTheme.typography.labelLarge, color = c.primary)
+            Text("Default", style = MaterialTheme.typography.labelLarge, color = c.primary)
             Text("Grow your plant knowledge.", style = MaterialTheme.typography.headlineSmall, color = c.onBackground, textAlign = TextAlign.Center)
             Text("Identify • Discover • Learn", style = MaterialTheme.typography.bodySmall, color = c.onBackground.copy(alpha = .65f))
 

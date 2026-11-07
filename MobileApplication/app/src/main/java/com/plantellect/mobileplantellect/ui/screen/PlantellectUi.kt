@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Menu
 import kotlinx.coroutines.launch
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -66,6 +67,67 @@ internal fun PlantellectPage(scroll: Boolean = true, compact: Boolean = false, c
             verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 14.dp),
             content = content
         )
+    }
+}
+
+/**
+ * THE top bar: Menu, then Back (only on a page you can go back from), then the logo and "Plantellect", with
+ * [trailing] at the right end. Back sits in the same row as the title on every page, including the plant profile.
+ */
+@Composable
+internal fun PlantellectTopBar(
+    onMenu: (() -> Unit)?,
+    onBack: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    trailing: @Composable RowScope.() -> Unit = {}
+) {
+    val c = MaterialTheme.colorScheme
+    Row(
+        modifier.fillMaxWidth().statusBarsPadding().height(48.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (onMenu != null) IconButton(onMenu, Modifier.size(40.dp)) {
+            Icon(Icons.Filled.Menu, contentDescription = "Menu")
+        }
+        if (onBack != null) AppBackButton(onBack, Modifier.padding(horizontal = 2.dp))
+        Row(
+            Modifier.weight(1f).padding(start = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            LogoMark(24.dp)
+            Text("Plantellect", style = MaterialTheme.typography.titleLarge, color = c.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        trailing()
+    }
+}
+
+/** A number shown as a small round pill (sidebar rows, tabs, section titles). Nothing is drawn for 0 unless [showZero]. */
+@Composable
+internal fun CountBadge(count: Int, modifier: Modifier = Modifier, showZero: Boolean = false, emphasized: Boolean = true) {
+    if (count <= 0 && !showZero) return
+    val c = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier.defaultMinSize(minWidth = 22.dp, minHeight = 22.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+        color = if (emphasized && count > 0) c.primary else c.secondaryContainer,
+        contentColor = if (emphasized && count > 0) c.onPrimary else c.onSecondaryContainer
+    ) {
+        Box(Modifier.padding(horizontal = 7.dp), contentAlignment = Alignment.Center) {
+            Text(
+                if (count > 99) "99+" else count.toString(),
+                style = MaterialTheme.typography.labelSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 1
+            )
+        }
+    }
+}
+
+/** A title with its number as a [CountBadge] beside it, instead of "Title (3)". */
+@Composable
+internal fun TitleWithCount(text: String, count: Int, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionTitle(text)
+        CountBadge(count, showZero = true, emphasized = false)
     }
 }
 
@@ -319,7 +381,13 @@ internal fun HScroll(
 
 /** Tabs that scroll sideways with arrows for the tabs that are out of view. The picked tab scrolls into view. */
 @Composable
-internal fun ScrollableTabStrip(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+internal fun ScrollableTabStrip(
+    labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,
+    /** A number per tab, shown as a pill beside the label (null = none). Same order as [labels]. */
+    counts: List<Int?> = emptyList(),
+    /** Tabs whose number means "needs you" (drawn strong); the others get the quiet pill. */
+    alerts: Set<Int> = emptySet()
+) {
     val c = MaterialTheme.colorScheme
     val state = rememberScrollState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -333,11 +401,15 @@ internal fun ScrollableTabStrip(labels: List<String>, selected: Int, onSelect: (
                     Modifier.clickable { onSelect(i) }.defaultMinSize(minHeight = 48.dp),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
                 ) {
-                    Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
+                    Row(
+                        Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Text(
                             label, maxLines = 1, style = MaterialTheme.typography.titleSmall,
                             color = if (on) c.primary else c.onSurfaceVariant
                         )
+                        counts.getOrNull(i)?.let { CountBadge(it, showZero = true, emphasized = i in alerts) }
                     }
                     Box(Modifier.height(3.dp).fillMaxWidth().background(if (on) c.primary else Color.Transparent))
                 }

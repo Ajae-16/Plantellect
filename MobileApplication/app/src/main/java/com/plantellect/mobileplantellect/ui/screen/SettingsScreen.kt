@@ -19,10 +19,13 @@ import com.plantellect.mobileplantellect.data.local.ThemeMode
 import com.plantellect.mobileplantellect.data.logic.ServerMonitor
 import com.plantellect.mobileplantellect.data.logic.ServerStatus
 import com.plantellect.mobileplantellect.data.repository.ScanRepository
+import com.plantellect.mobileplantellect.ui.theme.ColorTheme
+import com.plantellect.mobileplantellect.ui.theme.MobilePlantellectTheme
 import com.plantellect.mobileplantellect.ui.theme.TypeCombo
+import com.plantellect.mobileplantellect.ui.theme.resolveDark
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(isAdmin: Boolean) {
     val app = LocalContext.current.applicationContext as PlantellectApp
     val settings = app.container.settings
     val themeMode by settings.themeMode.collectAsStateWithLifecycle()
@@ -32,6 +35,8 @@ fun SettingsScreen() {
     val offlineMode by settings.offlineMode.collectAsStateWithLifecycle()
     val typeComboName by settings.typeCombo.collectAsStateWithLifecycle()
     val typeCombo = TypeCombo.fromName(typeComboName)
+    val colorThemeName by settings.colorTheme.collectAsStateWithLifecycle()
+    val colorTheme = ColorTheme.fromName(colorThemeName)
     var confirmContribute by remember { mutableStateOf(false) }
     val serverStatus by app.container.serverMonitor.status.collectAsStateWithLifecycle()
     val divider = MaterialTheme.colorScheme.outlineVariant
@@ -56,13 +61,34 @@ fun SettingsScreen() {
                 ThemeMode.SYSTEM -> "System default"
                 ThemeMode.LIGHT -> "Light"
                 ThemeMode.DARK -> "Dark"
-            }
+            } + " · " + colorTheme.title
         ) {
             Theme("System default", "Follow your phone's light or dark setting.", ThemeMode.SYSTEM)
             HorizontalDivider(color = divider)
             Theme("Light", "Bright and fresh.", ThemeMode.LIGHT)
             HorizontalDivider(color = divider)
             Theme("Dark", "Easier on the eyes at night.", ThemeMode.DARK)
+
+            // ---- color theme: the preview of BOTH modes sits above the list and follows every pick ----
+            HorizontalDivider(color = divider)
+            Text(
+                "Color theme", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp)
+            )
+            ColorThemePreview(colorTheme, typeCombo, Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+            ColorTheme.entries.forEachIndexed { i, theme ->
+                if (i > 0) HorizontalDivider(color = divider)
+                OptionRow(
+                    theme.title, theme.blurb,
+                    Modifier.selectable(
+                        selected = colorTheme == theme, role = Role.RadioButton,
+                        onClick = { settings.setColorTheme(theme.name) }
+                    )
+                ) {
+                    ThemeSwatch(theme)
+                    RadioButton(selected = colorTheme == theme, onClick = null)
+                }
+            }
         }
 
         FoldSection(title = "Typography", summary = typeCombo.title) {
@@ -101,16 +127,19 @@ fun SettingsScreen() {
             }
         }
 
-        SectionTitle("Developer Option")
-        PlantSurface(Modifier.fillMaxWidth()) {
-            Toggle(
-                "Developer mode",
-                "Show technical scan details such as confidence percentages and the server connection. Leave off for simple, everyday results.",
-                debug, settings::setDebugMode
-            )
-            if (debug) {
-                HorizontalDivider(color = divider)
-                OptionRow("Server connection", connectionText(serverStatus)) {}
+        // Developer options are for administrators only (the account holds "access_admin").
+        if (isAdmin) {
+            SectionTitle("Developer Option")
+            PlantSurface(Modifier.fillMaxWidth()) {
+                Toggle(
+                    "Developer mode",
+                    "Show technical scan details such as confidence percentages and the server connection. Leave off for simple, everyday results.",
+                    debug, settings::setDebugMode
+                )
+                if (debug) {
+                    HorizontalDivider(color = divider)
+                    OptionRow("Server connection", connectionText(serverStatus)) {}
+                }
             }
         }
 

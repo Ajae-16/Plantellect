@@ -182,6 +182,62 @@ internal fun ChangeDiff(changes: Map<String, RecChange>?, modifier: Modifier = M
     }
 }
 
+/**
+ * The edit panel's live preview: the ORIGINAL description stays on screen, in one piece, with what you removed struck
+ * through (red) and what you added highlighted (green), updating as you type. Nothing is shown until the text differs
+ * from the original. [typed] is what is in the box now; a blank box means "no change", so the original is shown as is.
+ */
+@Composable
+internal fun LiveEditDiff(original: String, typed: String, modifier: Modifier = Modifier) {
+    val c = MaterialTheme.colorScheme
+    val removedBg = c.error.copy(alpha = 0.22f)
+    val addedBg = c.primary.copy(alpha = 0.28f)
+    val old = plain(original)
+    val new = plain(typed)
+    if (new.isBlank() || old.trim().replace(Regex("\\s+"), " ") == new.trim().replace(Regex("\\s+"), " ")) return
+    val merged = remember(old, new, removedBg, addedBg) {
+        val a = tokens(old)
+        val b = tokens(new)
+        val (gone, added) = diffMarks(a, b)
+        buildAnnotatedString {
+            var i = 0
+            var j = 0
+            while (i < a.size || j < b.size) {
+                when {
+                    i < a.size && gone[i] -> {
+                        // A removed gap is not drawn: the words around it already carry their own gaps.
+                        if (!a[i].isSpace) withStyle(SpanStyle(background = removedBg, textDecoration = TextDecoration.LineThrough)) { append(a[i].text) }
+                        i++
+                    }
+                    j < b.size && added[j] -> {
+                        if (b[j].isSpace) append(b[j].text)
+                        else withStyle(SpanStyle(background = addedBg, fontWeight = FontWeight.Bold)) { append(b[j].text) }
+                        j++
+                    }
+                    i < a.size && j < b.size -> { append(b[j].text); i++; j++ }
+                    i < a.size -> { append(a[i].text); i++ }
+                    else -> { append(b[j].text); j++ }
+                }
+            }
+        }
+    }
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = c.surfaceVariant.copy(alpha = 0.4f),
+        border = BorderStroke(1.dp, c.outlineVariant),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("YOUR CHANGES", style = MaterialTheme.typography.labelSmall, color = c.primary, fontWeight = FontWeight.Bold)
+            Text(merged, style = MaterialTheme.typography.bodyMedium, color = c.onSurface)
+            Text(
+                "The original text is kept. Struck-through words will be removed, highlighted words will be added.",
+                style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant
+            )
+        }
+    }
+}
+
 @Composable
 private fun DiffBlock(title: String, text: AnnotatedString, empty: Boolean, container: Color, accent: Color) {
     val c = MaterialTheme.colorScheme
@@ -339,7 +395,7 @@ internal fun PendingApprovalSection(
 
         // ------------------------------------------------------------ waiting for MY answer
         if (needMe.isNotEmpty()) {
-            SectionTitle("Waiting for your approval (${needMe.size})")
+            TitleWithCount("Waiting for your approval", needMe.size)
             Text(
                 "Someone asked to change a description you wrote, or the info of a plant you are the primary contributor of. " +
                         "It also needs an admin. If you decline, it is cancelled.",
@@ -380,13 +436,13 @@ internal fun PendingApprovalSection(
 
         // ------------------------------------------------------------ not decided yet
         if (stillOpen.isNotEmpty()) {
-            SectionTitle("Still open (${stillOpen.size})")
+            TitleWithCount("Still open", stillOpen.size)
             stillOpen.forEach { e -> EntryCard(e, onOpenPlant, resolveUrl, onPreview) }
         }
 
         // ------------------------------------------------------------ approved or denied: the bottom
         if (settled.isNotEmpty()) {
-            SectionTitle("Approved or denied (${settled.size})")
+            TitleWithCount("Approved or denied", settled.size)
             Text(
                 "Newest first. A denied request is deleted automatically 30 days after it was decided.",
                 style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant

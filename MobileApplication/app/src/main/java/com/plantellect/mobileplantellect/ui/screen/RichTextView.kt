@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.plantellect.mobileplantellect.data.logic.RichBlock
 import com.plantellect.mobileplantellect.data.logic.RichLine
 import com.plantellect.mobileplantellect.data.logic.RichMark
+import com.plantellect.mobileplantellect.data.logic.RichSpan
 import com.plantellect.mobileplantellect.data.logic.RichText
 import com.plantellect.mobileplantellect.ui.theme.ExtraColors
 import com.plantellect.mobileplantellect.ui.theme.extraColors
@@ -72,7 +73,7 @@ private fun annotate(lines: List<RichLine>, extra: ExtraColors): AnnotatedString
         if (index > 0) append('\n')
         val offset = length
         append(line.text)
-        line.spans.forEach { span -> addStyle(richSpanStyle(span.mark, extra), offset + span.start, offset + span.end) }
+        addRichSpans(line.spans, offset, extra)
     }
 }
 
@@ -84,4 +85,32 @@ internal fun richSpanStyle(mark: RichMark, extra: ExtraColors): SpanStyle = when
     RichMark.STRIKE -> SpanStyle(textDecoration = TextDecoration.LineThrough)
     RichMark.HIGHLIGHT -> SpanStyle(background = extra.highlightBg, color = extra.highlightFg)
     RichMark.IMPORTANT -> SpanStyle(background = extra.importantBg, color = extra.importantFg, fontWeight = FontWeight.Bold)
+}
+
+/**
+ * Puts every mark of [spans] on the text being built (the line starts at [offset], marks past [maxEnd] are cut).
+ * A word that is highlighted AND important keeps the highlight color untouched and only turns red and bold, so
+ * "important" never repaints a highlight. Shared by the reader and the editor.
+ */
+internal fun AnnotatedString.Builder.addRichSpans(spans: List<RichSpan>, offset: Int, extra: ExtraColors, maxEnd: Int = Int.MAX_VALUE) {
+    fun put(sp: RichSpan) {
+        val end = minOf(sp.end, maxEnd)
+        if (sp.start < end) addStyle(richSpanStyle(sp.mark, extra), offset + sp.start, offset + end)
+    }
+    spans.filter { it.mark != RichMark.HIGHLIGHT && it.mark != RichMark.IMPORTANT }.forEach(::put)
+    val important = spans.filter { it.mark == RichMark.IMPORTANT }
+    val highlight = spans.filter { it.mark == RichMark.HIGHLIGHT }
+    important.forEach(::put)
+    highlight.forEach(::put)
+    // Where both marks overlap: the highlight's background, the important red text.
+    important.forEach { i ->
+        highlight.forEach { h ->
+            val s = maxOf(i.start, h.start)
+            val e = minOf(minOf(i.end, h.end), maxEnd)
+            if (s < e) addStyle(
+                SpanStyle(background = extra.highlightBg, color = extra.importantOnHighlight, fontWeight = FontWeight.Bold),
+                offset + s, offset + e
+            )
+        }
+    }
 }

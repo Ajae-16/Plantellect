@@ -132,7 +132,7 @@ fun ZoomableBox(
  * un-zoomed photo (or "Close") to leave.
  */
 @Composable
-fun PhotoZoomDialog(url: String, name: String, onClose: () -> Unit) {
+fun PhotoZoomDialog(url: String, name: String, onChangePhoto: (() -> Unit)? = null, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.extraColors.overlay.copy(alpha = 0.92f)) {
             Box(Modifier.fillMaxSize()) {
@@ -145,12 +145,21 @@ fun PhotoZoomDialog(url: String, name: String, onClose: () -> Unit) {
                 PlantTextButton(onClose, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
                     Text("Close", color = MaterialTheme.extraColors.onOverlay)
                 }
-                Text(
-                    "Pinch or double-tap to zoom",
+                androidx.compose.foundation.layout.Column(
                     Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 12.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.extraColors.onOverlay.copy(alpha = 0.7f)
-                )
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                ) {
+                    // Your own profile picture only: pick a new photo from here.
+                    if (onChangePhoto != null) {
+                        androidx.compose.material3.Button(onClick = onChangePhoto) { Text("Change profile photo") }
+                    }
+                    Text(
+                        "Pinch or double-tap to zoom",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.extraColors.onOverlay.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
     }

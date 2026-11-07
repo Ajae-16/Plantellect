@@ -190,10 +190,7 @@ fun RichTextField(
             override fun filter(text: AnnotatedString): TransformedText {
                 val styled = buildAnnotatedString {
                     append(text.text)
-                    doc.spans.forEach { span ->
-                        val end = span.end.coerceAtMost(text.text.length)
-                        if (span.start < end) addStyle(richSpanStyle(span.mark, extra), span.start, end)
-                    }
+                    addRichSpans(doc.spans, 0, extra, maxEnd = text.text.length)
                 }
                 return TransformedText(styled, OffsetMapping.Identity)
             }
@@ -246,13 +243,11 @@ fun RichTextField(
                 ToolCell("I", "Italic", RichMark.ITALIC in active, SpanStyle(fontStyle = FontStyle.Italic)) { toggle(RichMark.ITALIC) }
                 ToolDivider()
                 ToolCell("U", "Underline", RichMark.UNDERLINE in active, SpanStyle(textDecoration = TextDecoration.Underline)) { toggle(RichMark.UNDERLINE) }
-                ToolDivider()
-                ToolCell("S", "Strikethrough", RichMark.STRIKE in active, SpanStyle(textDecoration = TextDecoration.LineThrough)) { toggle(RichMark.STRIKE) }
             }
             ToolGroup {
-                ToolCell("Highlight", "Highlight", RichMark.HIGHLIGHT in active, richSpanStyle(RichMark.HIGHLIGHT, extra)) { toggle(RichMark.HIGHLIGHT) }
+                ToolCell("Highlight", "Highlight", RichMark.HIGHLIGHT in active, SpanStyle(), extra.highlightBg to extra.highlightFg) { toggle(RichMark.HIGHLIGHT) }
                 ToolDivider()
-                ToolCell("Important", "Important", RichMark.IMPORTANT in active, richSpanStyle(RichMark.IMPORTANT, extra)) { toggle(RichMark.IMPORTANT) }
+                ToolCell("Important", "Important", RichMark.IMPORTANT in active, SpanStyle(), extra.importantBg to extra.importantFg) { toggle(RichMark.IMPORTANT) }
             }
             ToolGroup {
                 ToolCell("•", "Bullet list", false, SpanStyle(fontWeight = FontWeight.Bold)) { toggleList(numbered = false) }
@@ -381,9 +376,12 @@ private fun buildAnnotatedStringWith(label: String, style: SpanStyle) = buildAnn
 private fun FormattingGuideDialog(onClose: () -> Unit) {
     val extra = MaterialTheme.extraColors
     @Composable
-    fun GuideRow(label: String, style: SpanStyle, text: String) {
-        androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Text(buildAnnotatedStringWith(label, style), Modifier.weight(0.4f).padding(end = 12.dp))
+    fun GuideRow(label: String, style: SpanStyle, text: String, chip: Pair<Color, Color>? = null) {
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(0.4f).padding(end = 12.dp), contentAlignment = Alignment.CenterStart) {
+                if (chip != null) MarkChip(label, chip.first, chip.second, bold = label == "Important")
+                else Text(buildAnnotatedStringWith(label, style))
+            }
             Text(text, Modifier.weight(0.6f), style = MaterialTheme.typography.bodyMedium)
         }
     }
@@ -400,9 +398,8 @@ private fun FormattingGuideDialog(onClose: () -> Unit) {
                 GuideRow("B  Bold", SpanStyle(fontWeight = FontWeight.Bold), "Thicker letters. Use it for names and key words.")
                 GuideRow("I  Italic", SpanStyle(fontStyle = FontStyle.Italic), "Slanted letters. Good for scientific names.")
                 GuideRow("U  Underline", SpanStyle(textDecoration = TextDecoration.Underline), "Draws a line under the words.")
-                GuideRow("S  Strike", SpanStyle(textDecoration = TextDecoration.LineThrough), "Crosses the words out, for something that is not true or not used.")
-                GuideRow("Highlight", richSpanStyle(RichMark.HIGHLIGHT, extra), "Marks the words like a highlighter pen, so readers notice them.")
-                GuideRow("Important", richSpanStyle(RichMark.IMPORTANT, extra), "Stands out strongly. Use it for warnings and safety notes.")
+                GuideRow("Highlight", SpanStyle(), "Marks the words like a highlighter pen, so readers notice them. It takes the app's color theme.", extra.highlightBg to extra.highlightFg)
+                GuideRow("Important", SpanStyle(), "Always red and bold. Use it for warnings and safety notes. On highlighted words it keeps the highlight color and only turns the letters red.", extra.importantBg to extra.importantFg)
                 GuideRow("•  List", SpanStyle(), "Turns the selected lines into a bullet list. Tap again to turn it off.")
                 GuideRow("1.  List", SpanStyle(), "Turns the selected lines into a numbered list.")
                 Text("Each box holds up to $MAX_CHARS characters.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -435,7 +432,12 @@ private fun ToolDivider() {
  * grows with the phone's font size instead of cutting the label off.
  */
 @Composable
-private fun ToolCell(label: String, description: String, active: Boolean, style: SpanStyle, onClick: () -> Unit) {
+private fun ToolCell(
+    label: String, description: String, active: Boolean, style: SpanStyle,
+    /** (background, text) of a mark that is shown as a small rounded chip, like Highlight and Important. */
+    chip: Pair<Color, Color>? = null,
+    onClick: () -> Unit
+) {
     val colors = MaterialTheme.colorScheme
     Box(
         Modifier
@@ -446,11 +448,28 @@ private fun ToolCell(label: String, description: String, active: Boolean, style:
             .padding(horizontal = 10.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
+        if (chip != null) MarkChip(label, chip.first, chip.second, bold = label == "Important")
+        else Text(
             buildAnnotatedStringWith(label, style),
             style = MaterialTheme.typography.labelLarge,
             color = if (active) colors.onPrimaryContainer else colors.onSurface,
             maxLines = 1
+        )
+    }
+}
+
+/** The look of Highlight / Important as a small rounded chip (the text itself can only be a square wash). */
+@Composable
+private fun MarkChip(text: String, bg: Color, fg: Color, bold: Boolean) {
+    // A soft gradient: the mark's own color, drifting a little toward the theme's container color.
+    val end = androidx.compose.ui.graphics.lerp(bg, MaterialTheme.colorScheme.primaryContainer, 0.28f)
+    Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(7.dp), color = Color.Transparent, contentColor = fg) {
+        Text(
+            text,
+            Modifier.background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(bg, end)))
+                .padding(horizontal = 9.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium, maxLines = 1
         )
     }
 }

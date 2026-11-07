@@ -69,6 +69,8 @@ class ExtraColors(
     val highlightFg: Color,
     val importantBg: Color,
     val importantFg: Color,
+    /** Text of a word that is BOTH highlighted and important: red and bold on the unchanged highlight color. */
+    val importantOnHighlight: Color,
 
     // ---- one color per contributor on a plant profile: eight, then round again
     val contributors: List<ContributorPalette>,
@@ -77,6 +79,30 @@ class ExtraColors(
     val flowerTint: PlaceholderTint,
     val nonHerbalFlowerTint: PlaceholderTint,
     val defaultTint: PlaceholderTint
+)
+
+/**
+ * The same colors with the brand-tinted ones replaced (used by the color themes in ColorThemes.kt). The highlight
+ * and important marks of a description and the accent bar on a card follow the theme too, so a new theme never
+ * leaves a stray yellow or red behind.
+ */
+fun ExtraColors.withBrand(
+    forest: Color, onForestChip: Color, photoBackdropStart: Color, photoBackdropEnd: Color,
+    photoAccent: Color = this.photoAccent,
+    highlightBg: Color = this.highlightBg, highlightFg: Color = this.highlightFg,
+    importantBg: Color = this.importantBg, importantFg: Color = this.importantFg,
+    importantOnHighlight: Color = this.importantOnHighlight
+) = ExtraColors(
+    overlay = overlay, onOverlay = onOverlay, photoShade = photoShade, photoAccent = photoAccent,
+    forest = forest, onForestChip = onForestChip,
+    photoBackdropStart = photoBackdropStart, photoBackdropEnd = photoBackdropEnd,
+    toxNone = toxNone, toxMild = toxMild, toxModerate = toxModerate, toxSevere = toxSevere, toxUnknown = toxUnknown,
+    pillMild = pillMild, pillModerate = pillModerate, pillSevere = pillSevere,
+    warning = warning, onWarning = onWarning,
+    highlightBg = highlightBg, highlightFg = highlightFg, importantBg = importantBg, importantFg = importantFg,
+    importantOnHighlight = importantOnHighlight,
+    contributors = contributors,
+    flowerTint = flowerTint, nonHerbalFlowerTint = nonHerbalFlowerTint, defaultTint = defaultTint
 )
 
 private val ContributorAccents = listOf(
@@ -131,10 +157,13 @@ val LightExtraColors = ExtraColors(
     pillSevere = PillSevere,
     warning = ScanWarn,
     onWarning = LightOnSurface,
-    highlightBg = Color(0xFFFFF3A3),
-    highlightFg = Color(0xFF4A3B00),
-    importantBg = Color(0x1FDC2626),
-    importantFg = Color(0xFFA61B1B),
+    // Opaque on purpose: descriptions sit on white, on tinted cards and inside colored contributor boxes, and a
+    // see-through red turned muddy on those. Important is ALWAYS red (the warning red), whatever the color theme.
+    highlightBg = Color(0xFFFFEE9C),
+    highlightFg = Color(0xFF3B2F00),
+    importantBg = Color(0xFFFFD6D1),
+    importantFg = Color(0xFF8C1410),
+    importantOnHighlight = Color(0xFFB3120D),
     contributors = ContributorsLight,
     flowerTint = FlowerTint,
     nonHerbalFlowerTint = NonHerbalFlowerTint,
@@ -161,10 +190,13 @@ val DarkExtraColors = ExtraColors(
     pillSevere = PillSevere,
     warning = ScanWarn,
     onWarning = LightOnSurface,
-    highlightBg = Color(0xFF6B5A00),
-    highlightFg = Color(0xFFFFF4B8),
-    importantBg = Color(0x33F87171),
-    importantFg = Color(0xFFFFB4B4),
+    // Dark mode keeps these LIGHT (a bright marker with dark letters), exactly like light mode, so a mark always
+    // looks like a mark. Only the page around it goes dark.
+    highlightBg = Color(0xFFFFEE9C),
+    highlightFg = Color(0xFF3B2F00),
+    importantBg = Color(0xFFFFD6D1),
+    importantFg = Color(0xFF8C1410),
+    importantOnHighlight = Color(0xFFB3120D),
     contributors = ContributorsDark,
     flowerTint = FlowerTint,
     nonHerbalFlowerTint = NonHerbalFlowerTint,

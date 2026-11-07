@@ -679,7 +679,10 @@ private fun DescriptionCards(choices: List<DescChoice>, selectedId: String?, onS
         Text("Which description?", style = MaterialTheme.typography.titleSmall)
         listOf("Own" to true, "Others" to false).forEach { (title, mine) ->
             val indexes = choices.indices.filter { choices[it].mine == mine }
-            Text("$title (${indexes.size})", style = MaterialTheme.typography.labelLarge, color = c.primary)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(title, style = MaterialTheme.typography.labelLarge, color = c.primary)
+                CountBadge(indexes.size, showZero = true, emphasized = false)
+            }
             if (indexes.isEmpty()) {
                 Text(
                     if (mine) "You have not contributed a description to this plant." else "Nobody else has described this plant.",
@@ -1426,6 +1429,8 @@ private fun ChangeTab(vm: RecordPlantViewModel, ui: RecordUiState, f: RecordForm
                 RichField(fld.label, s.desc[fld.key].orEmpty(), "cd.${fld.key}", s.errors, minLines = 3) {
                     s.desc[fld.key] = it; s.errors.remove("c.desc")
                 }
+                // The old text stays visible: what you delete is struck through, what you add is highlighted.
+                LiveEditDiff(chosen?.values?.get(fld.valueKey).asText(), s.desc[fld.key].orEmpty())
             }
             ErrorText(s.errors["c.desc"], "c.desc")
             CollapsibleSection("Measurements (optional)", PARTS_SUMMARY, s.partsPanel, { s.partsPanel = !s.partsPanel }) {
@@ -1666,13 +1671,11 @@ fun RecordPlantScreen(
             if (fixed) {
                 // Opened from a plant's card: Back and the title share one row, so the form starts higher up the screen.
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (onBack != null) AppBackButton(onBack)
-                        Text(
-                            if (changeMode) "Request change" else "Contribute",
-                            style = MaterialTheme.typography.headlineSmall, color = c.onBackground
-                        )
-                    }
+                    // Back is in the top bar, in line with "Plantellect".
+                    Text(
+                        if (changeMode) "Request change" else "Contribute",
+                        style = MaterialTheme.typography.headlineSmall, color = c.onBackground
+                    )
                     Text(
                         if (changeMode) "Ask for a correction to ${fixedPlantName.ifBlank { "this plant" }}. Nothing changes until it is approved."
                         else "Add to ${fixedPlantName.ifBlank { "this plant" }}. Every submission is reviewed.",

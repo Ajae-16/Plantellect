@@ -18,6 +18,15 @@ class SettingsStore(context: Context) {
     )
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 
+    private val _colorTheme = MutableStateFlow(prefs.getString(KEY_COLOR_THEME, null) ?: "PLANTELLECT")
+    /** The color theme, by its name in ui/theme/ColorThemes.kt (ColorTheme.fromName turns an unknown name into the default). */
+    val colorTheme: StateFlow<String> = _colorTheme.asStateFlow()
+
+    fun setColorTheme(name: String) {
+        prefs.edit().putString(KEY_COLOR_THEME, name).apply()
+        _colorTheme.value = name
+    }
+
     private val _dynamicColor = MutableStateFlow(prefs.getBoolean(KEY_DYNAMIC, false))
     /** Material You colors taken from the wallpaper (Android 12+, which is our minimum). */
     val dynamicColor: StateFlow<Boolean> = _dynamicColor.asStateFlow()
@@ -92,6 +101,7 @@ class SettingsStore(context: Context) {
         const val KEY_AUTO_CONTRIBUTE = "auto_contribute"
         const val KEY_CONTRIBUTE_HINT_HIDDEN = "contribute_hint_hidden"
         const val KEY_THEME = "theme_mode"
+        const val KEY_COLOR_THEME = "color_theme"
         const val KEY_DYNAMIC = "dynamic_color"
         const val KEY_DEBUG = "debug_mode"
         const val KEY_OFFLINE = "offline_mode"

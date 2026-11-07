@@ -515,6 +515,8 @@ fun Refreshable(
     refreshing: Boolean,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
+    /** false = the pull does nothing (a page that has its own refresh inside). */
+    enabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val density = LocalDensity.current
@@ -557,7 +559,7 @@ fun Refreshable(
         }
     }
 
-    Box(modifier.nestedScroll(connection)) {
+    Box(if (enabled) modifier.nestedScroll(connection) else modifier) {
         content()
 
         if (refreshing || pull > 0f) {
