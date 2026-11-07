@@ -144,7 +144,7 @@
                             <select id="statusFilter" class="filter-select" aria-label="Filter by status">
                                 <option value="all">All Status</option>
                                 <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
+                                <option value="inactive">Archived</option>
                             </select>
                             <button type="button" class="user-btn user-btn--primary" id="addUserBtn" hidden>
                                 <span class="material-symbols-outlined">person_add</span> Add user
@@ -195,6 +195,17 @@
             <p class="user-dialog-hint" id="userDialogHint"></p>
             <div class="user-dialog-error" id="userDialogError" role="alert" hidden></div>
 
+            <!-- View mode only: the account's profile photo and bio. -->
+            <div class="user-profile" id="userProfile" hidden>
+                <div class="user-avatar" id="userAvatar" aria-hidden="true">
+                    <span class="material-symbols-outlined">person</span>
+                </div>
+                <div class="user-bio">
+                    <h3>Bio</h3>
+                    <p id="userBio"></p>
+                </div>
+            </div>
+
             <div class="user-form-grid">
                 <div class="user-field">
                     <label for="ufFirstName">First name</label>
@@ -232,8 +243,34 @@
                 <div><dt>Last sign-in</dt><dd id="umLastLogin"></dd></div>
             </dl>
 
+            <p class="user-dialog-ok" id="userDialogOk" role="status" hidden></p>
+
+            <!-- Opened by "Change password" in the footer. Your own account asks for the current password;
+                 another account is an admin reset and does not. -->
+            <fieldset class="user-password" id="userPasswordBox" hidden>
+                <legend>Change password</legend>
+                <div class="user-dialog-error" id="userPasswordError" role="alert" hidden></div>
+                <div class="user-field" id="pwCurrentField" hidden>
+                    <label for="pwCurrent">Current password</label>
+                    <input id="pwCurrent" type="password" maxlength="72" autocomplete="current-password">
+                </div>
+                <div class="user-field">
+                    <label for="pwNew">New password</label>
+                    <input id="pwNew" type="password" minlength="6" maxlength="72" autocomplete="new-password">
+                </div>
+                <div class="user-field">
+                    <label for="pwConfirm">Confirm new password</label>
+                    <input id="pwConfirm" type="password" minlength="6" maxlength="72" autocomplete="new-password">
+                </div>
+                <div class="user-password-actions">
+                    <button type="button" class="user-btn" id="pwCancel">Cancel</button>
+                    <button type="button" class="user-btn user-btn--primary" id="pwSave">Update password</button>
+                </div>
+            </fieldset>
+
             <div class="user-dialog-actions">
                 <button type="button" class="user-btn" id="userDialogClose">Close</button>
+                <button type="button" class="user-btn" id="userDialogPassword" hidden>Change password</button>
                 <button type="button" class="user-btn" id="userDialogEdit" hidden>Edit</button>
                 <button type="submit" class="user-btn user-btn--primary" id="userDialogSave" hidden>Save</button>
             </div>
@@ -396,13 +433,15 @@
                 : '';
 
             let suspendBtn = '';
+            // Archive = the account can no longer sign in (status inactive); Restore brings it back.
+            // Needs archive_user; without it the button is not shown and the server refuses the call.
             if (hasPermission('archive_user') && notSelf) {
                 const isActive = u.status === 'active';
                 suspendBtn = actionButton(
                     'btn-toggle-status',
                     isActive ? 'danger' : 'success',
-                    isActive ? 'block' : 'check_circle',
-                    isActive ? 'Suspend account' : 'Activate account',
+                    isActive ? 'archive' : 'unarchive',
+                    isActive ? 'Archive account' : 'Restore account',
                     'data-id="' + id + '" data-status="' + escapeHtml(u.status) + '"'
                 );
             }
@@ -413,7 +452,7 @@
                 '<td>' + escapeHtml(u.name) + '</td>' +
                 '<td>' + escapeHtml(u.email) + '</td>' +
                 '<td><span class="badge badge-' + escapeHtml(u.role) + '">' + escapeHtml(roleLabel(u.role)) + '</span></td>' +
-                '<td><span class="badge badge-' + escapeHtml(u.status) + '">' + capitalize(u.status) + '</span></td>' +
+                '<td><span class="badge badge-' + escapeHtml(u.status) + '">' + statusLabel(u.status) + '</span></td>' +
                 '<td class="user-actions"><div class="action-group">' +
                     viewBtn + editBtn + suspendBtn + roleSelect +
                 '</div></td>' +
@@ -505,8 +544,11 @@
         }
 
         async function toggleAccount(accountId, body) {
-            const label = body.status === 'inactive' ? 'Suspend' : 'Reactivate';
-            if (!confirm(`${label} account ${accountId}?`)) return;
+            const archiving = body.status === 'inactive';
+            const question = archiving
+                ? `Archive account ${accountId}? The person will no longer be able to sign in. You can restore it later.`
+                : `Restore account ${accountId}? The person will be able to sign in again.`;
+            if (!confirm(question)) return;
 
             try {
                 const response = await fetch(`/admin/api/users/${encodeURIComponent(accountId)}/status`, {
@@ -529,6 +571,11 @@
 
         function capitalize(s) {
             return s.charAt(0).toUpperCase() + s.slice(1);
+        }
+
+        // An inactive account is shown as Archived (the stored value stays 'inactive').
+        function statusLabel(status) {
+            return status === 'inactive' ? 'Archived' : capitalize(status);
         }
 
         // The "user" role is shown as "General User" so it is not confused with "All Users".
@@ -588,6 +635,9 @@
             document.getElementById('userDialogSave').hidden = !editable;
             document.getElementById('userDialogSave').textContent = mode === 'create' ? 'Create account' : 'Save changes';
             document.getElementById('userDialogEdit').hidden = !(mode === 'view' && user && canEditUser(user));
+            document.getElementById('userDialogPassword').hidden = !(mode === 'view' && user && canEditUser(user));
+            document.getElementById('userProfile').hidden = mode !== 'view';
+            closePasswordBox();
             document.getElementById('userDialogClose').textContent = editable ? 'Cancel' : 'Close';
             document.getElementById('userDialogTitle').textContent =
                 mode === 'create' ? 'Add user' : (mode === 'edit' ? 'Edit user' : 'User details');
@@ -597,19 +647,114 @@
                     : (mode === 'edit' ? 'Role and status are changed from the table.' : '');
         }
 
+        /** Photo and bio of the account being viewed (the photo comes from the admin-only photo route). */
+        function fillProfile(u) {
+            const avatar = document.getElementById('userAvatar');
+            avatar.innerHTML = '';
+            if (u.photoUrl) {
+                const img = document.createElement('img');
+                img.alt = '';
+                img.src = u.photoUrl;
+                // A missing or broken file falls back to the placeholder icon.
+                img.addEventListener('error', function () {
+                    avatar.innerHTML = '<span class="material-symbols-outlined">person</span>';
+                });
+                avatar.appendChild(img);
+            } else {
+                avatar.innerHTML = '<span class="material-symbols-outlined">person</span>';
+            }
+            const bio = document.getElementById('userBio');
+            bio.textContent = u.bio || 'No bio yet.';
+            bio.classList.toggle('is-empty', !u.bio);
+        }
+
+        // ---- Change password (inside the view dialog) ----
+        const pwBox = document.getElementById('userPasswordBox');
+        const pwFields = {
+            current: document.getElementById('pwCurrent'),
+            next: document.getElementById('pwNew'),
+            confirm: document.getElementById('pwConfirm')
+        };
+
+        function showPasswordError(message) {
+            const box = document.getElementById('userPasswordError');
+            box.textContent = message || '';
+            box.hidden = !message;
+        }
+
+        function showDialogOk(message) {
+            const box = document.getElementById('userDialogOk');
+            box.textContent = message || '';
+            box.hidden = !message;
+        }
+
+        function closePasswordBox() {
+            pwBox.hidden = true;
+            pwFields.current.value = '';
+            pwFields.next.value = '';
+            pwFields.confirm.value = '';
+            showPasswordError('');
+        }
+
+        function openPasswordBox() {
+            showDialogOk('');
+            showPasswordError('');
+            const own = dialogUserId === currentAccountId;
+            document.getElementById('pwCurrentField').hidden = !own;
+            pwBox.hidden = false;
+            (own ? pwFields.current : pwFields.next).focus();
+        }
+
+        async function savePassword() {
+            showPasswordError('');
+            const own = dialogUserId === currentAccountId;
+            const next = pwFields.next.value;
+            if (own && !pwFields.current.value) { showPasswordError('Enter your current password.'); return; }
+            if (next.length < 6) { showPasswordError('The new password must be at least 6 characters.'); return; }
+            if (next !== pwFields.confirm.value) { showPasswordError('The two new passwords do not match.'); return; }
+
+            const body = { newPassword: next };
+            if (own) body.currentPassword = pwFields.current.value;
+
+            const btn = document.getElementById('pwSave');
+            btn.disabled = true;
+            try {
+                const response = await fetch('/admin/api/users/' + encodeURIComponent(dialogUserId) + '/password', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (response.status === 401) { window.location.href = '/auth.html'; return; }
+                const data = await response.json().catch(function () { return {}; });
+                if (!response.ok) {
+                    showPasswordError(data.error || 'Could not change the password');
+                    return;
+                }
+                closePasswordBox();
+                showDialogOk('Password changed.');
+            } catch (err) {
+                showPasswordError('Network error. Try again.');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
         function fillDialog(u) {
+            fillProfile(u);
             userFields.firstName.value = u.firstName || '';
             userFields.lastName.value = u.lastName || '';
             userFields.username.value = u.username || '';
             userFields.email.value = u.email || '';
             document.getElementById('umRole').textContent = roleLabel(u.role);
-            document.getElementById('umStatus').textContent = capitalize(u.status);
+            document.getElementById('umStatus').textContent = statusLabel(u.status);
             document.getElementById('umCreated').textContent = formatDate(u.createdAt);
             document.getElementById('umLastLogin').textContent = formatDate(u.lastLoginAt);
         }
 
         async function openUserDialog(mode, accountId) {
             showDialogError('');
+            showDialogOk('');
             userForm.reset();
             dialogUserId = accountId || null;
 
@@ -634,6 +779,7 @@
 
         async function submitUserDialog(e) {
             e.preventDefault();
+            if (dialogMode === 'view') return;   // view mode has nothing to save (Enter in the password box)
             showDialogError('');
             const body = {
                 firstName: userFields.firstName.value,
@@ -683,6 +829,14 @@
             userFields.firstName.focus();
         });
         document.getElementById('addUserBtn').addEventListener('click', function () { openUserDialog('create'); });
+        document.getElementById('userDialogPassword').addEventListener('click', openPasswordBox);
+        document.getElementById('pwCancel').addEventListener('click', closePasswordBox);
+        document.getElementById('pwSave').addEventListener('click', savePassword);
+        Object.keys(pwFields).forEach(function (k) {
+            pwFields[k].addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); savePassword(); }
+            });
+        });
 
         // Box click -> switch filter + expand detail panel
         const detailPanel = document.getElementById('roleDetailPanel');

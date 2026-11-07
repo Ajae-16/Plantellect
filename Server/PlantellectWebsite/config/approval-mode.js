@@ -329,8 +329,8 @@ async function createSystemActor(executor, passwordHash) {
         );
         accountId = `acc_${String(Number(alloc[0].id)).padStart(6, '0')}`;
         await executor.query(
-            'INSERT INTO accounts (accountId, email, username, passwordHash, roleId, status) ' +
-            'VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO accounts (accountId, email, username, passwordHash, roleId, status, isActive, isArchive) ' +
+            'VALUES (?, ?, ?, ?, ?, ?, 0, 0)',
             [accountId, SYSTEM_EMAIL, SYSTEM_USERNAME, passwordHash, SYSTEM_ROLE_ID, 'inactive']
         );
     }

@@ -35,6 +35,10 @@ const AUTHLOG_ACTIONS = [
     // metadata carries targetAccountId (and the field names changed, never the values).
     'user_created',
     'user_updated',
+    // Users page: an admin set another account's password (never stores the password itself).
+    'user_password_reset',
+    // Plants page: an admin archived or restored a whole plant. metadata.action says which.
+    'plant_archive_changed',
     // Mobile profile API (routes/profile.js). Never stores the passwords themselves.
     // profile_updated metadata: { field: 'bio' | 'photo', ... }
     'password_changed',

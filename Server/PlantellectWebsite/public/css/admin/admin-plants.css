@@ -720,3 +720,24 @@
 }
 .image-issue-row:last-child { border-bottom: 0; }
 .image-issue-row .btn { align-self: flex-start; }
+
+/* ---- Voting column (before Date Uploaded) ---- */
+.plant-vote-cell { font-size: 12px; line-height: 1.5; white-space: nowrap; }
+.plant-vote-line { display: flex; align-items: center; gap: 6px; }
+.plant-vote-tag {
+    display: inline-block;
+    min-width: 58px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--color-forest-green, #2e6417);
+}
+.plant-vote-tag--other { color: inherit; opacity: 0.65; }
+.plant-vote-up { color: #2d7a1f; font-weight: 600; }
+.plant-vote-down { color: #b3402f; font-weight: 600; }
+.plant-vote-none, .plant-vote-note { opacity: 0.6; font-size: 11px; }
+.plant-vote-note { white-space: normal; max-width: 190px; }
+html[data-theme="dark"] .plant-vote-tag { color: #b7e4c7; }
+html[data-theme="dark"] .plant-vote-up { color: #8fd17a; }
+html[data-theme="dark"] .plant-vote-down { color: #f08a78; }

@@ -500,3 +500,65 @@ html[data-theme="dark"] .user-dialog {
 html[data-theme="dark"] .user-btn { border-color: rgba(198, 231, 143, 0.55); }
 html[data-theme="dark"] .user-btn--primary { background: #3f8f2a; border-color: #3f8f2a; }
 html[data-theme="dark"] .user-field label { color: #b7e4c7; }
+
+/* ---- View dialog: profile photo + bio, and the change-password box ---- */
+.user-profile {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    margin: 12px 0 4px;
+}
+.user-profile[hidden] { display: none; }
+.user-avatar {
+    flex: 0 0 72px;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(128, 128, 128, 0.18);
+}
+.user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.user-avatar .material-symbols-outlined { font-size: 38px; opacity: 0.55; }
+.user-bio { min-width: 0; flex: 1; }
+.user-bio h3 {
+    margin: 0 0 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--color-forest-green, #2e6417);
+}
+.user-bio p { margin: 0; font-size: 13px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.user-bio p.is-empty { opacity: 0.6; font-style: italic; }
+
+.user-password {
+    margin: 16px 0 0;
+    padding: 12px;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 8px;
+    min-width: 0;
+}
+.user-password[hidden] { display: none; }
+.user-password legend {
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--color-forest-green, #2e6417);
+}
+.user-password .user-field { margin-top: 8px; }
+.user-password-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.user-dialog-ok {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    background: rgba(76, 175, 80, 0.16);
+}
+.user-dialog-ok[hidden] { display: none; }
+html[data-theme="dark"] .user-bio h3,
+html[data-theme="dark"] .user-password legend { color: #b7e4c7; }

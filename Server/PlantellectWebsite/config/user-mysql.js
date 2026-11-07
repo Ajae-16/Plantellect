@@ -40,7 +40,12 @@ async function listUsers({ search, role, status, page, pageSize }) {
             params.push(role);
         }
     }
-    if (status) {
+    if (status === 'active') {
+        where.push('a.isActive = 1');
+    } else if (status === 'inactive') {
+        // "Archived": the flag, so the machine system actor (inactive by design) is not listed as archived.
+        where.push('a.isArchive = 1');
+    } else if (status) {
         where.push('a.status = ?');
         params.push(status);
     }
@@ -53,6 +58,8 @@ async function listUsers({ search, role, status, page, pageSize }) {
                 a.email,
                 r.roleName AS role,
                 a.status,
+                a.isActive,
+                a.isArchive,
                 a.createdAt,
                 a.lastLoginAt
          FROM accounts a
@@ -89,7 +96,7 @@ async function listUsers({ search, role, status, page, pageSize }) {
         }
     }
     const [activeRows] = await mysqlPool.query(
-        "SELECT COUNT(*) AS n FROM accounts WHERE status = 'active'"
+        "SELECT COUNT(*) AS n FROM accounts WHERE isActive = 1"
     );
     counts.active = activeRows[0].n;
 
@@ -101,6 +108,8 @@ async function listUsers({ search, role, status, page, pageSize }) {
             email: r.email,
             role: r.role,
             status: r.status,
+            isActive: Boolean(r.isActive),
+            isArchive: Boolean(r.isArchive),
             createdAt: r.createdAt,
             lastLoginAt: r.lastLoginAt
         })),
@@ -162,9 +171,15 @@ async function setAccountStatus(accountId, status, actorAccountId) {
             }
         }
 
-        await conn.query('UPDATE accounts SET status = ? WHERE accountId = ?', [status, accountId]);
+        // status is the sign-in gate; the two flags are the query-friendly copy of it. The machine
+        // `system` actor is inactive by design, so it is never marked archived.
+        const archived = status === 'inactive' && rows[0].roleName !== 'system';
+        await conn.query(
+            'UPDATE accounts SET status = ?, isActive = ?, isArchive = ? WHERE accountId = ?',
+            [status, status === 'active' ? 1 : 0, archived ? 1 : 0, accountId]
+        );
         await conn.commit();
-        return { accountId, status };
+        return { accountId, status, isActive: status === 'active', isArchive: archived };
     } catch (err) {
         await conn.rollback();
         throw err;
@@ -302,18 +317,40 @@ function cleanIdentity(input, requireAll) {
     return { values: out };
 }
 
-/** Everything the Users page shows for one account. Null when it does not exist. */
+/**
+ * Everything the Users page shows for one account. Null when it does not exist.
+ * Includes the profile's bio and photo: `photoUrl` is the ADMIN route that streams the file
+ * (/admin/api/users/:id/photo, access_admin), with the profile's update time as a cache-buster.
+ * The stored file name (imagePath) is never sent.
+ */
 async function getUserDetail(accountId) {
     const [rows] = await mysqlPool.query(
-        `SELECT a.accountId AS id, a.username, a.email, a.status, a.createdAt, a.updatedAt, a.lastLoginAt,
-                r.roleName AS role, pr.firstName, pr.lastName
+        `SELECT a.accountId AS id, a.username, a.email, a.status, a.isActive, a.isArchive, a.createdAt, a.updatedAt, a.lastLoginAt,
+                r.roleName AS role, pr.firstName, pr.lastName, pr.bio, pr.imagePath, pr.updatedAt AS profileUpdatedAt
          FROM accounts a
          JOIN roles r ON a.roleId = r.roleId
          LEFT JOIN profiles pr ON pr.accountId = a.accountId
          WHERE a.accountId = ?`,
         [accountId]
     );
-    return rows[0] || null;
+    if (rows.length === 0) return null;
+    const { imagePath, profileUpdatedAt, ...detail } = rows[0];
+    const stamp = profileUpdatedAt ? new Date(profileUpdatedAt).getTime() : 0;
+    return {
+        ...detail,
+        bio: detail.bio || null,
+        isActive: Boolean(detail.isActive),
+        isArchive: Boolean(detail.isArchive),
+        photoUrl: imagePath
+            ? `/admin/api/users/${encodeURIComponent(detail.id)}/photo?v=${Number.isFinite(stamp) ? stamp : 0}`
+            : null
+    };
+}
+
+/** The stored profile-photo file name of one account (null when none), for the admin photo route. */
+async function getUserPhotoPath(accountId) {
+    const [rows] = await mysqlPool.query('SELECT imagePath FROM profiles WHERE accountId = ?', [accountId]);
+    return rows.length === 0 ? null : rows[0].imagePath || null;
 }
 
 /**
@@ -475,11 +512,68 @@ async function updateUser(accountId, input, actorPermissions, actorAccountId) {
     }
 }
 
+/**
+ * An admin sets ANOTHER account's password (the person is not asked for the old one).
+ * Changing your own password goes through the current-password check instead (see the route).
+ *
+ * Guards: the system account is never touched; another person's privileged account needs
+ * admin_promote (a password reset on a superadmin is an account takeover); same length rules as
+ * registration and the profile API (6 characters, 72 bytes because bcrypt ignores the rest).
+ * Returns { accountId } or { error, code }.
+ */
+async function adminSetPassword(accountId, newPassword, actorPermissions, actorAccountId) {
+    if (actorAccountId && actorAccountId === accountId) {
+        return { error: 'Use your current password to change your own password', code: 409 };
+    }
+    if (typeof newPassword !== 'string' || newPassword === '') {
+        return { error: 'New password is required', code: 400 };
+    }
+    if (newPassword.length < 6) return { error: 'Password must be at least 6 characters', code: 400 };
+    if (Buffer.byteLength(newPassword, 'utf8') > 72) {
+        return { error: 'Password is too long (at most 72 bytes)', code: 400 };
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const conn = await mysqlPool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const [rows] = await conn.query(
+            `SELECT a.roleId, r.roleName
+             FROM accounts a JOIN roles r ON r.roleId = a.roleId
+             WHERE a.accountId = ? FOR UPDATE`,
+            [accountId]
+        );
+        if (rows.length === 0) {
+            await conn.rollback();
+            return { error: 'Account not found', code: 404 };
+        }
+        if (rows[0].roleName === 'system') {
+            await conn.rollback();
+            return { error: 'The system account is a machine actor and cannot be given a password', code: 400 };
+        }
+        const privileged = await getPrivilegedRoleIds(conn);
+        if (privileged.has(rows[0].roleId) && !(actorPermissions || []).includes('admin_promote')) {
+            await conn.rollback();
+            return { error: 'admin_promote permission is required to change another administrator\'s password', code: 403 };
+        }
+        await conn.query('UPDATE accounts SET passwordHash = ? WHERE accountId = ?', [passwordHash, accountId]);
+        await conn.commit();
+        return { accountId };
+    } catch (err) {
+        await conn.rollback().catch(() => {});
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
 module.exports = {
     listUsers,
     setAccountStatus,
     changeAccountRole,
     getUserDetail,
+    getUserPhotoPath,
     createUser,
-    updateUser
+    updateUser,
+    adminSetPassword
 };

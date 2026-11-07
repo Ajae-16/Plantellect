@@ -19,7 +19,7 @@ const CONTRIBUTOR_LIST_LENGTH = 120;
  * whole value of the left join on taxonomy: nothing else in the project reads
  * those columns, so a gap would otherwise be invisible.
  */
-async function listPlants({ search, type, taxonomyGap, page, pageSize }) {
+async function listPlants({ search, type, taxonomyGap, archived, page, pageSize }) {
     const paging = parsePaging({ page, pageSize });
     const where = [];
     const params = [];
@@ -33,6 +33,8 @@ async function listPlants({ search, type, taxonomyGap, page, pageSize }) {
         where.push('t.typeName = ?');
         params.push(type);
     }
+    // Active plants by default; ?archived=1 shows the archived ones instead.
+    where.push(archived ? 'p.isArchive = 1' : 'p.isArchive = 0');
 
     const GAP_PREDICATE = TAXONOMY_GAP_LEVELS
         .map((level) => `tx.\`${level}\` = '${UNSPECIFIED_TAXONOMY}'`)
@@ -43,7 +45,7 @@ async function listPlants({ search, type, taxonomyGap, page, pageSize }) {
     const gapSelect = TAXONOMY_GAP_LEVELS.map((level) => `tx.\`${level}\` AS tax_${level}`).join(', ');
 
     const [rows] = await mysqlPool.query(
-        `SELECT p.plantId, p.commonName, p.scientificName, p.quantity, p.createdAt,
+        `SELECT p.plantId, p.commonName, p.scientificName, p.quantity, p.createdAt, p.archivedAt, p.archiveReason, p.isArchive,
                 t.typeName, t.toxicityLevel, t.isHarmful,
                 ${gapSelect},
                 (SELECT COUNT(*) FROM plant_images i WHERE i.plantId = p.plantId AND i.status = 'approved' AND i.origin = 'record') AS imageCount,
@@ -77,7 +79,7 @@ async function listPlants({ search, type, taxonomyGap, page, pageSize }) {
          FROM plants p
          JOIN plant_types t ON p.typeId = t.typeId
          LEFT JOIN taxonomy tx ON tx.taxonomyId = p.taxonomyId
-         WHERE (${GAP_PREDICATE})`
+         WHERE p.isArchive = 0 AND (${GAP_PREDICATE})`
     );
 
     const plants = [];
@@ -92,12 +94,16 @@ async function listPlants({ search, type, taxonomyGap, page, pageSize }) {
             isHarmful: Boolean(row.isHarmful),
             quantity: row.quantity,
             dateUploaded: row.createdAt,
+            isArchive: Boolean(row.isArchive),
+            archivedAt: row.archivedAt || null,
+            archiveReason: row.archiveReason || null,
             imageCount: row.imageCount,
             pendingImageCount: row.pendingImageCount,
             descriptionCount: row.descriptionCount,
             missingTaxonomyLevels: TAXONOMY_GAP_LEVELS.filter(
                 (level) => row[`tax_${level}`] === UNSPECIFIED_TAXONOMY
             ),
+            voting: await getVotingSummary(row.plantId),
             ...(await getContributorSummary(row.plantId)),
             ...(await getPlantDetailSummary(row.plantId))
         });
@@ -217,6 +223,51 @@ async function getContributorPeople(plantId) {
     return people;
 }
 
+/**
+ * The voting status shown in the admin plants table, before "Date Uploaded".
+ * Reads the per-description totals from vw_description_votes (the same numbers the plant page's
+ * "View votes" table uses) for the plant's visible approved descriptions.
+ *
+ *   primary   the current primary description's votes { up, down, net } or null
+ *   challenger the best NON-primary visible description (highest net, oldest on a tie) or null
+ *   totalUp / totalDown  across every visible description
+ *   descriptions  how many visible approved descriptions the plant has
+ *   hidden    approved descriptions currently hidden by down votes
+ * A challenger only ever leads when it is strictly ahead of the primary (see chooseWinner in
+ * description-vote-mysql.js); `challengerAhead` is true in that rare case (for example after an
+ * admin picked the primary by hand), so the table can flag it.
+ */
+async function getVotingSummary(plantId) {
+    const [rows] = await mysqlPool.query(
+        `SELECT d.descriptionId, d.isPrimary, d.hiddenAt,
+                COALESCE(v.upVotes, 0) AS upVotes, COALESCE(v.downVotes, 0) AS downVotes
+         FROM plant_description d
+         LEFT JOIN vw_description_votes v ON v.descriptionId = d.descriptionId
+         WHERE d.plantId = ? AND d.status = 'approved'
+         ORDER BY d.createdAt ASC, d.descriptionId ASC`,
+        [plantId]
+    );
+    const shape = (r) => ({ up: Number(r.upVotes), down: Number(r.downVotes), net: Number(r.upVotes) - Number(r.downVotes) });
+    const visible = rows.filter((r) => !r.hiddenAt);
+    const primaryRow = visible.find((r) => Boolean(r.isPrimary)) || null;
+    let challengerRow = null;
+    for (const r of visible) {
+        if (r === primaryRow) continue;
+        if (!challengerRow || shape(r).net > shape(challengerRow).net) challengerRow = r;
+    }
+    const primary = primaryRow ? shape(primaryRow) : null;
+    const challenger = challengerRow ? shape(challengerRow) : null;
+    return {
+        descriptions: visible.length,
+        hidden: rows.length - visible.length,
+        totalUp: visible.reduce((n, r) => n + Number(r.upVotes), 0),
+        totalDown: visible.reduce((n, r) => n + Number(r.downVotes), 0),
+        primary,
+        challenger,
+        challengerAhead: Boolean(primary && challenger && challenger.net > primary.net)
+    };
+}
+
 async function getPlantDetailSummary(plantId) {
     const [rows] = await mysqlPool.query(
         `SELECT d.uses, d.benefits, d.harmful,
@@ -312,6 +363,7 @@ async function getPlantExists(plantId) {
 
 module.exports = {
     listPlants,
+    getVotingSummary,
     getContributorSummary,
     getContributorPeople,
     getPlantDetailSummary,

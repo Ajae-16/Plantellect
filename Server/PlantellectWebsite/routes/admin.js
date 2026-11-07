@@ -6,8 +6,10 @@ const settings = require('../config/settings');
 const {
     listUsers,
     getUserDetail,
+    getUserPhotoPath,
     createUser,
     updateUser,
+    adminSetPassword,
     setAccountStatus,
     changeAccountRole,
     listPlantRequests,
@@ -33,6 +35,11 @@ const photoVisibility = require('../config/photo-visibility');
 const datasetSync = require('../config/dataset-sync');
 const { loadActiveClasses } = require('../config/active-classes');
 const lookalike = require('../config/lookalike');
+// Loaded on first use, not at startup: these three open the database / the profile router, and the
+// route tests (tests/dataset-contributions.test.js) load this file with only part of the project stubbed.
+const plantArchive = { archivePlant: (...a) => require('../config/plant-archive-mysql').archivePlant(...a), restorePlant: (...a) => require('../config/plant-archive-mysql').restorePlant(...a) };
+const profileStore = { resolveStoredPath: (...a) => require('../config/profile-mysql').resolveStoredPath(...a), changePassword: (...a) => require('../config/profile-mysql').changePassword(...a) };
+const profileRoutes = { lockedFor: (...a) => require('./profile').lockedFor(...a), countWrongGuess: (...a) => require('./profile').countWrongGuess(...a) };
 
 const router = express.Router();
 
@@ -139,7 +146,70 @@ router.patch('/api/users/:accountId', requirePermission('edit_user'), async (req
     }
 });
 
-router.patch('/api/users/:accountId/status', requirePermission('access_admin'), async (req, res) => {
+/** The profile photo of any account, for the Users page's view dialog. Admin-only, 404 when there is none. */
+router.get('/api/users/:accountId/photo', requirePermission('access_admin'), async (req, res) => {
+    try {
+        const stored = await getUserPhotoPath(req.params.accountId);
+        const file = profileStore.resolveStoredPath(stored);
+        if (!file || !fs.existsSync(file)) return res.status(404).json({ error: 'No profile photo' });
+        res.setHeader('Content-Type', 'image/webp');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'private, no-cache');
+        res.sendFile(file);
+    } catch (err) {
+        console.error('Serve user photo error:', err.message);
+        res.status(500).json({ error: 'Failed to load the photo' });
+    }
+});
+
+/**
+ * Password change from the Users page.
+ *   another account  { newPassword }                    an admin reset; the person is not asked for the old one
+ *   your own account { currentPassword, newPassword }   the same check (and 5-wrong-guesses brake) as the mobile API
+ * Needs edit_user. Neither password is ever logged.
+ */
+router.post('/api/users/:accountId/password', requirePermission('edit_user'), async (req, res) => {
+    const targetId = req.params.accountId;
+    const actorId = req.session.accountId;
+    const { currentPassword, newPassword } = req.body || {};
+    const logIt = (action, metadata) => logAuthEvent({
+        accountId: actorId,
+        action,
+        ip: req.ip,
+        userAgent: req.get('User-Agent') || '',
+        metadata
+    });
+    try {
+        if (targetId === actorId) {
+            const wait = profileRoutes.lockedFor(actorId);
+            if (wait > 0) {
+                res.setHeader('Retry-After', String(Math.ceil(wait / 1000)));
+                return res.status(429).json({ error: 'Too many wrong passwords. Try again later.' });
+            }
+            const result = await profileStore.changePassword(actorId, currentPassword, newPassword);
+            if (result.error) {
+                if (result.reason === 'wrong_password') {
+                    profileRoutes.countWrongGuess(actorId);
+                    await logIt('password_change_failed', { reason: 'wrong_password' });
+                }
+                return res.status(result.code).json({ error: result.error });
+            }
+            await logIt('password_changed', {});
+            return res.json({ message: 'Password changed' });
+        }
+
+        const result = await adminSetPassword(targetId, newPassword, req.session.permissions, actorId);
+        if (result.error) return res.status(result.code).json({ error: result.error });
+        await logIt('user_password_reset', { targetAccountId: targetId });
+        res.json({ message: 'Password changed' });
+    } catch (err) {
+        console.error('Change user password error:', err.message);
+        res.status(500).json({ error: 'Failed to change the password' });
+    }
+});
+
+// Archive / restore an account: needs archive_user (not just access_admin).
+router.patch('/api/users/:accountId/status', requirePermission('archive_user'), async (req, res) => {
     const { status } = req.body;
     if (!['active', 'inactive'].includes(status)) {
         return res.status(400).json({ error: 'status must be "active" or "inactive"' });
@@ -407,6 +477,8 @@ router.get('/api/plants', requirePermission('access_admin'), async (req, res) =>
             // in the response (taxonomyGapTotal), so the dashboard card and this
             // table are read from one request and cannot disagree.
             taxonomyGap: req.query.taxonomyGap === '1' || req.query.taxonomyGap === 'true',
+            // ?archived=1 lists archived plants instead of the active ones.
+            archived: req.query.archived === '1' || req.query.archived === 'true',
             page: req.query.page,
             pageSize: req.query.pageSize
         });
@@ -466,6 +538,50 @@ router.post('/api/plants/:plantId/descriptions/:descriptionId/primary', requireP
     } catch (err) {
         console.error('Set primary description error:', err.message);
         res.status(500).json({ error: 'Failed to change the primary description' });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Archive / restore a whole plant. Archived plants leave the library, the app and the public pages;
+// nothing is deleted. Archive takes an optional { reason }.
+// ---------------------------------------------------------------------------
+
+router.post('/api/plants/:plantId/archive', requirePermission('access_admin'), async (req, res) => {
+    try {
+        const result = await plantArchive.archivePlant(req.params.plantId, {
+            reason: req.body ? req.body.reason : undefined,
+            accountId: req.session.accountId
+        });
+        if (result.error) return res.status(result.code || 400).json({ error: result.error });
+        await logAuthEvent({
+            accountId: req.session.accountId,
+            action: 'plant_archive_changed',
+            ip: req.ip,
+            userAgent: req.get('User-Agent') || '',
+            metadata: { action: 'archive', plantId: result.plantId, archiveReason: result.archiveReason || null }
+        });
+        res.json({ ok: true, ...result });
+    } catch (err) {
+        console.error('Archive plant error:', err.message);
+        res.status(500).json({ error: 'Failed to archive the plant' });
+    }
+});
+
+router.post('/api/plants/:plantId/restore', requirePermission('access_admin'), async (req, res) => {
+    try {
+        const result = await plantArchive.restorePlant(req.params.plantId);
+        if (result.error) return res.status(result.code || 400).json({ error: result.error });
+        await logAuthEvent({
+            accountId: req.session.accountId,
+            action: 'plant_archive_changed',
+            ip: req.ip,
+            userAgent: req.get('User-Agent') || '',
+            metadata: { action: 'restore', plantId: result.plantId }
+        });
+        res.json({ ok: true, ...result });
+    } catch (err) {
+        console.error('Restore plant error:', err.message);
+        res.status(500).json({ error: 'Failed to restore the plant' });
     }
 });
 

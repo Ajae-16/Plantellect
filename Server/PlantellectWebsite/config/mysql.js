@@ -5,7 +5,7 @@ const { mysqlPool } = require('./pool-mysql');
 const { parsePaging, DISCOVERY_TYPE, DENIAL_KINDS } = require('./shared-mysql');
 const { getPermissionsVersion, getSessionGuard, loadAccountPermissions, bumpPermissionsVersion, getPrivilegedRoleIds, countActiveSuperadmins } = require('./auth-mysql');
 const { recordConsent, getConsentState } = require('./registration-mysql');
-const { listUsers, setAccountStatus, changeAccountRole, getUserDetail, createUser, updateUser } = require('./user-mysql');
+const { listUsers, setAccountStatus, changeAccountRole, getUserDetail, getUserPhotoPath, createUser, updateUser, adminSetPassword } = require('./user-mysql');
 const { listPlantRequests, getRequestDetail } = require('./request-mysql');
 const { listPlants, getContributorSummary, getPlantDetailSummary, listPlantImages, getImageForServing, getImageForReview, getImageForOwner, getPlantExists } = require('./plant-mysql');
 const { approvePlantRequest, denyPlantRequest } = require('./approval-mysql');
@@ -31,8 +31,10 @@ module.exports = {
     setAccountStatus,
     changeAccountRole,
     getUserDetail,
+    getUserPhotoPath,
     createUser,
     updateUser,
+    adminSetPassword,
     listPlantRequests,
     getRequestDetail,
     listPlants,

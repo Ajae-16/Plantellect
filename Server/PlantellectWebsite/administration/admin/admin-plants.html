@@ -373,6 +373,7 @@
                                             <th>Type</th>
                                             <th>Reviewed By</th>
                                             <th>Recorded By</th>
+                                            <th title="Community votes on the plant's descriptions. The highest voted description is the primary one.">Voting</th>
                                             <th>Date Uploaded</th>
                                             <th>Actions</th>
                                         </tr>
@@ -566,9 +567,8 @@
                             <button type="button" class="plant-photo-btn" id="plantPhotoNext">Next &rsaquo;</button>
                         </div>
                         <div class="plant-photo-archive">
-                            <button type="button" class="btn-deny" id="plantArchiveBtn" disabled
-                                    title="Archiving from this dialog is not available yet">Archive plant</button>
-                            <small>Archiving from here is not available yet.</small>
+                            <button type="button" class="btn-deny" id="plantArchiveBtn"
+                                    title="Take this plant out of the library. It can be restored later.">Archive plant</button>
                         </div>
                     </section>
                 </div>
@@ -626,6 +626,25 @@
             const div = document.createElement('div');
             div.textContent = String(str == null ? '' : str);
             return div.innerHTML;
+        }
+
+        // Voting status of one plant: the primary description's votes, and the best other description
+        // when there is one (an "other" description only takes over when it is strictly ahead; equal votes keep the old primary).
+        function votingCell(v) {
+            if (!v || !v.descriptions) return '<span class="plant-vote-none">No descriptions</span>';
+            const tally = (t) => `<span class="plant-vote-up" title="Up votes">&#9650; ${t.up}</span> <span class="plant-vote-down" title="Down votes">&#9660; ${t.down}</span>`;
+            let html = v.primary
+                ? `<div class="plant-vote-line"><span class="plant-vote-tag">Primary</span> ${tally(v.primary)}</div>`
+                : '<div class="plant-vote-line"><span class="plant-vote-none">No primary</span></div>';
+            if (v.challenger) {
+                html += `<div class="plant-vote-line"><span class="plant-vote-tag plant-vote-tag--other">Top other</span> ${tally(v.challenger)}</div>`;
+            }
+            const notes = [];
+            if (v.challengerAhead) notes.push('Another description is ahead');
+            if (v.hidden) notes.push(v.hidden + ' hidden by votes');
+            if (!v.totalUp && !v.totalDown) notes.push('No votes yet');
+            if (notes.length) html += `<div class="plant-vote-note">${escapeHtml(notes.join(' · '))}</div>`;
+            return html;
         }
 
         function formatDate(dateStr) {
@@ -1144,7 +1163,7 @@
                 emptyState.hidden = true;
                 tbody.innerHTML = plants.map(p => {
                     const isExpanded = expandedPlantId === p.id;
-                    const isArchived = Boolean(p.archivedAt);
+                    const isArchived = Boolean(p.isArchive || p.archivedAt);
                     const parts = p.parts || {};
                     const desc = p.description || {};
                     const missing = p.missingTaxonomyLevels || [];
@@ -1173,6 +1192,7 @@
                             <td data-label="Type">${plantBadge(p.typeLabel || p.type, p.toxicityLevel)}</td>
                             <td data-label="Reviewed By">${escapeHtml(p.reviewedBy || '—')}</td>
                             <td data-label="Recorded By">${escapeHtml(p.recordedBy || '—')}</td>
+                            <td class="plant-vote-cell" data-label="Voting">${votingCell(p.voting)}</td>
                             <td data-label="Date Uploaded">${formatDate(p.dateUploaded)}</td>
                             <td class="plant-actions-cell" data-label="Actions">${actions}</td>
                         </tr>
@@ -1182,7 +1202,7 @@
 
                     return row + `
                         <tr class="plant-detail-row" data-detail-for="${pid}">
-                            <td colspan="7">
+                            <td colspan="8">
                                 <div class="plant-detail-content">
                                     <div class="plant-detail-item">
                                         <span class="label">Scientific Name</span>
@@ -1830,6 +1850,37 @@
             document.getElementById('plantEditDialog').close();
         });
 
+        // Archive the plant being edited. The server hides it from the library and the public pages (nothing is
+        // deleted); it moves to the Archived filter, where Restore brings it back.
+        document.getElementById('plantArchiveBtn').addEventListener('click', async () => {
+            if (!editingPlantId || photoBusy) return;
+            const answer = window.prompt(
+                'Archive this plant? It disappears from the public library and the app, and can be restored later.\n\nReason (optional):', '');
+            if (answer === null) return;
+            const btn = document.getElementById('plantArchiveBtn');
+            btn.disabled = true;
+            photoMessage('none');
+            try {
+                const res = await fetch('/admin/api/plants/' + encodeURIComponent(editingPlantId) + '/archive', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: answer.trim().slice(0, 255) })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    photoMessage('error', data.error || 'The plant could not be archived');
+                    return;
+                }
+                document.getElementById('plantEditDialog').close();
+                expandedPlantId = null;
+                loadPlants();
+            } catch (err) {
+                photoMessage('error', 'The plant could not be archived: ' + err.message);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
         const valueOf = (id) => document.getElementById(id).value;
 
         document.getElementById('plantEditForm').addEventListener('submit', (e) => {
@@ -1912,9 +1963,11 @@
 
             let url = '/admin/api/plants/' + encodeURIComponent(id);
             let method = 'POST';
+            let body;
             if (act === 'archive') {
                 if (!confirm(`Archive "${plant.name}"? It disappears from the public library and can be restored later.`)) return;
                 url += '/archive';
+                body = JSON.stringify({ reason: '' });
             } else if (act === 'restore') {
                 url += '/restore';
             } else if (act === 'delete') {
@@ -1927,7 +1980,10 @@
 
             btn.disabled = true;
             try {
-                const res = await fetch(url, { method, credentials: 'include' });
+                const res = await fetch(url, {
+                    method, credentials: 'include',
+                    ...(body ? { headers: { 'Content-Type': 'application/json' }, body } : {})
+                });
                 if (!res.ok) {
                     const d = await res.json().catch(() => ({}));
                     alert('Error: ' + (d.error || 'Action failed'));

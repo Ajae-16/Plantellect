@@ -84,6 +84,50 @@ async function promoteReplacement(conn, plantId, excludeId) {
     return rows[0].descriptionId;
 }
 
+/**
+ * Pure rule for the automatic primary description.
+ * `rows` are the visible approved descriptions of ONE plant, OLDEST FIRST, each
+ * { descriptionId, isPrimary, score } where score = up votes - down votes.
+ *
+ *   - The current primary keeps the place unless another description has a STRICTLY
+ *     greater score. A tie (including "equal to the current primary") never replaces it.
+ *   - Among challengers the highest score wins; equal challengers resolve to the oldest.
+ *   - With no current primary (none flagged, or it is hidden and so not in `rows`)
+ *     the highest score wins, oldest first on a tie.
+ * Returns the winning descriptionId, or null when there is nothing to choose from.
+ */
+function chooseWinner(rows) {
+    if (!rows || rows.length === 0) return null;
+    let best = rows[0];
+    for (const r of rows) if (Number(r.score) > Number(best.score)) best = r;
+    const current = rows.find((r) => Boolean(r.isPrimary));
+    if (!current) return best.descriptionId;
+    return Number(best.score) > Number(current.score) ? best.descriptionId : current.descriptionId;
+}
+
+/**
+ * Applies chooseWinner to one plant inside the caller's transaction. Returns the new
+ * primary's id when the flag MOVED, otherwise null.
+ */
+async function electPrimary(conn, plantId) {
+    const [rows] = await conn.query(
+        `SELECT d.descriptionId, d.isPrimary,
+                (SELECT COUNT(*) FROM description_votes v WHERE v.descriptionId = d.descriptionId AND v.voteValue = 'up')
+              - (SELECT COUNT(*) FROM description_votes v WHERE v.descriptionId = d.descriptionId AND v.voteValue = 'down') AS score
+         FROM plant_description d
+         WHERE d.plantId = ? AND d.status = 'approved' AND d.hiddenAt IS NULL
+         ORDER BY d.createdAt ASC, d.descriptionId ASC`,
+        [plantId]
+    );
+    const winner = chooseWinner(rows);
+    if (!winner) return null;
+    const current = rows.find((r) => Boolean(r.isPrimary));
+    if (current && current.descriptionId === winner) return null;
+    await conn.query('UPDATE plant_description SET isPrimary = FALSE WHERE plantId = ?', [plantId]);
+    await conn.query('UPDATE plant_description SET isPrimary = TRUE WHERE descriptionId = ?', [winner]);
+    return winner;
+}
+
 // ---------------------------------------------------------------------------
 // Casting a vote (signed-in user)
 // ---------------------------------------------------------------------------
@@ -210,8 +254,11 @@ async function castDescriptionVote(plantId, descriptionId, accountId, body, { re
             hidden = true;
         }
 
+        // The highest voted description becomes the primary; a tie leaves the current one in place.
+        const newPrimary = await electPrimary(conn, plantId);
+
         await conn.commit();
-        return { descriptionId, up, myVote, retracted: retract, hidden };
+        return { descriptionId, up, myVote, retracted: retract, hidden, primaryChanged: Boolean(newPrimary) };
     } catch (err) {
         await conn.rollback().catch(() => {});
         throw err;
@@ -548,6 +595,8 @@ async function applyFeedbackAction(descriptionId, adminId, action) {
 }
 
 module.exports = {
+    chooseWinner,
+    electPrimary,
     normalizeVoteInput,
     castDescriptionVote,
     getVoteSummary,
