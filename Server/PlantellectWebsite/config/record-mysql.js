@@ -50,6 +50,13 @@ async function validatePlantDraft(body) {
         if (raw !== undefined && raw !== null && raw !== '' && Number.isNaN(Number(raw))) {
             errors.push(`parts.${key} must be a number`);
         }
+    // Archive / Deleted status of the photos (config/archive-status.js), with the live retention days.
+    const retentionDays = allImageIds.size > 0 ? await require('./archive-retention').getRetentionDays(mysqlPool) : 0;
+    const archiveOf = (img) => {
+        const { effectiveStatus } = require('./archive-status');
+        const s = effectiveStatus(img, { archivedAt: img.plantArchivedAt, deletedAt: img.plantDeletedAt }, retentionDays);
+        return { state: s.state, via: s.via, archivedAt: s.archivedAt, deletedAt: s.deletedAt, purgeAt: s.purgeAt, daysLeft: s.daysLeft };
+    };
     }
     if (parts.heightMinCm != null && parts.heightMaxCm != null && Number(parts.heightMinCm) > Number(parts.heightMaxCm)) {
         errors.push('parts.heightMinCm cannot exceed heightMaxCm');
@@ -650,13 +657,6 @@ async function listMyRequests(accountId, { page, pageSize } = {}) {
         );
         for (const img of imgRows) imageById.set(img.imageId, img);
     }
-    // Archive / Deleted status of the photos (config/archive-status.js), with the live retention days.
-    const retentionDays = allImageIds.size > 0 ? await require('./archive-retention').getRetentionDays(mysqlPool) : 0;
-    const archiveOf = (img) => {
-        const { effectiveStatus } = require('./archive-status');
-        const s = effectiveStatus(img, { archivedAt: img.plantArchivedAt, deletedAt: img.plantDeletedAt }, retentionDays);
-        return { state: s.state, via: s.via, archivedAt: s.archivedAt, deletedAt: s.deletedAt, purgeAt: s.purgeAt, daysLeft: s.daysLeft };
-    };
 
     return {
         requests: rows.map((r) => {
@@ -672,6 +672,7 @@ async function listMyRequests(accountId, { page, pageSize } = {}) {
                 changeReason: r.requestType === 'plant_change' ? (payload.reason || null) : null,
                 changeScope: r.requestType === 'plant_change' ? (payload.scope || 'legacy') : null,
                 changeDescriptionId: r.requestType === 'plant_change' ? (payload.descriptionId || null) : null,
+                ownerApproval: r.requestType === 'plant_change' ? (payload.ownerApproval || null) : null,
                 note: r.note,
                 createdAt: r.createdAt,
                 reviewedAt: r.reviewedAt,
